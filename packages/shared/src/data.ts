@@ -47,6 +47,7 @@ crop('wheat', 10, 10);
 add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('fiber', 'material', { sell: 1 }));
+add(I('paper', 'material', { sell: 1, buy: 3, tab: 'materials' }));
 add(I('hay', 'feed', { sell: 1, buy: 4, tab: 'feed' }));
 // Found out in the world
 add(I('mushroom', 'crop', { sell: 12 }));
@@ -268,7 +269,7 @@ built('sofa', { w: 2, h: 1 });
 built('bookshelf');
 built('lamp', { light: true });
 built('plant');
-built('painting', { solid: false, flat: true });
+built('painting', { solid: false, flat: true, harvest: true });
 built('stove', { light: true, interact: 'cook' });
 built('clock', { solid: false, flat: true });
 built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
@@ -341,6 +342,7 @@ const R = (id: string, count: number, ...ins: [string, number][]): RecipeDef => 
 
 export const RECIPES: RecipeDef[] = [
   R('fence', 4, ['wood', 2]),
+  R('paper', 3, ['wood', 1]),
   R('gate', 1, ['wood', 3]),
   R('path_dirt', 4, ['fiber', 1]),
   R('path_stone', 4, ['stone', 2]),
@@ -569,6 +571,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('mobs_50', 'mobs', 50, 2, 'bow'),
   A('boss_1', 'boss', 1, 3, 'gem'),
   A('boss_5', 'boss', 5, 5, 'hat_viking'),
+  A('paint_1', 'paint', 1, 2, 'painting'),
+  A('paint_10', 'paint', 10, 3, 'paper'),
 ];
 
 /** Fish and how likely they bite (weights). */

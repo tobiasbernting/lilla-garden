@@ -3,6 +3,7 @@ import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHAR
 import { Minimap } from './minimap.ts';
 import { NEW_ART, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
+import { stackIconUrl } from '../art/painting.ts';
 import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
 import { bus, client, myPlayer } from '../state.js';
@@ -14,7 +15,7 @@ export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; pick
   const el = h('div', { class: `slot${opts.selected ? ' selected' : ''}${opts.picked ? ' picked' : ''}` });
   if (opts.key) el.append(h('span', { class: 'key' }, opts.key));
   if (stack) {
-    el.append(icon(art.iconUrl[stack.item] ?? '', itemName(stack.item)));
+    el.append(icon(stackIconUrl(stack), itemName(stack.item)));
     el.title = itemName(stack.item);
     if (stack.charges !== undefined) {
       el.append(h('div', { class: 'charges' }, h('i', { style: { width: `${(stack.charges / WATERING_CAN_CHARGES) * 100}%` } })));

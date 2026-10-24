@@ -142,6 +142,8 @@ export interface ItemStack {
   count: number;
   /** Tool-specific data (watering can charges). */
   charges?: number;
+  /** A painted tavla: its pixels. Stacks with data never merge. */
+  data?: string;
 }
 
 export type Inventory = (ItemStack | null)[];
@@ -262,6 +264,8 @@ export interface WorldObject {
   by?: string;
   /** Decorations: variant/tint. */
   variant?: number;
+  /** A painted tavla hung up: its pixels. */
+  data?: string;
 }
 
 export interface AnimalState {
@@ -302,6 +306,8 @@ export interface DropState {
   y: number;
   /** The player who dropped it cannot pick it up again for this many ticks. */
   ignore?: { player: string; ticks: number };
+  /** A dropped painted tavla keeps its pixels. */
+  data?: string;
 }
 
 export interface WorldState {

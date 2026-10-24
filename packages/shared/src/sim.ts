@@ -7,6 +7,7 @@ import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap,
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
+import { PAINTED_SELL, isValidPainting } from './paint.ts';
 import { ACHIEVEMENT_TEXT, DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
 import type { Change, SlotRef } from './protocol.ts';
 import type {
@@ -277,6 +278,19 @@ export function giveItems(world: WorldState, p: PlayerState, id: string, count: 
   }
 }
 
+/** Gives a single stack that must not merge (a painted tavla); lands on the ground if there is no free slot. */
+export function giveStack(world: WorldState, p: PlayerState, stack: ItemStack, out: Change[]): void {
+  const free = p.inventory.indexOf(null);
+  if (free >= 0) {
+    p.inventory[free] = { ...stack };
+    return;
+  }
+  const d = spawnDrop(world, stack.item, stack.count, p.x, p.y);
+  if (stack.data !== undefined) d.data = stack.data;
+  out.push({ t: 'drop', id: d.id, drop: d });
+  out.push(toast(p.id, T.inventoryFull));
+}
+
 export function spawnDrop(world: WorldState, id: string, count: number, x: number, y: number, ignore?: string): DropState {
   const d: DropState = { id: world.nextId++, item: id, count, x, y };
   if (ignore) d.ignore = { player: ignore, ticks: 60 };
@@ -396,6 +410,15 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     return out;
   }
   if (tool === 'rod') return out;
+
+  // 0c. Paper: open the drawing screen (unless pointing at something you can open)
+  if (held?.item === 'paper') {
+    const target = objectAt(world, tx, ty);
+    if (!target || !objectDef(target.kind).interact) {
+      out.push({ t: 'open', to: p.id, ui: 'paint' });
+      return out;
+    }
+  }
 
   // 1. Animal
   const animal = animalAt(world, tx, ty);
@@ -549,7 +572,10 @@ function breakObject(world: WorldState, p: PlayerState, obj: WorldObject, ctx: S
   out.push(fx(obj.x, obj.y, def.breakWith === 'axe' || def.breakWith === 'pick' ? 'chop' : 'poof'));
   // Chest contents spill out
   if (obj.items) for (const s of obj.items) if (s) giveItems(world, p, s.item, s.count, out);
-  for (const d of def.drops ?? []) giveItems(world, p, d.item, randInt(ctx.rnd, d.min, d.max), out);
+  for (const d of def.drops ?? []) {
+    if (obj.data !== undefined && d.item === obj.kind) giveStack(world, p, { item: d.item, count: 1, data: obj.data }, out);
+    else giveItems(world, p, d.item, randInt(ctx.rnd, d.min, d.max), out);
+  }
   if (obj.kind.startsWith('tree')) bump(p, 'chop', 1, out);
   if (def.breakWith === 'pick') bump(p, 'mine', 1, out);
   if (obj.kind === 'tree' || obj.kind === 'tree_pine' || obj.kind === 'tree_apple') {
@@ -707,6 +733,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     const extra: Partial<WorldObject> = { by: p.id };
     if (odef.interact === 'chest') extra.items = makeInventory(CHEST_SIZE);
     if (odef.interact === 'feed') extra.items = makeInventory(1);
+    if (held.data !== undefined) extra.data = held.data;
     const obj = addObject(world, def.places, tx, ty, extra);
     if (!obj) {
       out.push(toast(p.id, T.cantPlaceHere));
@@ -854,9 +881,10 @@ export function sell(world: WorldState, playerId: string, slot: number, qty: num
   if (d.sell === undefined) return [toast(p.id, T.notNow)];
   const taken = takeFromSlot(p.inventory, slot, Math.max(1, Math.floor(qty)));
   if (!taken) return [];
-  p.coins += d.sell * taken.count;
+  const price = taken.data !== undefined ? PAINTED_SELL : d.sell;
+  p.coins += price * taken.count;
   const out: Change[] = [fx(tileOf(p.x), tileOf(p.y), 'coin')];
-  bump(p, 'earned', d.sell * taken.count, out);
+  bump(p, 'earned', price * taken.count, out);
   out.push(playerChange(p));
   return out;
 }
@@ -896,7 +924,21 @@ export function dropItem(world: WorldState, playerId: string, slot: number, qty:
   }
   const d = spawnDrop(world, taken.item, taken.count, x, y, p.id);
   if (taken.charges !== undefined) d.count = 1;
+  if (taken.data !== undefined) d.data = taken.data;
   return [{ t: 'drop', id: d.id, drop: d }, playerChange(p)];
+}
+
+/** Turns one paper into a painted tavla (the drawing screen's "Klar"). */
+export function paint(world: WorldState, playerId: string, pixels: string): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  if (!isValidPainting(pixels)) return [toast(p.id, T.paintEmpty)];
+  if (!removeItem(p.inventory, 'paper', 1)) return [toast(p.id, T.notNow)];
+  const out: Change[] = [];
+  giveStack(world, p, { item: 'painting', count: 1, data: pixels }, out);
+  bump(p, 'paint', 1, out);
+  out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'), toast(p.id, T.paintDone), playerChange(p));
+  return out;
 }
 
 export function nameAnimal(world: WorldState, playerId: string, id: number, name: string): Change[] {
@@ -1641,6 +1683,14 @@ function tickDrops(world: WorldState, out: Change[]): void {
         p.hearts = Math.min(MAX_HEARTS, p.hearts + d.count);
         delete world.drops[d.id];
         out.push({ t: 'drop', id: d.id, drop: null }, playerChange(p), toast(p.id, T.heartsFull), fx(tileOf(p.x), tileOf(p.y), 'heart'));
+        break;
+      }
+      if (d.data !== undefined) {
+        const free = p.inventory.indexOf(null);
+        if (free < 0) continue;
+        p.inventory[free] = { item: d.item, count: 1, data: d.data };
+        delete world.drops[d.id];
+        out.push({ t: 'drop', id: d.id, drop: null }, playerChange(p));
         break;
       }
       const left = addItem(p.inventory, d.item, d.count);
