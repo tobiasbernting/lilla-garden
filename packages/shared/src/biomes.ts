@@ -226,6 +226,28 @@ export function ensureFarmExits(world: WorldState): void {
     }
 }
 
+/** Where the pizzeria stands on the village square (3×2 footprint). */
+export const PIZZERIA = { x: MAP_W / 2 + 7, y: MAP_H / 2 - 3 };
+
+/** Adds the pizzeria (and room for Pino) to a village saved before it existed. Idempotent. */
+export function ensurePizzeria(world: WorldState): boolean {
+  if (world.biome !== 'by') return false;
+  if (Object.values(world.objects).some((o) => o.kind === 'pizzeria')) return false;
+  const clearTile = (x: number, y: number) => {
+    const o = objectAt(world, x, y);
+    if (o && o.kind !== 'house_small' && o.kind !== 'market' && o.kind !== 'sellstall') delete world.objects[o.id];
+    const occ = world.occupancy[key(x, y)];
+    if (occ !== undefined && !world.objects[occ]) delete world.occupancy[key(x, y)];
+  };
+  for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 3; dx++) clearTile(PIZZERIA.x + dx, PIZZERIA.y + dy);
+  for (const n of Object.values(NPCS)) {
+    if (n.area !== world.area) continue;
+    for (const w of [n, ...n.routine]) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) clearTile(w.x + dx, w.y + dy);
+  }
+  addObject(world, 'pizzeria', PIZZERIA.x, PIZZERIA.y);
+  return true;
+}
+
 /** A village square with houses, a well, a market and a buyer, lanterns and flowers. */
 function buildVillage(world: WorldState, rnd: () => number): void {
   const T = world.terrain;
@@ -267,6 +289,7 @@ function buildVillage(world: WorldState, rnd: () => number): void {
   addObject(world, 'town_well', cx, cy - 1);
   addObject(world, 'market', cx - 6, cy - 5);
   addObject(world, 'sellstall', cx + 4, cy - 5);
+  addObject(world, 'pizzeria', PIZZERIA.x, PIZZERIA.y);
   for (const [x, y] of [
     [cx - 9, cy - 7],
     [cx + 9, cy - 7],

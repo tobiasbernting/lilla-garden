@@ -59,7 +59,9 @@ export interface ItemDef {
   /** Price in the catalogue; undefined = not for sale. */
   buy?: number;
   /** Catalogue tab, if sold. */
-  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars';
+  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars' | 'pizzeria';
+  /** Edible: eating restores hearts and gives a speed boost for this long. */
+  food?: { boostMs: number };
   /** Price in stars (Stjärnor tab) instead of kr. */
   stars?: number;
   /** Season this item is only available in (catalogue). */
@@ -107,7 +109,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -204,6 +206,8 @@ export interface PlayerState {
   moveLock?: number;
   /** Id of the horse the player is riding. */
   riding?: number;
+  /** Pizzapower: moves faster until this server time. */
+  boostUntil?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }

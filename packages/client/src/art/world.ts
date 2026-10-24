@@ -782,6 +782,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('house_small', [0, 1, 2, 3].map((v) => building(48, 52, ['#e8dcc0', '#f0d8a8', '#dce8c8', '#f4e0e0'][v]!, ['#b5413a', '#6f4a26', '#3b5fa6', '#2f7a3a'][v]!, true, { windows: 2, roofH: 20 })), 0, -4);
   set('market', [stall('#d9453b')], 0, -8);
   set('sellstall', [stall('#3b6fd9')], 0, -8);
+  set('pizzeria', [pizzeria()], 0, -12);
   set('lantern', [lantern(0), lantern(1)], 0, -8, true);
   set('town_well', [well()], 0, -8);
   // Cave
@@ -829,6 +830,19 @@ const stall = (awning: string): Px => {
   for (let x = 0; x < 32; x += 4) p.rect(x, 6, 4, 6, x % 8 === 0 ? awning : '#ffffff');
   p.rect(0, 5, 32, 1, shade(awning, 0.7)).rect(0, 12, 32, 1, shade(awning, 0.7));
   p.rect(6, 16, 5, 5, '#f08a2a').rect(13, 15, 5, 6, '#e03a3a').rect(20, 17, 6, 4, '#f5d94a');
+  return p.outline(OUTLINE);
+};
+const pizzeria = (): Px => {
+  const p = building(48, 44, '#f3e2c0', '#8a5a2a', true, { windows: 2, roofH: 16 });
+  // red-white striped awning over the door and windows
+  for (let x = 2; x < 46; x += 4) p.rect(x, 17, 4, 5, (x / 4) % 2 === 0 ? '#d9453b' : '#ffffff');
+  p.rect(2, 16, 44, 1, '#8f2f2a').rect(2, 22, 44, 1, '#8f2f2a');
+  // pizza sign on the roof
+  p.rect(16, 2, 16, 10, '#ffffff').box(16, 2, 16, 10, '#8f2f2a');
+  p.circle(21, 7, 3, '#e0453a').circle(21, 7, 2, '#f5d94a').px(20, 6, '#e0453a').px(22, 8, '#e0453a');
+  p.rect(26, 5, 4, 1, '#d9453b').rect(26, 7, 3, 1, '#2e8a3a').rect(26, 9, 4, 1, '#d9453b');
+  // stone oven glow by the door
+  p.rect(36, 34, 7, 8, STONE_D).rect(37, 36, 5, 4, '#f08a2a').rect(38, 37, 3, 2, '#ffd45a');
   return p.outline(OUTLINE);
 };
 const lantern = (f: number): Px => new Px(16, 24).rect(7, 8, 2, 16, '#3a3a3a').rect(4, 2, 8, 7, '#3a3a3a').rect(5, 3, 6, 5, f ? '#ffd45a' : '#f5a623').rect(7, 0, 2, 2, '#3a3a3a').rect(3, 22, 10, 2, '#3a3a3a').outline(OUTLINE);

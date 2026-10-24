@@ -46,6 +46,8 @@ import {
   sell,
   setOnline,
   stepPlayer,
+  BOOST_SPEED_MUL,
+  ensurePizzeria,
   swapSlots,
   tick,
   tileIndex,
@@ -1186,7 +1188,8 @@ describe('byn', () => {
     expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
     expect(kinds).toContain('market');
     expect(kinds).toContain('sellstall');
-    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'stina']);
+    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'pino', 'stina']);
+    expect(kinds).toContain('pizzeria');
     for (const n of npcsIn(v)) for (const w of [n, ...n.routine]) expect(objectAt(v, w.x, w.y)?.kind ?? 'free').toBe('free');
     const { world, p } = setup();
     world.timeMs = 1000;
@@ -1207,6 +1210,47 @@ describe('byn', () => {
     // the village keeps its own villagers moving when someone is there
     tick(world, 50, ctx());
     expect(village.npcs.bo).toBeDefined();
+  });
+});
+
+describe('pizzerian', () => {
+  it('sells pizza in the village, eating heals and gives pizzapower that wears off', () => {
+    const { world, p } = setup();
+    p.coins = 100;
+    // buy at the pizzeria (the UI is opened by acting on the building)
+    const village = generateArea(1, 0);
+    const pizzeria = Object.values(village.objects).find((o) => o.kind === 'pizzeria')!;
+    expect(pizzeria).toBeDefined();
+    expect(buy(world, p.id, 'pizza', 1, ctx()).some((c) => c.t === 'player')).toBe(true);
+    expect(p.coins).toBe(70);
+    expect(countItem(p.inventory, 'pizza')).toBe(1);
+    // eat it: hearts back, boost set, achievement progress
+    p.hearts = 1;
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    select(p, 'pizza');
+    const now = 1_000_000;
+    const ch = performAction(world, p.id, 21, 20, { ...ctx(), now });
+    expect(ch.some((c) => c.t === 'toast' && c.text.includes('Pizzapower'))).toBe(true);
+    expect(countItem(p.inventory, 'pizza')).toBe(0);
+    expect(p.hearts).toBe(MAX_HEARTS);
+    expect(p.boostUntil).toBe(now + 60_000);
+    expect(p.stats?.pizza).toBe(1);
+    // the boost makes the shared movement faster (same multiplier the client predicts with)
+    const walker = { x: 300, y: 300, facing: 'right' as const, moving: false };
+    stepPlayer(world, walker, 1, 0, 100);
+    const plain = walker.x - 300;
+    walker.x = 300;
+    stepPlayer(world, walker, 1, 0, 100, BOOST_SPEED_MUL);
+    expect(walker.x - 300).toBeCloseTo(plain * BOOST_SPEED_MUL, 3);
+    // wears off
+    tick(world, 50, { ...ctx(), now: now + 61_000 });
+    expect(p.boostUntil).toBeUndefined();
+    // saved villages without a pizzeria get one
+    delete village.objects[pizzeria.id];
+    expect(ensurePizzeria(village)).toBe(true);
+    expect(Object.values(village.objects).some((o) => o.kind === 'pizzeria')).toBe(true);
+    expect(ensurePizzeria(village)).toBe(false);
   });
 });
 
