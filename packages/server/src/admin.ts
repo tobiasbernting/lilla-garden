@@ -40,6 +40,8 @@ ${flash ? `<p class="flash">${esc(flash)}</p>` : ''}
   <h2>Världen</h2>
   <form method="post" action="/admin/save"><button class="alt">${T.saveNow}</button></form>
   <form method="post" action="/admin/skipday"><button class="alt">${T.skipDay}</button></form>
+  <form method="post" action="/admin/evening"><button class="alt">Gör kväll</button></form>
+  <form method="post" action="/admin/morning"><button class="alt">Gör morgon</button></form>
 </div>
 <div class="card">
   <h2>${T.players}</h2>

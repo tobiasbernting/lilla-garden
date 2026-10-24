@@ -1,5 +1,6 @@
 // The running game: world state, connected clients, tick + broadcast loops.
 import {
+  DAY_LENGTH_MS,
   MAX_PLAYERS,
   TICK_HZ,
   applyMove,
@@ -184,6 +185,12 @@ export class Game {
     this.world.seasonOverride = season;
     this.pending.push({ t: 'day', day: this.world.day });
     this.dispatchPending();
+    this.broadcastState();
+  }
+
+  /** Admin: jump to a time of day (fraction 0..1). */
+  setTimeOfDay(fraction: number): void {
+    this.world.timeMs = Math.max(0, Math.min(0.99, fraction)) * DAY_LENGTH_MS;
     this.broadcastState();
   }
 

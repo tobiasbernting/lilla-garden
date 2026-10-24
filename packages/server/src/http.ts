@@ -87,6 +87,12 @@ export function createServer(game: Game, opts: { clientDist: string | null; seas
         } else if (p === '/admin/skipday') {
           game.skipDay();
           m = `Ny dag: ${game.world.day}`;
+        } else if (p === '/admin/evening') {
+          game.setTimeOfDay(0.72);
+          m = 'Kvällen kommer';
+        } else if (p === '/admin/morning') {
+          game.setTimeOfDay(0.05);
+          m = 'God morgon';
         }
         res.writeHead(303, { location: `/admin?m=${encodeURIComponent(m)}` });
         return res.end();
