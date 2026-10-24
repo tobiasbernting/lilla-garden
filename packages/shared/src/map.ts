@@ -1,4 +1,5 @@
 import { NPCS, objectDef } from './data.ts';
+import { ensureFarmExits } from './biomes.ts';
 import { mulberry32, randInt } from './rng.ts';
 import type { Terrain, WorldObject, WorldState } from './types.ts';
 import { MAP_H, MAP_W, key } from './types.ts';
@@ -230,6 +231,7 @@ export function generateWorld(seed = 1337): WorldState {
   ensureInterior(world);
   ensureVillagers(world);
   ensureCave(world);
+  ensureFarmExits(world);
 
   // Grass tufts, flowers, bushes everywhere
   for (let y = 2; y < MAP_H - 2; y++)

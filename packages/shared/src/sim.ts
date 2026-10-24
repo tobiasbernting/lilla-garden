@@ -3,6 +3,7 @@
 
 import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
+import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, type Biome } from './biomes.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -80,8 +81,10 @@ export const routineTarget = (def: { routine: { at: number; x: number; y: number
   return best;
 };
 
+export const isFarm = (world: WorldState): boolean => !world.area;
+
 export const npcAt = (world: WorldState, tx: number, ty: number) =>
-  world.area === 'dungeon'
+  !isFarm(world)
     ? undefined
     : Object.values(NPCS).find((n) => {
         const st = npcState(world, n.id);
@@ -96,14 +99,14 @@ export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boo
   if (npcAt(world, tx, ty)) return true;
   if (world.area === 'dungeon') {
     for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return true;
-  } else if (portalAt(tx, ty)) return false;
+  } else if (isFarm(world) && portalAt(tx, ty)) return false;
   const obj = objectAt(world, tx, ty);
   return !!obj && objectDef(obj.kind).solid;
 }
 
 /** Teleports through a portal if standing on one. Returns true if moved. */
 export function applyPortal(p: { x: number; y: number; facing: Facing }, world?: WorldState): boolean {
-  if (world?.area === 'dungeon') return false;
+  if (world && !isFarm(world)) return false;
   const portal = portalAt(tileOf(p.x), tileOf(p.y));
   if (!portal) return false;
   p.x = portal.to.x * TILE + TILE / 2;
@@ -242,6 +245,7 @@ export function createPlayer(world: WorldState, name: string, appearance: Appear
     stats: {},
     achievements: [],
     area: 'farm',
+    visited: ['farm'],
     hearts: MAX_HEARTS,
   };
   world.players[id] = p;
@@ -909,7 +913,7 @@ export function applyMove(world: WorldState, playerId: string, x: number, y: num
   const p = world.players[playerId];
   if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
   // A client that just walked through a portal reports a position by the portal's exit
-  for (const portal of world.area === 'dungeon' ? [] : PORTALS) {
+  for (const portal of isFarm(world) ? PORTALS : []) {
     const nearFrom = Math.hypot(p.x - (portal.from.x + 0.5) * TILE, p.y - (portal.from.y + 0.5) * TILE) <= 3 * TILE;
     const nearTo = Math.hypot(x - (portal.to.x + 0.5) * TILE, y - (portal.to.y + 0.5) * TILE) <= 3 * TILE;
     if (nearFrom && nearTo && !isSolidForPlayer(world, tileOf(x), tileOf(y))) {
@@ -1034,7 +1038,7 @@ function tickFishing(world: WorldState, ctx: SimCtx, out: Change[]): void {
       f.bite = true;
       f.until = ctx.now + 1300;
       p.emote = { id: 'napp', until: f.until };
-      out.push(fx(f.x, f.y, 'water'), toast(p.id, T.fishingBite));
+      out.push(...tagArea([fx(f.x, f.y, 'water')], p.area), toast(p.id, T.fishingBite));
     } else if (f.bite && ctx.now >= f.until) {
       delete p.fishing;
       delete p.emote;
@@ -1153,10 +1157,109 @@ export function completeQuest(world: WorldState, playerId: string, questId: stri
 // ---------------------------------------------------------------------------
 
 /** The world a player is currently in. */
-export const areaOf = (world: WorldState, p: PlayerState): WorldState => (p.area === 'dungeon' && world.dungeon ? world.dungeon : world);
+export const areaOf = (world: WorldState, p: PlayerState): WorldState => {
+  if (p.area === 'dungeon') return world.dungeon ?? world;
+  if (p.area !== 'farm') return world.areas?.[p.area] ?? world;
+  return world;
+};
 
-/** The farm world that owns a dungeon world (dungeon worlds keep a back reference). */
-const farmOf = (world: WorldState): WorldState => (world.area === 'dungeon' ? ((world as WorldState & { farm?: WorldState }).farm ?? world) : world);
+/** The farm world that owns a dungeon or area world (they keep a non-enumerable back reference). */
+const farmOf = (world: WorldState): WorldState => (!isFarm(world) ? ((world as WorldState & { farm?: WorldState }).farm ?? world) : world);
+
+const linkToFarm = (child: WorldState, farm: WorldState): void => {
+  Object.defineProperty(child, 'farm', { value: farm, enumerable: false, writable: true, configurable: true });
+};
+
+/** Loads (or generates) an overworld area. The server may pre-fill world.areas from the database. */
+export function getArea(world: WorldState, keyStr: string): WorldState | null {
+  const farm = farmOf(world);
+  if (keyStr === 'farm') return farm;
+  if (keyStr === 'dungeon') return farm.dungeon ?? null;
+  if (!farm.areas) farm.areas = {};
+  let a = farm.areas[keyStr];
+  if (!a) {
+    const c = areaCoords(keyStr);
+    if (!c) return null;
+    a = generateArea(c.ax, c.ay);
+    farm.areas[keyStr] = a;
+  }
+  linkToFarm(a, farm);
+  return a;
+}
+
+export const areaName = (keyStr: string, world?: WorldState): string => {
+  if (keyStr === 'farm' || keyStr === 'dungeon') return BIOME_NAMES[keyStr];
+  const a = world ? getArea(world, keyStr) : null;
+  return BIOME_NAMES[(a?.biome as Biome) ?? 'ang'];
+};
+
+/** Moves a player to another map at a given tile. */
+function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, ty: number, facing: Facing, out: Change[]): boolean {
+  const farm = farmOf(world);
+  const target = getArea(farm, keyStr);
+  if (!target) return false;
+  const current = areaOf(farm, p);
+  if (current !== farm) delete current.players[p.id];
+  p.area = keyStr;
+  p.x = tx * TILE + TILE / 2;
+  p.y = ty * TILE + TILE / 2;
+  p.facing = facing;
+  p.moving = false;
+  delete p.fishing;
+  if (target !== farm) target.players[p.id] = p;
+  if (!p.visited) p.visited = ['farm'];
+  const firstVisit = !p.visited.includes(keyStr);
+  if (firstVisit) p.visited.push(keyStr);
+  if (target !== farm) out.push({ t: 'areaData', to: p.id, key: keyStr, world: target });
+  out.push(playerChange(p));
+  if (firstVisit && keyStr !== 'farm') out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })), fx(tx, ty, 'sparkle'));
+  return true;
+}
+
+const DIRS: Record<'n' | 's' | 'e' | 'w', { dx: number; dy: number; opposite: 'n' | 's' | 'e' | 'w' }> = {
+  n: { dx: 0, dy: -1, opposite: 's' },
+  s: { dx: 0, dy: 1, opposite: 'n' },
+  e: { dx: 1, dy: 0, opposite: 'w' },
+  w: { dx: -1, dy: 0, opposite: 'e' },
+};
+
+/** Walks off an edge of the current area into the neighbouring one. */
+export function travel(world: WorldState, playerId: string, dir: 'n' | 's' | 'e' | 'w'): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon') return [];
+  const c = areaCoords(p.area);
+  if (!c) return [];
+  // must stand in the edge gap on that side
+  const tx = tileOf(p.x);
+  const ty = tileOf(p.y);
+  const atEdge = (dir === 'n' && ty <= 1) || (dir === 's' && ty >= MAP_H - 2) || (dir === 'w' && tx <= 1) || (dir === 'e' && tx >= MAP_W - 2);
+  if (!atEdge || !inEdgeGap(tx, ty)) return [];
+  const d = DIRS[dir];
+  const nx = c.ax + d.dx;
+  const ny = c.ay + d.dy;
+  const keyStr = nx === 0 && ny === 0 ? 'farm' : areaKey(nx, ny);
+  const arrive = arrivalTile(d.opposite);
+  const out: Change[] = [];
+  placeIn(farm, p, keyStr, arrive.x, arrive.y, dir === 'n' ? 'up' : dir === 's' ? 'down' : dir === 'e' ? 'right' : 'left', out);
+  return out;
+}
+
+/** Jumps to a visited area (or home). */
+export function teleport(world: WorldState, playerId: string, keyStr: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon' || keyStr === 'dungeon') return [];
+  if (keyStr !== 'farm' && !(p.visited ?? []).includes(keyStr)) return [];
+  const out: Change[] = [];
+  if (keyStr === 'farm') placeIn(farm, p, 'farm', SPAWN.x, SPAWN.y, 'down', out);
+  else placeIn(farm, p, keyStr, MAP_W / 2, MAP_H / 2, 'down', out);
+  // make sure the landing tile is free
+  const target = areaOf(farm, p);
+  for (let r = 0; r < 6 && isSolidForPlayer(target, tileOf(p.x), tileOf(p.y)); r++) p.y += TILE;
+  out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'));
+  return out;
+}
 
 const dungeonOccupied = (d: WorldState): boolean => Object.values(d.players).some((p) => p.online && p.area === 'dungeon');
 
@@ -1169,8 +1272,7 @@ export function enterCave(world: WorldState, playerId: string): Change[] {
   if (!d || (d.dungeonInfo?.cleared && !dungeonOccupied(d))) {
     const level = 1 + Math.floor((p.stats?.boss ?? 0) / 2);
     d = generateDungeon((Date.now() ^ (world.day * 7919)) >>> 0, level);
-    // Back reference to the farm; non-enumerable so the cave can still be sent as JSON
-    Object.defineProperty(d, 'farm', { value: world, enumerable: false, writable: true, configurable: true });
+    linkToFarm(d, world);
     world.dungeon = d;
   }
   const start = dungeonStart(d);
@@ -1182,7 +1284,7 @@ export function enterCave(world: WorldState, playerId: string): Change[] {
   p.moving = false;
   delete p.fishing;
   d.players[p.id] = p;
-  return [{ t: 'dungeon', to: p.id, world: d }, playerChange(p), toast(p.id, T.enteredCave)];
+  return [{ t: 'areaData', to: p.id, key: 'dungeon', world: d }, playerChange(p), toast(p.id, T.enteredCave)];
 }
 
 /** Puts the player back on the farm by the cave mouth. `knockedOut` adds the gentle message. */
@@ -1350,25 +1452,37 @@ function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: 
   return true;
 }
 
-/** Marks changes as belonging to the cave so clients apply them to the right map. */
-export function tagDungeon(changes: Change[]): Change[] {
+/** Marks changes as belonging to a map so clients apply them to the right one. */
+export function tagArea(changes: Change[], keyStr: string): Change[] {
+  if (keyStr === 'farm') return changes;
   for (const c of changes) {
-    if (c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop' || c.t === 'fx') c.area = 'dungeon';
+    if (c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop' || c.t === 'fx') c.area = keyStr;
   }
   return changes;
 }
+export const tagDungeon = (changes: Change[]): Change[] => tagArea(changes, 'dungeon');
 
-function tickDungeon(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
+const areaOccupied = (a: WorldState): boolean => Object.values(a.players).some((p) => p.online);
+
+function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
   const d = world.dungeon;
-  if (!d) return;
-  if (!dungeonOccupied(d)) {
-    if (d.dungeonInfo?.cleared) delete world.dungeon;
-    return;
+  if (d) {
+    if (!dungeonOccupied(d)) {
+      if (d.dungeonInfo?.cleared) delete world.dungeon;
+    } else {
+      const local: Change[] = [];
+      tickAnimals(d, dtMs, ctx, local);
+      tickDrops(d, local);
+      out.push(...tagArea(local, 'dungeon'));
+    }
   }
-  const local: Change[] = [];
-  tickAnimals(d, dtMs, ctx, local);
-  tickDrops(d, local);
-  out.push(...tagDungeon(local));
+  for (const [k, a] of Object.entries(world.areas ?? {})) {
+    if (!areaOccupied(a)) continue;
+    const local: Change[] = [];
+    tickAnimals(a, dtMs, ctx, local);
+    tickDrops(a, local);
+    out.push(...tagArea(local, k));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1389,7 +1503,7 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickNpcs(world, dtMs);
   tickDrops(world, out);
   tickFishing(world, ctx, out);
-  tickDungeon(world, dtMs, ctx, out);
+  tickOtherAreas(world, dtMs, ctx, out);
   for (const p of Object.values(world.players)) if (p.emote && p.emote.until < ctx.now) delete p.emote;
   if (world.timeMs >= DAY_LENGTH_MS) {
     world.timeMs -= DAY_LENGTH_MS;

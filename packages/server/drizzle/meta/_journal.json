@@ -8,6 +8,13 @@
       "when": 1792833696400,
       "tag": "0000_curious_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792848086017,
+      "tag": "0001_soft_purple_man",
+      "breakpoints": true
     }
   ]
 }

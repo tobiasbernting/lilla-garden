@@ -793,3 +793,40 @@ body:not(.touch) .run-btn {
 .label.animal.mob {
   color: #ffb0a0;
 }
+
+/* ---- world map ---- */
+.worldmap {
+  display: grid;
+  grid-template-columns: repeat(7, calc(34 * var(--u)));
+  gap: calc(0.5 * var(--u));
+}
+.worldmap .cell {
+  height: calc(15 * var(--u));
+  background: #cfc6ae;
+  border: var(--u) solid #b8ad92;
+  border-radius: calc(2 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+.worldmap .cell .em {
+  font-size: calc(6 * var(--u));
+  line-height: 1;
+}
+.worldmap .cell .nm {
+  font-size: calc(3 * var(--u));
+  font-weight: 800;
+}
+.worldmap .cell.known {
+  opacity: 1;
+  background: var(--panel-dark);
+  border-color: var(--ink);
+  cursor: pointer;
+}
+.worldmap .cell.here {
+  background: #fff6c8;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 var(--u) var(--gold);
+}

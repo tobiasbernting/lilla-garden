@@ -48,6 +48,12 @@ add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('fiber', 'material', { sell: 1 }));
 add(I('hay', 'feed', { sell: 1, buy: 4, tab: 'feed' }));
+// Found out in the world
+add(I('mushroom', 'crop', { sell: 12 }));
+add(I('honey', 'crop', { sell: 45 }));
+add(I('iceberry', 'crop', { sell: 18 }));
+add(I('shell', 'material', { sell: 8 }));
+add(I('cactus_fruit', 'crop', { sell: 16 }));
 // Cave loot
 add(I('gold', 'material', { sell: 10 }));
 add(I('gem', 'material', { sell: 150 }));
@@ -221,6 +227,16 @@ addO(O('bush', { breakWith: 'axe', drops: [{ item: 'fiber', min: 2, max: 3 }], r
 addO(O('flower', { solid: false, flat: true, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 1 }], regrowDays: 3 }));
 addO(O('wild_pumpkin', { harvest: true, drops: [{ item: 'pumpkin', min: 1, max: 1 }] }));
 addO(O('wild_flower_mid', { solid: false, flat: true, harvest: true, drops: [{ item: 'fiber', min: 1, max: 1 }] }));
+// Biome specials
+addO(O('mushroom', { solid: false, flat: true, harvest: true, drops: [{ item: 'mushroom', min: 1, max: 2 }] }));
+addO(O('beehive', { harvest: true, drops: [{ item: 'honey', min: 1, max: 1 }] }));
+addO(O('iceberry', { solid: false, harvest: true, drops: [{ item: 'iceberry', min: 1, max: 3 }] }));
+addO(O('snowman_wild', { breakWith: undefined }));
+addO(O('ore', { breakWith: 'pick', drops: [{ item: 'stone', min: 1, max: 2 }, { item: 'gem', min: 0, max: 1 }] }));
+addO(O('palm', { breakWith: 'axe', drops: [{ item: 'wood', min: 2, max: 4 }] }));
+addO(O('shell', { solid: false, flat: true, harvest: true, drops: [{ item: 'shell', min: 1, max: 1 }] }));
+addO(O('cactus', { harvest: true, drops: [{ item: 'cactus_fruit', min: 1, max: 2 }] }));
+addO(O('signpost', { breakWith: undefined }));
 
 // Built things (break -> same item back)
 const built = (kind: string, extra: Partial<ObjectDef> = {}) =>

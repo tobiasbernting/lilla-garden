@@ -1,5 +1,5 @@
 import { integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import type { AnimalState, CropState, DropState, PlayerState, Terrain, WorldObject } from '../../../shared/src/index.ts';
+import type { AnimalState, CropState, DropState, PlayerState, Terrain, WorldObject, WorldState } from '../../../shared/src/index.ts';
 
 /** Single row (id = 1) with the world-wide state. */
 export const world = pgTable('world', {
@@ -43,4 +43,12 @@ export const players = pgTable('players', {
 export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
+});
+
+/** Generated overworld areas that have been visited (full state as JSON). */
+export const areas = pgTable('areas', {
+  key: text('key').primaryKey(),
+  biome: text('biome').notNull(),
+  data: jsonb('data').$type<WorldState>().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

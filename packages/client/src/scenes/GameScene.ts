@@ -8,7 +8,10 @@ import {
   DUNGEON_W,
   INTERIOR,
   NPC_LINES,
+  PLAYER_HALF_H,
+  PLAYER_HALF_W,
   countItem,
+  inEdgeGap,
   MAP_H,
   MAP_W,
   NPCS,
@@ -65,7 +68,8 @@ export class GameScene extends Phaser.Scene {
   private players = new Map<string, Actor>();
   /** The world this scene renders (farm or cave). */
   private world!: import('@lilla-garden/shared').WorldState;
-  private area: 'farm' | 'dungeon' = 'farm';
+  private area = 'farm';
+  private travelSentAt = 0;
   private npcs = new Map<string, Actor>();
   private inside = false;
   private roomMask!: Phaser.GameObjects.Image;
@@ -124,7 +128,7 @@ export class GameScene extends Phaser.Scene {
     for (const [k, c] of Object.entries(world.crops)) this.putCrop(k, c.stage, c.crop);
     for (const d of Object.values(world.drops)) this.putDrop(d);
     for (const a of Object.values(world.animals)) this.putAnimal(a);
-    for (const p of Object.values(world.players)) if (p.online && (p.area === 'dungeon') === (this.area === 'dungeon')) this.putPlayer(p);
+    for (const p of Object.values(world.players)) if (p.online && (p.area ?? 'farm') === this.area) this.putPlayer(p);
     for (const npc of this.area === 'farm' ? Object.values(NPCS) : []) {
       const texture = characterTexture(this.textures, npc.appearance, npc.outfit);
       const snap = client.snaps.npcs.get(npc.id);
@@ -176,7 +180,7 @@ export class GameScene extends Phaser.Scene {
     // --- events ---
     this.unsub.push(bus.on('change', (c) => this.onChange(c)));
     this.unsub.push(bus.on('fx', (c) => {
-      if ((c.area === 'dungeon') !== (this.area === 'dungeon')) return;
+      if ((c.area ?? 'farm') !== this.area) return;
       this.spawnFx(c.x, c.y, c.kind, c.from);
     }));
     this.unsub.push(bus.on('season', () => this.applySeason()));
@@ -372,9 +376,9 @@ export class GameScene extends Phaser.Scene {
 
   private onChange(c: Change): void {
     const world = this.world;
-    if (c.t === 'dungeon') return;
-    const forCave = 'area' in c && c.area === 'dungeon';
-    if ((c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop') && forCave !== (this.area === 'dungeon')) return;
+    if (c.t === 'areaData') return;
+    const forArea = ('area' in c && c.area) || 'farm';
+    if ((c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop') && forArea !== this.area) return;
     switch (c.t) {
       case 'terrain':
         this.setTerrain(c.x, c.y);
@@ -408,7 +412,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'player': {
         const p = c.player ?? world.players[c.id];
-        if (!c.player || !p || !p.online || (p.area === 'dungeon') !== (this.area === 'dungeon')) this.removePlayer(c.id);
+        if (!c.player || !p || !p.online || (p.area ?? 'farm') !== this.area) this.removePlayer(c.id);
         else this.putPlayer(world.players[c.id] ?? p);
         break;
       }
@@ -418,14 +422,14 @@ export class GameScene extends Phaser.Scene {
   private onState(): void {
     const world = client.world!;
     for (const [id, snap] of client.snaps.players) {
-      const here = (snap.area === 'dungeon') === (this.area === 'dungeon');
+      const here = (snap.area ?? 'farm') === this.area;
       const p = world.players[id];
       if (p && here && !this.players.has(id)) this.putPlayer(p);
       if (!here && this.players.has(id)) this.removePlayer(id);
     }
     for (const id of [...this.players.keys()]) if (!client.snaps.players.has(id)) this.removePlayer(id);
     for (const [id, snap] of client.snaps.animals) {
-      const here = (snap.area === 'dungeon') === (this.area === 'dungeon');
+      const here = (snap.area ?? 'farm') === this.area;
       if (!here && this.animals.has(id)) this.removeAnimal(id);
     }
   }
@@ -559,6 +563,20 @@ export class GameScene extends Phaser.Scene {
     stepPlayer(world, me, dx, dy, dt * (running ? 1.7 : 1));
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
+
+    // --- walking off the edge of the map into the next area ---
+    if (this.area !== 'dungeon' && performance.now() - this.travelSentAt > 1500 && inEdgeGap(tileOf(me.x), tileOf(me.y))) {
+      let dir: 'n' | 's' | 'e' | 'w' | null = null;
+      if (dy < 0 && me.y <= PLAYER_HALF_H + 1) dir = 'n';
+      else if (dy > 0 && me.y >= MAP_H * TILE - PLAYER_HALF_H - 1) dir = 's';
+      else if (dx < 0 && me.x <= PLAYER_HALF_W + 1) dir = 'w';
+      else if (dx > 0 && me.x >= MAP_W * TILE - PLAYER_HALF_W - 1) dir = 'e';
+      if (dir) {
+        this.travelSentAt = performance.now();
+        this.sendMove(true);
+        net.send({ t: 'travel', dir });
+      }
+    }
 
     // reconcile with the server if we drifted a lot
     const mySnap = client.snaps.players.get(me.id);

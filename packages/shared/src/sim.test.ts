@@ -11,6 +11,12 @@ import {
   MAX_HEARTS,
   applyMove,
   areaOf,
+  arrivalTile,
+  biomeAt,
+  generateArea,
+  spawnDrop,
+  teleport,
+  travel,
   bump,
   dungeonStart,
   generateDungeon,
@@ -751,7 +757,7 @@ describe('grottan', () => {
     expect(toasts(performAction(world, p.id, cave.x, cave.y + 1, ctx()))).toContain('Ta med ett svärd eller en pilbåge in i grottan');
     weapons(p);
     const ch = performAction(world, p.id, cave.x, cave.y + 1, ctx());
-    expect(ch.some((c) => c.t === 'dungeon' && c.world)).toBe(true);
+    expect(ch.some((c) => c.t === 'areaData' && c.key === 'dungeon' && c.world)).toBe(true);
     expect(() => JSON.stringify(ch)).not.toThrow();
     expect(p.area).toBe('dungeon');
     const d = world.dungeon!;
@@ -857,5 +863,71 @@ describe('grottan', () => {
     p.y = (exit.y + 1) * 16 + 8;
     performAction(d, p.id, exit.x, exit.y, ctx());
     expect(world.dungeon).toBeUndefined();
+  });
+});
+
+describe('världen utanför', () => {
+  it('biomes follow geography: cold north, dry south, mountains east, coast west', () => {
+    expect(biomeAt(0, -6)).toBe('is');
+    expect(biomeAt(0, 6)).toBe('oken');
+    expect(['berg', 'skog', 'ang']).toContain(biomeAt(3, 0));
+    expect(['strand', 'skog', 'ang']).toContain(biomeAt(-3, 0));
+    expect(biomeAt(1, 0)).toBe(biomeAt(1, 0)); // deterministic
+  });
+
+  it('generates areas with open edges and biome specials', () => {
+    const a = generateArea(0, -6);
+    expect(a.biome).toBe('is');
+    expect(a.terrain[tileIndex(32, 32)]).toBe('snow');
+    for (const side of ['n', 's', 'e', 'w'] as const) {
+      const t = arrivalTile(side);
+      expect(isSolidForPlayer(a, t.x, t.y)).toBe(false);
+    }
+    expect(Object.values(a.objects).some((o) => o.kind === 'iceberry')).toBe(true);
+    const b = generateArea(-4, 1);
+    if (b.biome === 'strand') expect(b.terrain.includes('water')).toBe(true);
+  });
+
+  it('walking off the farm edge enters the next area; teleport goes home and to visited areas', () => {
+    const { world, p } = setup();
+    // the farm has an opening in the middle of each edge
+    expect(isSolidForPlayer(world, 32, 0)).toBe(false);
+    standAt(world, p, 32, 0);
+    expect(travel(world, p.id, 'e')).toEqual([]); // not that edge
+    const ch = travel(world, p.id, 'n');
+    expect(ch.some((c) => c.t === 'areaData' && c.key === 'a:0,-1')).toBe(true);
+    expect(p.area).toBe('a:0,-1');
+    expect(p.visited).toContain('a:0,-1');
+    const north = areaOf(world, p);
+    expect(north.area).toBe('a:0,-1');
+    expect(Math.floor(p.y / 16)).toBe(62);
+    expect(() => JSON.stringify(ch)).not.toThrow();
+    // acting in the new area hits that area's objects
+    const tree = Object.values(north.objects).find((o) => o.kind.startsWith('tree'))!;
+    expect(tree).toBeDefined();
+    // walk back south
+    standAt(world, p, 32, 63);
+    travel(world, p.id, 's');
+    expect(p.area).toBe('farm');
+    expect(Math.floor(p.y / 16)).toBe(1);
+    // teleport to the visited area and home again
+    teleport(world, p.id, 'a:0,-1');
+    expect(p.area).toBe('a:0,-1');
+    expect(teleport(world, p.id, 'a:5,5')).toEqual([]);
+    teleport(world, p.id, 'farm');
+    expect(p.area).toBe('farm');
+    expect(Math.floor(p.x / 16)).toBe(SPAWN.x);
+  });
+
+  it('ticks animals and drops in occupied areas and tags their changes', () => {
+    const { world, p } = setup();
+    standAt(world, p, 32, 0);
+    travel(world, p.id, 'n');
+    const north = areaOf(world, p);
+    spawnDrop(north, 'iceberry', 1, p.x, p.y);
+    const ch = tick(world, 50, ctx());
+    const drop = ch.find((c) => c.t === 'drop');
+    expect(drop && 'area' in drop && drop.area).toBe('a:0,-1');
+    expect(countItem(p.inventory, 'iceberry')).toBe(1);
   });
 });

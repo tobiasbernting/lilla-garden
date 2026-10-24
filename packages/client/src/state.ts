@@ -28,8 +28,8 @@ export interface Events {
   connection: 'connecting' | 'open' | 'closed';
   season: Season;
   day: number;
-  /** The local player moved between the farm and the cave. */
-  area: 'farm' | 'dungeon';
+  /** The local player moved to another map (key). */
+  area: string;
 }
 
 class Bus {
@@ -56,6 +56,7 @@ export const bus = new Bus();
 export const client = {
   world: null as WorldState | null,
   dungeon: null as WorldState | null,
+  areas: {} as Record<string, WorldState>,
   me: '',
   season: 'none' as Season,
   /** server clock = Date.now() - offset */
@@ -69,9 +70,16 @@ export const client = {
 export const serverNow = (): number => Date.now() - client.serverOffset;
 
 export const myPlayer = () => (client.world ? client.world.players[client.me] : undefined);
-export const myArea = (): 'farm' | 'dungeon' => (myPlayer()?.area === 'dungeon' && client.dungeon ? 'dungeon' : 'farm');
+/** The map the local player is on, falling back to the farm until that map's data has arrived. */
+export const myArea = (): string => {
+  const a = myPlayer()?.area ?? 'farm';
+  if (a === 'dungeon') return client.dungeon ? 'dungeon' : 'farm';
+  if (a !== 'farm') return client.areas[a] ? a : 'farm';
+  return 'farm';
+};
+export const worldFor = (key: string): WorldState | null => (key === 'farm' ? client.world : key === 'dungeon' ? client.dungeon : (client.areas[key] ?? null));
 /** The world the local player is in. */
-export const activeWorld = (): WorldState | null => (myArea() === 'dungeon' ? client.dungeon : client.world);
+export const activeWorld = (): WorldState | null => worldFor(myArea());
 
 function putObject(world: WorldState, obj: WorldObject): void {
   const old = world.objects[obj.id];
@@ -89,19 +97,22 @@ function dropObject(world: WorldState, obj: WorldObject): void {
 export function applyChange(c: Change): void {
   const farm = client.world;
   if (!farm) return;
-  if (c.t === 'dungeon') {
-    client.dungeon = c.world;
-    if (client.dungeon) {
-      rebuildOccupancy(client.dungeon);
-      // the player records inside the cave are copies; use the farm's records
-      for (const id of Object.keys(client.dungeon.players)) if (farm.players[id]) client.dungeon.players[id] = farm.players[id]!;
+  if (c.t === 'areaData') {
+    const w = c.world;
+    if (w) {
+      rebuildOccupancy(w);
+      // player records inside other maps are copies; use the farm's records
+      for (const id of Object.keys(w.players)) if (farm.players[id]) w.players[id] = farm.players[id]!;
     }
+    if (c.key === 'dungeon') client.dungeon = w;
+    else if (w) client.areas[c.key] = w;
+    else delete client.areas[c.key];
     bus.emit('change', c);
-    if (myPlayer()?.area === 'dungeon' && client.dungeon) bus.emit('area', 'dungeon');
+    if (myPlayer()?.area === c.key && w) bus.emit('area', c.key);
     return;
   }
-  const inCave = 'area' in c && c.area === 'dungeon';
-  const world = inCave ? client.dungeon : farm;
+  const areaK = ('area' in c && c.area) || 'farm';
+  const world = worldFor(areaK);
   if (!world) return;
   switch (c.t) {
     case 'terrain':

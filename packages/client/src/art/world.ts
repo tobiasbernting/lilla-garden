@@ -101,6 +101,13 @@ export function drawTerrainTiles(): TerrainTiles {
   fs.rect(0, 0, 16, 1, '#8e8b83').rect(0, 8, 16, 1, '#8e8b83').rect(0, 0, 1, 16, '#8e8b83').rect(8, 0, 1, 8, '#8e8b83').rect(4, 8, 1, 8, '#8e8b83').rect(12, 8, 1, 8, '#8e8b83');
   const floorStoneI = add(fs);
 
+  // gravel and ice
+  const gravelP = new Px(16, 16).rect(0, 0, 16, 16, '#8f8a80');
+  speck(gravelP, 950, 7, '#6f6a62', 1);
+  speck(gravelP, 960, 4, '#aaa59b', 1);
+  const gravelI = add(gravelP);
+  const iceP = new Px(16, 16).rect(0, 0, 16, 16, '#bfe3f5').rect(2, 3, 5, 1, '#ffffff').rect(9, 9, 4, 1, '#ffffff').rect(5, 12, 3, 1, '#9fcfe8');
+  const iceI = add(iceP);
   // cave rock (solid darkness with a faint texture)
   const rockP = new Px(16, 16).rect(0, 0, 16, 16, '#1d1c22');
   speck(rockP, 900, 4, '#26252c', 2);
@@ -134,6 +141,12 @@ export function drawTerrainTiles(): TerrainTiles {
           return floorWoodI;
         case 'floor_stone':
           return floorStoneI;
+        case 'snow':
+          return snow[h % 2]!;
+        case 'gravel':
+          return gravelI;
+        case 'ice':
+          return iceI;
       }
     },
   };
@@ -554,6 +567,16 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('stove', [stove()], 0, -6);
   set('clock', [clock()], 0, -6);
   set('door_out', [doorOut()]);
+  // Biome specials
+  set('mushroom', [mushroom(0), mushroom(1)]);
+  set('beehive', [beehive()], 0, -6);
+  set('iceberry', [iceberry()]);
+  set('snowman_wild', [snowman()], 0, -8);
+  set('ore', [ore()]);
+  set('palm', [palm()], -4, -20);
+  set('shell', [shell(0), shell(1)]);
+  set('cactus', [cactus()], 0, -8);
+  set('signpost', [signpost()], 0, -8);
   // Cave
   set('cave', [caveMouth()], 0, -8);
   set('cave_exit', [caveExit()]);
@@ -563,6 +586,34 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('treasure', [treasure()]);
   return art;
 }
+
+const mushroom = (v: number): Px => {
+  const cap = v === 0 ? '#d8363a' : '#c9a36a';
+  const p = new Px(16, 16).rect(6, 9, 3, 6, '#f0e4c8').rect(3, 5, 9, 4, cap).rect(4, 4, 7, 1, cap).px(5, 6, '#ffffff').px(9, 7, '#ffffff').rect(11, 10, 2, 5, '#f0e4c8').rect(10, 8, 4, 2, cap);
+  return p.outline(OUTLINE);
+};
+const beehive = (): Px => new Px(16, 22).rect(7, 0, 2, 6, WOOD_D).ellipse(2, 5, 12, 14, '#e6c15a').rect(2, 9, 12, 1, '#c9a32a').rect(2, 13, 12, 1, '#c9a32a').rect(6, 15, 4, 3, '#3a2a1a').px(3, 7, '#3a2a1a').px(12, 11, '#3a2a1a').outline(OUTLINE);
+const iceberry = (): Px => {
+  const p = new Px(16, 16).ellipse(2, 4, 12, 11, '#4a7a6a').ellipse(4, 3, 8, 6, '#6a9a8a');
+  [[4, 7], [9, 6], [7, 11], [11, 10]].forEach(([x, y]) => p.rect(x!, y!, 2, 2, '#8fd0f0').px(x!, y!, '#ffffff'));
+  return p.outline(OUTLINE);
+};
+const ore = (): Px => new Px(16, 16).ellipse(1, 4, 14, 11, STONE_D).ellipse(2, 3, 12, 10, STONE).rect(5, 6, 2, 2, '#4ad0ff').rect(9, 8, 2, 2, '#4ad0ff').px(7, 10, '#f2d35a').outline(OUTLINE);
+const palm = (): Px => {
+  const p = new Px(24, 36).rect(10, 14, 4, 22, '#b07a44').rect(10, 14, 1, 22, '#8a5c30');
+  for (const [x0, y0, x1, y1] of [[12, 12, 2, 4], [12, 12, 22, 4], [12, 12, 4, 18], [12, 12, 20, 18], [12, 12, 12, 0]] as const) {
+    p.line(x0, y0, x1, y1, LEAF).line(x0 + 1, y0, x1 + 1, y1, LEAF_D);
+  }
+  p.rect(9, 12, 6, 4, '#8a5c30').rect(10, 13, 2, 2, '#c9a36a');
+  return p.outline(OUTLINE);
+};
+const shell = (v: number): Px => {
+  const c = v === 0 ? '#f7d7c0' : '#e8c8e0';
+  const p = new Px(16, 16).ellipse(4, 7, 9, 6, c).rect(5, 9, 1, 3, shade(c, 0.8)).rect(8, 8, 1, 4, shade(c, 0.8)).rect(11, 9, 1, 3, shade(c, 0.8));
+  return p.outline(OUTLINE);
+};
+const cactus = (): Px => new Px(16, 24).rect(6, 2, 4, 22, '#4f9a3a').rect(6, 2, 1, 22, '#3f7a2e').rect(1, 8, 3, 2, '#4f9a3a').rect(1, 4, 2, 6, '#4f9a3a').rect(12, 10, 3, 2, '#4f9a3a').rect(13, 6, 2, 6, '#4f9a3a').rect(7, 0, 2, 2, '#e87ab8').outline(OUTLINE);
+const signpost = (): Px => new Px(16, 24).rect(7, 8, 2, 16, WOOD_D).rect(1, 3, 14, 6, WOOD_L).rect(1, 3, 14, 1, '#e0b47a').rect(3, 5, 8, 1, WOOD_D).rect(3, 7, 5, 1, WOOD_D).px(13, 5, OUTLINE).outline(OUTLINE);
 
 const caveMouth = (): Px => {
   const p = new Px(32, 40).ellipse(0, 4, 32, 36, STONE_D).ellipse(2, 6, 28, 32, STONE).ellipse(8, 14, 16, 26, '#1b1a17').rect(6, 30, 20, 10, '#1b1a17');
