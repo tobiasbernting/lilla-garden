@@ -101,6 +101,8 @@ export interface ObjectDef {
   interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed';
   /** Walkable floor-like decoration (rendered under the player). */
   flat?: boolean;
+  /** Picked up by hand with any (or no) tool held. */
+  harvest?: boolean;
 }
 
 export interface AnimalDef {
@@ -159,8 +161,8 @@ export interface PlayerState {
   selected: number;
   online: boolean;
   emote?: { id: string; until: number };
-  /** Pending catalogue animal deliveries. */
-  orders: { species: string }[];
+  /** Pending catalogue animal deliveries (arrive next morning). */
+  orders: { species: string; homeId: number }[];
 }
 
 export interface CropState {
@@ -176,10 +178,8 @@ export interface WorldObject {
   kind: string;
   x: number;
   y: number;
-  /** Chest contents. */
+  /** Chest / trough contents. */
   items?: Inventory;
-  /** Resource regrowing: days left. */
-  regrow?: number;
   /** Placed by (player id) — informational. */
   by?: string;
   /** Decorations: variant/tint. */
@@ -201,6 +201,8 @@ export interface AnimalState {
   petted: boolean;
   brushed: boolean;
   hasProduct: boolean;
+  /** False until a player has given it a name. */
+  named: boolean;
   age: number; // days; < growDays = baby
   homeId: number; // object id of its house
   /** Wander target. */
@@ -215,6 +217,8 @@ export interface DropState {
   count: number;
   x: number;
   y: number;
+  /** The player who dropped it cannot pick it up again for this many ticks. */
+  ignore?: { player: string; ticks: number };
 }
 
 export interface WorldState {

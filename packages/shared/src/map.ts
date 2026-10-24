@@ -1,7 +1,7 @@
-import { objectDef } from './data.js';
-import { mulberry32, randInt } from './rng.js';
-import type { Terrain, WorldObject, WorldState } from './types.js';
-import { MAP_H, MAP_W, key } from './types.js';
+import { objectDef } from './data.ts';
+import { mulberry32, randInt } from './rng.ts';
+import type { Terrain, WorldObject, WorldState } from './types.ts';
+import { MAP_H, MAP_W, key } from './types.ts';
 
 export const inBounds = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H;
 export const tileIndex = (x: number, y: number): number => y * MAP_W + x;

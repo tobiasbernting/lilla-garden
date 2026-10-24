@@ -1,4 +1,4 @@
-import type { AnimalDef, CropDef, ItemDef, ObjectDef, RecipeDef } from './types.js';
+import type { AnimalDef, CropDef, ItemDef, ObjectDef, RecipeDef } from './types.ts';
 
 // ---------- Items ----------
 
@@ -174,8 +174,8 @@ addO(O('rock_small', { breakWith: 'pick', drops: [{ item: 'stone', min: 1, max: 
 addO(O('grass_tuft', { solid: false, flat: true, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 2 }, { item: 'hay', min: 0, max: 1 }], regrowDays: 2 }));
 addO(O('bush', { breakWith: 'axe', drops: [{ item: 'fiber', min: 2, max: 3 }], regrowDays: 3 }));
 addO(O('flower', { solid: false, flat: true, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 1 }], regrowDays: 3 }));
-addO(O('wild_pumpkin', { breakWith: 'scythe', drops: [{ item: 'pumpkin', min: 1, max: 1 }] }));
-addO(O('wild_flower_mid', { solid: false, flat: true, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 1 }] }));
+addO(O('wild_pumpkin', { harvest: true, drops: [{ item: 'pumpkin', min: 1, max: 1 }] }));
+addO(O('wild_flower_mid', { solid: false, flat: true, harvest: true, drops: [{ item: 'fiber', min: 1, max: 1 }] }));
 
 // Built things (break -> same item back)
 const built = (kind: string, extra: Partial<ObjectDef> = {}) =>

@@ -1,6 +1,6 @@
-import { item } from './data.js';
-import type { Inventory, ItemStack } from './types.js';
-import { MAX_STACK, WATERING_CAN_CHARGES } from './types.js';
+import { item } from './data.ts';
+import type { Inventory, ItemStack } from './types.ts';
+import { MAX_STACK, WATERING_CAN_CHARGES } from './types.ts';
 
 export const makeInventory = (size: number): Inventory => Array.from({ length: size }, () => null);
 

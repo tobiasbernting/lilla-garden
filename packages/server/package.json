@@ -9,7 +9,8 @@
     "start": "node dist/server/src/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@lilla-garden/shared": "workspace:*",

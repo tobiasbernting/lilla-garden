@@ -10,7 +10,7 @@ import type {
   Terrain,
   WorldObject,
   WorldState,
-} from './types.js';
+} from './types.ts';
 
 /** A change to the world that the server broadcasts after applying. */
 export type Change =
@@ -20,18 +20,24 @@ export type Change =
   | { t: 'animal'; id: number; animal: AnimalState | null }
   | { t: 'drop'; id: number; drop: DropState | null }
   /** Full player record (inventory, coins, outfit…). Sent to everyone; inventory only matters to the owner. */
-  | { t: 'player'; id: number | string; player: PlayerState | null }
+  | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
   | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal'; id?: number }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' };
+
+/** A slot in the player's own inventory (chest undefined) or in a chest object. */
+export interface SlotRef {
+  chest?: number;
+  slot: number;
+}
 
 export type ClientMsg =
   | { t: 'hello'; playerId: string }
   | { t: 'move'; x: number; y: number; facing: Facing; moving: boolean }
   | { t: 'act'; tx: number; ty: number }
   | { t: 'select'; slot: number }
-  | { t: 'swap'; a: number; b: number; chest?: number }
+  | { t: 'swap'; a: SlotRef; b: SlotRef }
   | { t: 'craft'; recipe: string }
   | { t: 'buy'; item: string; qty: number }
   | { t: 'sell'; slot: number; qty: number }
@@ -60,7 +66,7 @@ export interface AnimalSnap {
 }
 
 export type ServerMsg =
-  | { t: 'welcome'; you: string; world: WorldState; season: Season; now: number }
+  | { t: 'welcome'; you: string; world: WorldState; season: Season; now: number; tick: number }
   | { t: 'state'; timeMs: number; day: number; season: Season; players: PlayerSnap[]; animals: AnimalSnap[]; now: number }
   | { t: 'changes'; changes: Change[] }
   | { t: 'error'; text: string }

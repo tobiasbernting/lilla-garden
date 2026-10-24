@@ -4,3 +4,4 @@ dist/
 *.log
 .DS_Store
 packages/client/dev-dist/
+packages/client/public/icon-*.png

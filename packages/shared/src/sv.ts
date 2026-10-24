@@ -180,6 +180,11 @@ export const T = {
   collected: 'Fick {item} av {name}',
   alreadyFed: '{name} är mätt',
   needHay: 'Håll hö för att mata',
+  troughFilled: 'Lade hö i mathon ({count} hö)',
+  troughHas: 'Mathon har {count} hö',
+  troughEmpty: 'Mathon är tom – lägg i hö',
+  notNow: 'Inget händer här',
+  renamed: '{name} heter nu {newName}!',
   cantPlaceHere: 'Går inte att bygga här',
   cantBreak: 'Fel verktyg',
   needTool: 'Behöver {tool}',
@@ -192,6 +197,8 @@ export const T = {
   saveNow: 'Spara nu',
   skipDay: 'Hoppa till nästa dag',
   admin: 'Föräldrasida',
+  help: 'Hjälp',
+  helpHint: 'Tryck på ? när du vill veta hur man gör',
   players: 'Spelare',
   nobodyOnline: 'Ingen online – världen är pausad',
   saved: 'Sparat',
@@ -201,8 +208,148 @@ export const T = {
   midsommarTwist: 'Blommor överallt!',
 };
 
+/** Names animals get until a player renames them. */
+export const DEFAULT_ANIMAL_NAMES = [
+  'Pelle', 'Lisa', 'Molly', 'Stina', 'Kalle', 'Maja', 'Ludde', 'Nisse', 'Bella', 'Sigge',
+  'Tindra', 'Alfons', 'Majken', 'Doris', 'Gösta', 'Selma', 'Rufus', 'Svea', 'Pricken', 'Tulla',
+];
+
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
 export const objectName = (kind: string): string => OBJECT_NAMES[kind] ?? ITEM_NAMES[kind] ?? kind;
 
 export const fmt = (s: string, vars: Record<string, string | number>): string =>
   s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
+
+// ---- Help screen ----
+
+export interface HelpStep {
+  /** Item id, object kind, or an emoji prefixed with "emoji:". */
+  icon?: string;
+  /** May contain {recipe:id} (ingredients), {price:id} (catalogue price) and {name:id} (item name). */
+  text: string;
+  only?: 'touch' | 'desktop';
+}
+
+export interface HelpTopic {
+  id: string;
+  emoji: string;
+  title: string;
+  intro?: string;
+  steps: HelpStep[];
+  /** Show the table of animal houses after the steps. */
+  houses?: boolean;
+}
+
+export const HELP: HelpTopic[] = [
+  {
+    id: 'controls',
+    emoji: '🎮',
+    title: 'Så styr du',
+    steps: [
+      { icon: 'emoji:🕹️', text: 'Dra med fingret på vänstra halvan av skärmen för att gå.', only: 'touch' },
+      { icon: 'emoji:✋', text: 'Tryck på den stora handen för att använda det du håller på rutan framför dig.', only: 'touch' },
+      { icon: 'emoji:👆', text: 'Du kan också trycka direkt på en ruta bredvid dig.', only: 'touch' },
+      { icon: 'emoji:⌨️', text: 'Gå med piltangenterna eller W A S D.', only: 'desktop' },
+      { icon: 'emoji:⎵', text: 'Tryck E eller mellanslag för att använda det du håller. Du kan också klicka på en ruta bredvid dig.', only: 'desktop' },
+      { icon: 'emoji:🔢', text: 'Siffrorna 1–8 väljer sak i raden längst ner. Q öppnar ryggsäcken, F visar känslor, H visar hjälpen.', only: 'desktop' },
+      { icon: 'hoe', text: 'Raden längst ner visar vad du kan hålla. Tryck på en sak för att hålla den.' },
+      { icon: 'emoji:🎒', text: 'Ryggsäcken har fler platser. Tryck på en sak och sedan på en ruta för att flytta den.' },
+      { icon: 'emoji:😊', text: 'Smiley-knappen visar känslor till dina kompisar på gården.' },
+    ],
+  },
+  {
+    id: 'farming',
+    emoji: '🥕',
+    title: 'Odla',
+    intro: 'Allt växer på en natt om det har fått vatten.',
+    steps: [
+      { icon: 'hoe', text: 'Håll hackan och använd den på gräs. Då blir det jord.' },
+      { icon: 'carrot_seed', text: 'Håll frön och använd dem på jorden.' },
+      { icon: 'can', text: 'Håll vattenkannan och vattna. Jorden blir mörk när den är blöt.' },
+      { icon: 'emoji:🌙', text: 'Vänta till nästa dag. Vattna igen varje dag tills plantan är stor.' },
+      { icon: 'carrot', text: 'När du ser grönsaken: använd vad som helst på plantan för att skörda. Du får nya frön på köpet!' },
+      { icon: 'emoji:💧', text: 'Tom kanna? Använd den på dammen eller en brunn så fylls den.' },
+      { icon: 'scythe', text: 'Lien gör jord till gräs igen om du ångrar dig.' },
+      { icon: 'mailbox', text: 'Fler frön finns i brevlådan under Frön.' },
+    ],
+  },
+  {
+    id: 'gather',
+    emoji: '🪓',
+    title: 'Samla trä, sten och fiber',
+    intro: 'Allt växer tillbaka efter några dagar, så hugg på!',
+    steps: [
+      { icon: 'axe', text: 'Yxan på ett träd ger trä. Stubben som blir kvar kan också huggas.' },
+      { icon: 'pick', text: 'Spettet på en sten ger sten.' },
+      { icon: 'scythe', text: 'Lien på gräs och blommor ger fiber och ibland hö.' },
+      { icon: 'hammer', text: 'Hammaren tar bort saker du har byggt, och du får tillbaka dem.' },
+      { icon: 'emoji:✨', text: 'Allt du plockar hamnar i ryggsäcken. Är den full ligger det kvar på marken.' },
+    ],
+  },
+  {
+    id: 'craft',
+    emoji: '🔨',
+    title: 'Snickra och bygga',
+    steps: [
+      { icon: 'workbench', text: 'Gå till arbetsbänken vid huset och använd den.' },
+      { icon: 'fence', text: 'Välj vad du vill snickra. Gröna knappar betyder att du har det som behövs. Till exempel: staket kostar {recipe:fence}.' },
+      { icon: 'emoji:🎒', text: 'Det färdiga hamnar i ryggsäcken. Håll det och använd det på en ledig ruta för att bygga.' },
+      { icon: 'path_stone', text: 'Stigar och golv läggs direkt på marken. Väggar, dörrar och staket står i vägen tills du tar bort dem med hammaren.' },
+      { icon: 'torch', text: 'Facklor lyser upp på kvällen.' },
+      { icon: 'chest', text: 'Kistor kan du lägga saker i. Alla på gården kan använda dem.' },
+    ],
+  },
+  {
+    id: 'coop',
+    emoji: '🐔',
+    title: 'Bygga hönshus och skaffa höns',
+    intro: 'Varje djur behöver sitt eget hus först.',
+    steps: [
+      { icon: 'axe', text: 'Hugg träd och knacka sten tills du har {recipe:coop}.' },
+      { icon: 'workbench', text: 'Gå till arbetsbänken och snickra ett Hönshus.' },
+      { icon: 'coop', text: 'Håll hönshuset och använd det på en ledig gräsplätt. Det behöver 2×2 rutor.' },
+      { icon: 'fence', text: 'Bygg gärna staket runt så hönan stannar hemma. En grind kan du gå igenom, men inte hönan.' },
+      { icon: 'mailbox', text: 'Gå till brevlådan. Under Djur köper du en höna för {price:animal_hen}. Du börjar med 150 kr – sälj grönsaker i säljlådan om det inte räcker.' },
+      { icon: 'emoji:🌅', text: 'Nästa morgon har hönan flyttat in!' },
+      { icon: 'emoji:🐣', text: 'Klappa hönan första gången så får du ge den ett namn.' },
+    ],
+    houses: true,
+  },
+  {
+    id: 'animals',
+    emoji: '❤️',
+    title: 'Sköta om djuren',
+    intro: 'Glada djur med hjärtan ger ägg, ull och mjölk.',
+    steps: [
+      { icon: 'hay', text: 'Håll hö och använd det på djuret för att mata det. Hö köper du under Foder, eller snickrar av fiber.' },
+      { icon: 'emoji:🤚', text: 'Använd djuret med tom hand för att klappa det.' },
+      { icon: 'brush', text: 'Borsta djuret med borsten.' },
+      { icon: 'emoji:❤️', text: 'Mat, klapp och borstning varje dag ger hjärtan. Du ser hjärtan ovanför djuret.' },
+      { icon: 'egg', text: 'När det glittrar ✨ över djuret: använd det för att hämta ägg, ull eller mjölk.' },
+      { icon: 'trough', text: 'Snickra en matho och lägg hö i den, så äter djuren själva på natten.' },
+      { icon: 'emoji:🐣', text: 'Ungar växer upp på tre dagar.' },
+    ],
+  },
+  {
+    id: 'money',
+    emoji: '💰',
+    title: 'Sälja och köpa',
+    steps: [
+      { icon: 'sellbox', text: 'Säljlådan vid huset köper grönsaker, ägg, ull och mjölk direkt.' },
+      { icon: 'mailbox', text: 'Brevlådan är katalogen: frön, djur, foder, material och kläder.' },
+      { icon: 'pumpkin', text: 'Pumpor och solrosor ger mest pengar. Jordgubbar och tomater ger skörd flera gånger.' },
+      { icon: 'emoji:🪙', text: 'Alla har sina egna pengar. Lägg saker i en kista om du vill dela med en kompis.' },
+    ],
+  },
+  {
+    id: 'clothes',
+    emoji: '👕',
+    title: 'Kläder och säsonger',
+    steps: [
+      { icon: 'wardrobe', text: 'Garderoben står vid huset. Där byter du tröja, byxor, skor och hatt.' },
+      { icon: 'hat_straw', text: 'Nya kläder köper du i brevlådan under Kläder. De hamnar i garderoben.' },
+      { icon: 'emoji:🎃', text: 'Vid Halloween, jul, påsk och midsommar finns en extra flik i brevlådan med pynt och kläder.' },
+      { icon: 'emoji:❄️', text: 'På julen snöar det och djuren har tomteluvor. Vid Halloween växer vilda pumpor i skogen.' },
+    ],
+  },
+];

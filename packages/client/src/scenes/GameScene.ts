@@ -1,0 +1,618 @@
+// The farm: tilemap, sprites, prediction, interpolation, night, effects.
+import Phaser from 'phaser';
+import {
+  ANIMALS,
+  CROPS,
+  MAP_H,
+  MAP_W,
+  REACH,
+  TILE,
+  facingTile,
+  isBaby,
+  nightAmount,
+  objectDef,
+  stepPlayer,
+  tileOf,
+  type AnimalState,
+  type Change,
+  type DropState,
+  type PlayerState,
+  type WorldObject,
+} from '@lilla-garden/shared';
+import { animalKey, ANIMAL_SIZE } from '../art/animals.js';
+import { dirOf, frameIndex, type Dir } from '../art/characters.js';
+import { characterTexture, getArt, registerTextures } from '../art/textures.js';
+import { EMOTE_GLYPH } from '../art/world.js';
+import { net } from '../net.js';
+import { bus, client, myPlayer, serverNow } from '../state.js';
+
+export const VIEW_W = 320;
+export const VIEW_H = 180;
+
+interface Actor {
+  sprite: Phaser.GameObjects.Sprite;
+  shadow: Phaser.GameObjects.Image;
+  label: HTMLDivElement;
+  bubble?: HTMLDivElement;
+  texture: string;
+  x: number;
+  y: number;
+}
+
+export interface InputSource {
+  /** -1..1 */
+  dx: number;
+  dy: number;
+}
+
+export class GameScene extends Phaser.Scene {
+  private layer!: Phaser.Tilemaps.TilemapLayer;
+  private map!: Phaser.Tilemaps.Tilemap;
+  private waterTiles: [number, number][] = [];
+  private waterFrame = 0;
+  private objects = new Map<number, Phaser.GameObjects.Image>();
+  private crops = new Map<string, Phaser.GameObjects.Image>();
+  private drops = new Map<number, Phaser.GameObjects.Image>();
+  private players = new Map<string, Actor>();
+  private animals = new Map<number, Actor>();
+  private cursor!: Phaser.GameObjects.Image;
+  private night!: Phaser.GameObjects.RenderTexture;
+  private glow!: string;
+  private snow: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private labels!: HTMLElement;
+  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private lastMoveSent = 0;
+  private wasMoving = false;
+  private unsub: (() => void)[] = [];
+  private hoverTile: { tx: number; ty: number } | null = null;
+  private animTick = 0;
+
+  /** Set by the UI layer. */
+  joystick: InputSource = { dx: 0, dy: 0 };
+  uiOpen = false;
+  touch = false;
+
+  constructor() {
+    super('game');
+  }
+
+  create(): void {
+    const world = client.world!;
+    registerTextures(this.textures);
+    this.labels = document.getElementById('labels')!;
+    this.labels.innerHTML = '';
+    const art = getArt();
+
+    // --- terrain ---
+    this.map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H });
+    const tileset = this.map.addTilesetImage('terrain', 'terrain', TILE, TILE, 0, 0)!;
+    this.layer = this.map.createBlankLayer('ground', tileset)!;
+    this.layer.setDepth(0);
+    this.rebuildTerrain();
+
+    // --- objects, crops, drops ---
+    for (const o of Object.values(world.objects)) this.putObject(o);
+    for (const [k, c] of Object.entries(world.crops)) this.putCrop(k, c.stage, c.crop);
+    for (const d of Object.values(world.drops)) this.putDrop(d);
+    for (const a of Object.values(world.animals)) this.putAnimal(a);
+    for (const p of Object.values(world.players)) if (p.online) this.putPlayer(p);
+
+    // --- cursor, night, snow ---
+    this.cursor = this.add.image(0, 0, 'fx-cursor-0').setOrigin(0).setDepth(9000).setAlpha(0.9);
+    this.glow = this.makeGlowTexture();
+    this.night = this.add.renderTexture(0, 0, VIEW_W, VIEW_H).setOrigin(0).setScrollFactor(0).setDepth(9500);
+    this.applySeason();
+
+    // --- camera ---
+    this.cameras.main.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE);
+    this.cameras.main.setRoundPixels(true);
+    void art;
+
+    // --- input ---
+    const kb = this.input.keyboard!;
+    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,E,SPACE') as Record<string, Phaser.Input.Keyboard.Key>;
+    kb.on('keydown-E', () => this.actFacing());
+    kb.on('keydown-SPACE', () => this.actFacing());
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.uiOpen) return;
+      const tx = tileOf(p.worldX);
+      const ty = tileOf(p.worldY);
+      this.actAt(tx, ty, true);
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (p.wasTouch) return;
+      this.hoverTile = { tx: tileOf(p.worldX), ty: tileOf(p.worldY) };
+    });
+
+    // --- events ---
+    this.unsub.push(bus.on('change', (c) => this.onChange(c)));
+    this.unsub.push(bus.on('fx', (c) => this.spawnFx(c.x, c.y, c.kind)));
+    this.unsub.push(bus.on('season', () => this.applySeason()));
+    this.unsub.push(bus.on('state', () => this.onState()));
+    this.events.once('shutdown', () => {
+      this.unsub.forEach((u) => u());
+      this.unsub = [];
+      this.labels.innerHTML = '';
+    });
+
+    this.time.addEvent({ delay: 400, loop: true, callback: () => this.animateWorld() });
+  }
+
+  // ------------------------------------------------------------------ terrain
+
+  private rebuildTerrain(): void {
+    const world = client.world!;
+    const art = getArt();
+    const snowy = client.season === 'jul';
+    this.waterTiles = [];
+    for (let y = 0; y < MAP_H; y++)
+      for (let x = 0; x < MAP_W; x++) {
+        const t = world.terrain[y * MAP_W + x]!;
+        this.layer.putTileAt(art.terrain.index(t, x, y, snowy), x, y);
+        if (t === 'water') this.waterTiles.push([x, y]);
+      }
+  }
+
+  private setTerrain(x: number, y: number): void {
+    const world = client.world!;
+    const art = getArt();
+    const t = world.terrain[y * MAP_W + x]!;
+    this.layer.putTileAt(art.terrain.index(t, x, y, client.season === 'jul'), x, y);
+    this.waterTiles = this.waterTiles.filter(([wx, wy]) => wx !== x || wy !== y);
+    if (t === 'water') this.waterTiles.push([x, y]);
+  }
+
+  private animateWorld(): void {
+    const art = getArt();
+    this.waterFrame = 1 - this.waterFrame;
+    const idx = art.terrain.waterFrames[this.waterFrame]!;
+    for (const [x, y] of this.waterTiles) this.layer.putTileAt(idx, x, y);
+    this.animTick++;
+    const world = client.world!;
+    for (const [id, img] of this.objects) {
+      const o = world.objects[id];
+      if (!o) continue;
+      const a = art.objects[o.kind];
+      if (a?.animated && a.frames.length > 1) img.setTexture(`obj-${o.kind}-${this.animTick % a.frames.length}`);
+    }
+  }
+
+  // ------------------------------------------------------------------ sprites
+
+  private putObject(o: WorldObject): void {
+    const art = getArt().objects[o.kind];
+    const def = objectDef(o.kind);
+    this.objects.get(o.id)?.destroy();
+    if (!art) return;
+    const variant = (o.variant ?? 0) % art.frames.length;
+    const img = this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0);
+    img.setDepth(def.flat ? 1 : (o.y + def.h) * TILE);
+    this.objects.set(o.id, img);
+  }
+
+  private putCrop(k: string, stage: number, crop: string): void {
+    const [xs, ys] = k.split(',');
+    const x = Number(xs);
+    const y = Number(ys);
+    const n = CROPS[crop]?.stages.length ?? 0;
+    const frame = Math.min(stage, n);
+    let img = this.crops.get(k);
+    if (!img) {
+      img = this.add.image(x * TILE, y * TILE, `crop-${crop}-${frame}`).setOrigin(0).setDepth((y + 1) * TILE - 2);
+      this.crops.set(k, img);
+    } else img.setTexture(`crop-${crop}-${frame}`);
+  }
+
+  private putDrop(d: DropState): void {
+    this.drops.get(d.id)?.destroy();
+    const img = this.add.image(d.x, d.y, `icon-${d.item}`).setScale(0.75).setDepth(d.y);
+    this.tweens.add({ targets: img, y: d.y - 3, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.drops.set(d.id, img);
+  }
+
+  private makeLabel(text: string, cls: string): HTMLDivElement {
+    const el = document.createElement('div');
+    el.className = `label ${cls}`;
+    el.textContent = text;
+    this.labels.appendChild(el);
+    return el;
+  }
+
+  private putPlayer(p: PlayerState): void {
+    const texture = characterTexture(this.textures, p.appearance, p.outfit);
+    this.ensureCharAnims(texture);
+    let actor = this.players.get(p.id);
+    if (!actor) {
+      const shadow = this.add.image(p.x, p.y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6);
+      const sprite = this.add.sprite(p.x, p.y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1);
+      actor = { sprite, shadow, label: this.makeLabel(p.name, p.id === client.me ? 'me' : 'other'), texture, x: p.x, y: p.y };
+      this.players.set(p.id, actor);
+    } else if (actor.texture !== texture) {
+      actor.texture = texture;
+      actor.sprite.setTexture(texture, frameIndex('down', 0));
+    }
+    actor.label.textContent = p.name;
+  }
+
+  private removePlayer(id: string): void {
+    const a = this.players.get(id);
+    if (!a) return;
+    a.sprite.destroy();
+    a.shadow.destroy();
+    a.label.remove();
+    a.bubble?.remove();
+    this.players.delete(id);
+  }
+
+  private putAnimal(a: AnimalState): void {
+    const texture = animalKey(a.species, isBaby(a), client.season === 'jul');
+    this.ensureAnimalAnims(texture);
+    let actor = this.animals.get(a.id);
+    if (!actor) {
+      const size = ANIMAL_SIZE[a.species] ?? { w: 16, h: 16 };
+      const shadow = this.add.image(a.x, a.y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.5).setScale(size.w / 12, 1);
+      const sprite = this.add.sprite(a.x, a.y + 4, texture, 0).setOrigin(0.5, 1);
+      actor = { sprite, shadow, label: this.makeLabel(a.name, 'animal'), texture, x: a.x, y: a.y };
+      this.animals.set(a.id, actor);
+    } else if (actor.texture !== texture) {
+      actor.texture = texture;
+      actor.sprite.setTexture(texture, 0);
+    }
+    actor.label.textContent = `${a.name}${a.hasProduct ? ' ✨' : ''}${a.hearts > 0 ? ' ' + '♥'.repeat(a.hearts) : ''}`;
+  }
+
+  private removeAnimal(id: number): void {
+    const a = this.animals.get(id);
+    if (!a) return;
+    a.sprite.destroy();
+    a.shadow.destroy();
+    a.label.remove();
+    this.animals.delete(id);
+  }
+
+  private ensureCharAnims(texture: string): void {
+    for (const dir of ['down', 'up', 'right'] as Dir[]) {
+      const key = `${texture}-walk-${dir}`;
+      if (this.anims.exists(key)) continue;
+      const b = frameIndex(dir, 0);
+      this.anims.create({ key, frames: this.anims.generateFrameNumbers(texture, { frames: [b + 1, b, b + 2, b] }), frameRate: 7, repeat: -1 });
+    }
+  }
+
+  private ensureAnimalAnims(texture: string): void {
+    const key = `${texture}-walk`;
+    if (this.anims.exists(key)) return;
+    this.anims.create({ key, frames: this.anims.generateFrameNumbers(texture, { frames: [0, 1] }), frameRate: 5, repeat: -1 });
+  }
+
+  // ------------------------------------------------------------------ change handling
+
+  private onChange(c: Change): void {
+    const world = client.world!;
+    switch (c.t) {
+      case 'terrain':
+        this.setTerrain(c.x, c.y);
+        break;
+      case 'crop':
+        if (c.crop) this.putCrop(c.k, c.crop.stage, c.crop.crop);
+        else {
+          this.crops.get(c.k)?.destroy();
+          this.crops.delete(c.k);
+        }
+        break;
+      case 'object':
+        if (c.obj) this.putObject(c.obj);
+        else {
+          this.objects.get(c.id)?.destroy();
+          this.objects.delete(c.id);
+        }
+        break;
+      case 'animal':
+        if (c.animal) this.putAnimal(c.animal);
+        else this.removeAnimal(c.id);
+        break;
+      case 'drop':
+        if (c.drop) this.putDrop(c.drop);
+        else {
+          this.drops.get(c.id)?.destroy();
+          this.drops.delete(c.id);
+        }
+        break;
+      case 'player': {
+        const p = c.player ?? world.players[c.id];
+        if (!c.player || !p || !p.online) this.removePlayer(c.id);
+        else this.putPlayer(p);
+        break;
+      }
+    }
+  }
+
+  private onState(): void {
+    const world = client.world!;
+    for (const [id, snap] of client.snaps.players) {
+      const p = world.players[id];
+      if (p && !this.players.has(id)) this.putPlayer(p);
+      void snap;
+    }
+    for (const id of [...this.players.keys()]) if (!client.snaps.players.has(id)) this.removePlayer(id);
+  }
+
+  private applySeason(): void {
+    this.rebuildTerrain();
+    for (const a of Object.values(client.world!.animals)) this.putAnimal(a);
+    if (client.season === 'jul' && !this.snow) {
+      this.snow = this.add.particles(0, 0, 'fx-snow-0', {
+        x: { min: 0, max: VIEW_W },
+        y: -4,
+        lifespan: 7000,
+        speedY: { min: 12, max: 26 },
+        speedX: { min: -6, max: 6 },
+        alpha: { start: 0.9, end: 0.5 },
+        quantity: 1,
+        frequency: 120,
+      });
+      this.snow.setScrollFactor(0).setDepth(9400);
+    } else if (client.season !== 'jul' && this.snow) {
+      this.snow.destroy();
+      this.snow = null;
+    }
+  }
+
+  // ------------------------------------------------------------------ actions
+
+  private actFacing(): void {
+    if (this.uiOpen) return;
+    const me = myPlayer();
+    if (!me) return;
+    const f = facingTile(me);
+    this.actAt(f.tx, f.ty, false);
+  }
+
+  /** Public: the touch action button. */
+  act(): void {
+    this.actFacing();
+  }
+
+  private actAt(tx: number, ty: number, fromPointer: boolean): void {
+    const me = myPlayer();
+    if (!me) return;
+    const ptx = tileOf(me.x);
+    const pty = tileOf(me.y);
+    if (Math.abs(tx - ptx) > REACH || Math.abs(ty - pty) > REACH) {
+      if (fromPointer) {
+        // Turn towards the tapped tile instead
+        const dx = tx - ptx;
+        const dy = ty - pty;
+        me.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+        this.sendMove(true);
+      }
+      return;
+    }
+    if (tx !== ptx || ty !== pty) {
+      const dx = tx - ptx;
+      const dy = ty - pty;
+      me.facing = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    }
+    net.send({ t: 'act', tx, ty });
+    this.bump(me.id);
+  }
+
+  private bump(id: string): void {
+    const a = this.players.get(id);
+    if (!a) return;
+    this.tweens.add({ targets: a.sprite, scaleX: 1.15, scaleY: 0.9, duration: 70, yoyo: true });
+  }
+
+  private spawnFx(x: number, y: number, kind: string): void {
+    const frames = getArt().fx[kind]?.length ?? 1;
+    const n = kind === 'water' ? 3 : kind === 'chop' ? 4 : kind === 'sparkle' ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      const ox = n > 1 ? (Math.random() - 0.5) * 12 : 0;
+      const img = this.add.image(x + ox, y - 4, `fx-${kind}-${i % frames}`).setDepth(8000);
+      if (kind === 'poof') {
+        img.setAlpha(0.9);
+        this.tweens.add({ targets: img, scale: 1.8, alpha: 0, duration: 350, onComplete: () => img.destroy() });
+      } else if (kind === 'water' || kind === 'chop') {
+        this.tweens.add({ targets: img, y: y + 6, x: img.x + (Math.random() - 0.5) * 10, alpha: 0, duration: 350 + i * 60, onComplete: () => img.destroy() });
+      } else {
+        this.tweens.add({ targets: img, y: y - 18 - i * 3, alpha: 0, duration: 700 + i * 100, delay: i * 80, onComplete: () => img.destroy() });
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ update
+
+  private sendMove(force = false): void {
+    const me = myPlayer();
+    if (!me) return;
+    const now = performance.now();
+    if (!force && now - this.lastMoveSent < 50) return;
+    this.lastMoveSent = now;
+    net.send({ t: 'move', x: me.x, y: me.y, facing: me.facing, moving: me.moving });
+  }
+
+  override update(_time: number, delta: number): void {
+    const world = client.world;
+    const me = myPlayer();
+    if (!world || !me) return;
+    const dt = Math.min(delta, 100);
+
+    // --- own movement (predicted) ---
+    let dx = 0;
+    let dy = 0;
+    if (!this.uiOpen) {
+      const k = this.keys;
+      if (k.A!.isDown || k.LEFT!.isDown) dx -= 1;
+      if (k.D!.isDown || k.RIGHT!.isDown) dx += 1;
+      if (k.W!.isDown || k.UP!.isDown) dy -= 1;
+      if (k.S!.isDown || k.DOWN!.isDown) dy += 1;
+      if (dx === 0 && dy === 0) {
+        dx = this.joystick.dx;
+        dy = this.joystick.dy;
+      }
+    }
+    stepPlayer(world, me, dx, dy, dt);
+    if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
+    this.wasMoving = me.moving;
+
+    // reconcile with the server if we drifted a lot
+    const mySnap = client.snaps.players.get(me.id);
+    if (mySnap && Math.hypot(mySnap.x - me.x, mySnap.y - me.y) > 40) {
+      me.x = mySnap.x;
+      me.y = mySnap.y;
+    }
+
+    // --- actors ---
+    const lerp = 1 - Math.pow(0.001, dt / 1000);
+    for (const [id, actor] of this.players) {
+      const p = world.players[id];
+      if (!p) continue;
+      if (id === me.id) {
+        actor.x = me.x;
+        actor.y = me.y;
+      } else {
+        const snap = client.snaps.players.get(id);
+        if (snap) {
+          if (Math.hypot(snap.x - actor.x, snap.y - actor.y) > 64) {
+            actor.x = snap.x;
+            actor.y = snap.y;
+          } else {
+            actor.x += (snap.x - actor.x) * lerp;
+            actor.y += (snap.y - actor.y) * lerp;
+          }
+        }
+      }
+      this.placeActor(actor, p.facing, p.moving, true);
+      this.updateBubble(actor, p);
+    }
+    for (const [id, actor] of this.animals) {
+      const a = world.animals[id];
+      const snap = client.snaps.animals.get(id);
+      if (!a) continue;
+      if (snap) {
+        if (Math.hypot(snap.x - actor.x, snap.y - actor.y) > 48) {
+          actor.x = snap.x;
+          actor.y = snap.y;
+        } else {
+          actor.x += (snap.x - actor.x) * lerp;
+          actor.y += (snap.y - actor.y) * lerp;
+        }
+      }
+      this.placeActor(actor, a.facing, a.moving, false);
+    }
+
+    // --- camera ---
+    const cam = this.cameras.main;
+    cam.centerOn(Math.round(me.x), Math.round(me.y));
+
+    // --- cursor ---
+    const target = !this.touch && this.hoverTile ? this.hoverTile : facingTile(me);
+    const inReach = Math.abs(target.tx - tileOf(me.x)) <= REACH && Math.abs(target.ty - tileOf(me.y)) <= REACH;
+    this.cursor.setPosition(target.tx * TILE, target.ty * TILE).setVisible(inReach && !this.uiOpen);
+
+    // --- labels (DOM) ---
+    const zoom = this.scale.zoom;
+    const sx = cam.scrollX;
+    const sy = cam.scrollY;
+    for (const actor of this.players.values()) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 24 - sy) * zoom);
+    for (const [id, actor] of this.animals) {
+      const a = world.animals[id];
+      const near = a && Math.hypot(a.x - me.x, a.y - me.y) < 40;
+      actor.label.style.display = near ? '' : 'none';
+      if (near) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 18 - sy) * zoom);
+    }
+
+    // --- night ---
+    this.drawNight();
+  }
+
+  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean): void {
+    const { dir, flip } = dirOf(facing);
+    actor.sprite.setPosition(Math.round(actor.x), Math.round(actor.y) + 4);
+    actor.shadow.setPosition(Math.round(actor.x), Math.round(actor.y) + 3);
+    actor.sprite.setDepth(actor.y + 4);
+    if (isPlayer) {
+      actor.sprite.setFlipX(flip);
+      const anim = `${actor.texture}-walk-${dir}`;
+      if (moving) {
+        if (actor.sprite.anims.currentAnim?.key !== anim) actor.sprite.play(anim);
+      } else {
+        actor.sprite.stop();
+        actor.sprite.setFrame(frameIndex(dir, 0));
+      }
+    } else {
+      actor.sprite.setFlipX(facing === 'left');
+      const anim = `${actor.texture}-walk`;
+      if (moving) {
+        if (actor.sprite.anims.currentAnim?.key !== anim || !actor.sprite.anims.isPlaying) actor.sprite.play(anim);
+      } else {
+        actor.sprite.stop();
+        actor.sprite.setFrame(0);
+      }
+    }
+  }
+
+  private placeLabel(el: HTMLElement, x: number, y: number): void {
+    el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+  }
+
+  private updateBubble(actor: Actor, p: PlayerState): void {
+    const active = p.emote && p.emote.until > serverNow();
+    if (active && !actor.bubble) {
+      actor.bubble = this.makeLabel(EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id, 'bubble');
+    } else if (!active && actor.bubble) {
+      actor.bubble.remove();
+      actor.bubble = undefined;
+    }
+    if (actor.bubble) {
+      const cam = this.cameras.main;
+      const zoom = this.scale.zoom;
+      actor.bubble.textContent = EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id;
+      this.placeLabel(actor.bubble, (actor.x - cam.scrollX) * zoom, (actor.y - 34 - cam.scrollY) * zoom);
+    }
+  }
+
+  private makeGlowTexture(): string {
+    const key = 'fx-glow';
+    if (this.textures.exists(key)) return key;
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    const ctx = c.getContext('2d')!;
+    const g = ctx.createRadialGradient(32, 32, 4, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    this.textures.addCanvas(key, c);
+    return key;
+  }
+
+  private drawNight(): void {
+    const amount = nightAmount(client.timeMs);
+    this.night.clear();
+    if (amount <= 0.01) return;
+    const color = client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
+    this.night.fill(color, amount);
+    const cam = this.cameras.main;
+    const world = client.world!;
+    // torches and lit windows push the dark away
+    for (const o of Object.values(world.objects)) {
+      let r = 0;
+      if (o.kind === 'torch') r = 1;
+      else if (o.kind === 'house') r = 1.6;
+      else if (o.kind === 'pumpkin_lantern' || o.kind === 'xmas_tree' || o.kind === 'lights') r = 0.8;
+      if (!r) continue;
+      const def = objectDef(o.kind);
+      const x = (o.x + def.w / 2) * TILE - cam.scrollX;
+      const y = (o.y + def.h / 2) * TILE - cam.scrollY;
+      if (x < -40 || y < -40 || x > VIEW_W + 40 || y > VIEW_H + 40) continue;
+      this.night.erase(this.glow, x - 32 * r, y - 32 * r);
+      void r;
+    }
+    for (const actor of this.players.values()) this.night.erase(this.glow, actor.x - cam.scrollX - 20, actor.y - cam.scrollY - 24);
+  }
+}
+
+export const animalsOf = ANIMALS;

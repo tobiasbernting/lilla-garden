@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "node scripts/icons.mjs",
+    "predev": "node scripts/icons.mjs",
     "dev": "vite --host",
     "build": "vite build",
     "typecheck": "tsc --noEmit"

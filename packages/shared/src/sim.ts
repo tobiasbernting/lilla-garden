@@ -1,0 +1,1034 @@
+// Authoritative world simulation. Pure functions over WorldState; no I/O.
+// The server runs this; the client reuses movement for prediction.
+
+import { ANIMALS, CROPS, ITEMS, RECIPES, item, objectDef } from './data.ts';
+import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
+import { SPAWN, addObject, generateWorld, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
+import { randInt } from './rng.ts';
+import { DEFAULT_ANIMAL_NAMES, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
+import type { Change, SlotRef } from './protocol.ts';
+import type {
+  AnimalState,
+  Appearance,
+  ClothingSlot,
+  CropState,
+  DropState,
+  Facing,
+  Inventory,
+  ItemStack,
+  PlayerState,
+  Season,
+  Terrain,
+  WorldObject,
+  WorldState,
+} from './types.ts';
+import {
+  CHEST_SIZE,
+  DAY_LENGTH_MS,
+  INVENTORY_SIZE,
+  MAP_H,
+  MAP_W,
+  MAX_STACK,
+  PLAYER_SPEED,
+  START_COINS,
+  TILE,
+  WATERING_CAN_CHARGES,
+  key,
+} from './types.ts';
+
+export interface SimCtx {
+  season: Season;
+  rnd: () => number;
+  /** Wall clock, ms since epoch (for emote expiry). */
+  now: number;
+}
+
+export const PLAYER_HALF_W = 5;
+export const PLAYER_HALF_H = 3;
+export const ANIMAL_HALF_W = 5;
+export const ANIMAL_HALF_H = 3;
+export const PICKUP_RADIUS = 12;
+export const EMOTE_MS = 2500;
+/** How many tiles away from the player's own tile an action may reach (Chebyshev). */
+export const REACH = 1;
+
+export const tileOf = (px: number): number => Math.floor(px / TILE);
+
+// ---------------------------------------------------------------------------
+// Collision & movement
+// ---------------------------------------------------------------------------
+
+export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
+  if (!inBounds(tx, ty)) return true;
+  if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
+  const obj = objectAt(world, tx, ty);
+  return !!obj && objectDef(obj.kind).solid;
+}
+
+export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boolean {
+  if (!inBounds(tx, ty)) return true;
+  const t = world.terrain[tileIndex(tx, ty)];
+  if (t === 'water' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields
+  if (world.crops[key(tx, ty)]) return true;
+  const obj = objectAt(world, tx, ty);
+  if (!obj) return false;
+  const def = objectDef(obj.kind);
+  return def.solid || obj.kind === 'gate' || obj.kind === 'door';
+}
+
+const boxBlocked = (
+  solid: (tx: number, ty: number) => boolean,
+  cx: number,
+  cy: number,
+  hw: number,
+  hh: number,
+): boolean => {
+  const x0 = tileOf(cx - hw);
+  const x1 = tileOf(cx + hw - 0.01);
+  const y0 = tileOf(cy - hh);
+  const y1 = tileOf(cy + hh - 0.01);
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (solid(tx, ty)) return true;
+  return false;
+};
+
+/** Moves a box from (x,y) towards (nx,ny), sliding along solids. Returns the reachable position. */
+export function resolveMove(
+  solid: (tx: number, ty: number) => boolean,
+  x: number,
+  y: number,
+  nx: number,
+  ny: number,
+  hw = PLAYER_HALF_W,
+  hh = PLAYER_HALF_H,
+): { x: number; y: number } {
+  const clampX = (v: number) => Math.min(MAP_W * TILE - hw, Math.max(hw, v));
+  const clampY = (v: number) => Math.min(MAP_H * TILE - hh, Math.max(hh, v));
+  let rx = clampX(nx);
+  let ry = y;
+  if (boxBlocked(solid, rx, ry, hw, hh)) rx = x;
+  ry = clampY(ny);
+  if (boxBlocked(solid, rx, ry, hw, hh)) ry = y;
+  return { x: rx, y: ry };
+}
+
+/** One step of player input (used by the client for prediction and by tests). */
+export function stepPlayer(
+  world: WorldState,
+  p: { x: number; y: number; facing: Facing; moving: boolean },
+  dx: number,
+  dy: number,
+  dtMs: number,
+): void {
+  const len = Math.hypot(dx, dy);
+  if (len < 0.01) {
+    p.moving = false;
+    return;
+  }
+  const ux = dx / len;
+  const uy = dy / len;
+  const dist = (PLAYER_SPEED * dtMs) / 1000;
+  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, p.x + ux * dist, p.y + uy * dist);
+  p.moving = r.x !== p.x || r.y !== p.y;
+  p.x = r.x;
+  p.y = r.y;
+  p.facing = Math.abs(ux) > Math.abs(uy) ? (ux > 0 ? 'right' : 'left') : uy > 0 ? 'down' : 'up';
+}
+
+/** The tile in front of the player (for the context action button). */
+export function facingTile(p: { x: number; y: number; facing: Facing }): { tx: number; ty: number } {
+  const tx = tileOf(p.x);
+  const ty = tileOf(p.y);
+  switch (p.facing) {
+    case 'up':
+      return { tx, ty: ty - 1 };
+    case 'down':
+      return { tx, ty: ty + 1 };
+    case 'left':
+      return { tx: tx - 1, ty };
+    case 'right':
+      return { tx: tx + 1, ty };
+  }
+}
+
+/** Is any player or animal standing inside the given tile footprint? */
+export function footprintOccupied(world: WorldState, x: number, y: number, w: number, h: number): boolean {
+  const inside = (px: number, py: number, hw: number, hh: number) =>
+    px + hw > x * TILE && px - hw < (x + w) * TILE && py + hh > y * TILE && py - hh < (y + h) * TILE;
+  for (const p of Object.values(world.players)) if (p.online && inside(p.x, p.y, PLAYER_HALF_W, PLAYER_HALF_H)) return true;
+  for (const a of Object.values(world.animals)) if (inside(a.x, a.y, ANIMAL_HALF_W, ANIMAL_HALF_H)) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Players
+// ---------------------------------------------------------------------------
+
+export const STARTER_WARDROBE = ['shirt_red', 'shirt_blue', 'shirt_green', 'shirt_yellow', 'pants_blue', 'pants_brown', 'shoes_boots'];
+
+export function createPlayer(world: WorldState, name: string, appearance: Appearance, shirt = 'shirt_blue'): PlayerState {
+  const id = `p${world.nextId++}`;
+  const inventory = makeInventory(INVENTORY_SIZE);
+  for (const tool of ['hoe', 'can', 'axe', 'pick', 'scythe', 'hammer', 'brush']) addItem(inventory, tool, 1);
+  addItem(inventory, 'carrot_seed', 6);
+  addItem(inventory, 'potato_seed', 4);
+  const p: PlayerState = {
+    id,
+    name: name.trim().slice(0, 16) || 'Spelare',
+    appearance,
+    outfit: { shirt: STARTER_WARDROBE.includes(shirt) ? shirt : 'shirt_blue', pants: 'pants_blue', shoes: 'shoes_boots' },
+    wardrobe: [...STARTER_WARDROBE],
+    x: SPAWN.x * TILE + TILE / 2,
+    y: SPAWN.y * TILE + TILE / 2,
+    facing: 'down',
+    moving: false,
+    coins: START_COINS,
+    inventory,
+    selected: 0,
+    online: false,
+    orders: [],
+  };
+  world.players[id] = p;
+  return p;
+}
+
+export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.selected] ?? null;
+
+const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
+const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
+const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin'): Change => ({
+  t: 'fx',
+  x: tx * TILE + TILE / 2,
+  y: ty * TILE + TILE / 2,
+  kind,
+});
+
+/** Gives items to a player; whatever does not fit lands on the ground at the player's feet. */
+export function giveItems(world: WorldState, p: PlayerState, id: string, count: number, out: Change[]): void {
+  if (count <= 0) return;
+  const left = addItem(p.inventory, id, count);
+  if (left > 0) {
+    const d = spawnDrop(world, id, left, p.x, p.y);
+    out.push({ t: 'drop', id: d.id, drop: d });
+    out.push(toast(p.id, T.inventoryFull));
+  }
+}
+
+export function spawnDrop(world: WorldState, id: string, count: number, x: number, y: number, ignore?: string): DropState {
+  const d: DropState = { id: world.nextId++, item: id, count, x, y };
+  if (ignore) d.ignore = { player: ignore, ticks: 60 };
+  world.drops[d.id] = d;
+  return d;
+}
+
+// ---------------------------------------------------------------------------
+// Actions on a tile
+// ---------------------------------------------------------------------------
+
+const FLOOR_ITEMS: Record<string, Terrain> = {
+  path_stone: 'path_stone',
+  path_dirt: 'path_dirt',
+  floor_wood: 'floor_wood',
+  floor_stone: 'floor_stone',
+};
+const TERRAIN_ITEM: Partial<Record<Terrain, string>> = {
+  path_stone: 'path_stone',
+  path_dirt: 'path_dirt',
+  floor_wood: 'floor_wood',
+  floor_stone: 'floor_stone',
+};
+
+const animalAt = (world: WorldState, tx: number, ty: number): AnimalState | undefined => {
+  for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return a;
+  return undefined;
+};
+
+export const animalDisplayName = (a: AnimalState): string => a.name || SPECIES_NAMES[a.species] || a.species;
+
+export function performAction(world: WorldState, playerId: string, tx: number, ty: number, ctx: SimCtx): Change[] {
+  const p = world.players[playerId];
+  const out: Change[] = [];
+  if (!p || !inBounds(tx, ty)) return out;
+  const ptx = tileOf(p.x);
+  const pty = tileOf(p.y);
+  if (Math.abs(tx - ptx) > REACH || Math.abs(ty - pty) > REACH) return out;
+  const held = heldItem(p);
+  const heldDef = held ? item(held.item) : null;
+  const tool = heldDef?.tool;
+
+  // 1. Animal
+  const animal = animalAt(world, tx, ty);
+  if (animal) {
+    actOnAnimal(world, p, animal, held, ctx, out);
+    return out;
+  }
+
+  // 2. Object
+  const obj = objectAt(world, tx, ty);
+  if (obj) {
+    const def = objectDef(obj.kind);
+    if (def.harvest || (def.breakWith && tool === def.breakWith)) {
+      breakObject(world, p, obj, ctx, out);
+      return out;
+    }
+    if (def.interact) {
+      interactObject(world, p, obj, held, out);
+      return out;
+    }
+    if (def.flat && tool === 'hoe' && def.breakWith) {
+      // Hoeing through grass tufts / flowers clears them first.
+      breakObject(world, p, obj, ctx, out);
+    } else if (def.flat && (tool === 'can' || held?.item === undefined)) {
+      // fall through to terrain (watering can on a flower, or walking around)
+    } else {
+      if (tool && def.breakWith) out.push(toast(p.id, fmt(T.needTool, { tool: itemName(toolItemId(def.breakWith)) })));
+      return out;
+    }
+  }
+
+  // 3. Crop
+  const ck = key(tx, ty);
+  const crop = world.crops[ck];
+  if (crop) {
+    actOnCrop(world, p, tx, ty, crop, held, ctx, out);
+    return out;
+  }
+
+  // 4. Terrain
+  actOnTerrain(world, p, tx, ty, held, ctx, out);
+  return out;
+}
+
+const toolItemId = (tool: string): string => {
+  for (const d of Object.values(ITEMS)) if (d.tool === tool) return d.id;
+  return tool;
+};
+
+function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: ItemStack | null, ctx: SimCtx, out: Change[]): void {
+  const atx = tileOf(a.x);
+  const aty = tileOf(a.y);
+  const name = animalDisplayName(a);
+  const heldDef = held ? item(held.item) : null;
+  if (held?.item === 'hay') {
+    if (a.fed) {
+      out.push(toast(p.id, fmt(T.alreadyFed, { name })));
+      return;
+    }
+    removeItem(p.inventory, 'hay', 1);
+    a.fed = true;
+    out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.fed, { name })), playerChange(p), { t: 'animal', id: a.id, animal: a });
+    return;
+  }
+  if (heldDef?.tool === 'brush') {
+    if (!a.brushed) {
+      a.brushed = true;
+      out.push(fx(atx, aty, 'sparkle'), toast(p.id, fmt(T.brushed, { name })));
+    } else out.push(fx(atx, aty, 'heart'));
+    out.push({ t: 'animal', id: a.id, animal: a });
+    return;
+  }
+  if (a.hasProduct) {
+    const def = ANIMALS[a.species];
+    let product = def?.product;
+    if (product === 'egg' && ctx.season === 'pask') product = 'egg_pask';
+    if (product) {
+      a.hasProduct = false;
+      giveItems(world, p, product, 1, out);
+      out.push(fx(atx, aty, 'sparkle'), toast(p.id, fmt(T.collected, { item: itemName(product), name })), playerChange(p), {
+        t: 'animal',
+        id: a.id,
+        animal: a,
+      });
+      return;
+    }
+  }
+  // Pet
+  a.petted = true;
+  out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.petted, { name })), { t: 'animal', id: a.id, animal: a });
+  if (!a.named) out.push({ t: 'open', to: p.id, ui: 'nameAnimal', id: a.id });
+}
+
+function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, held: ItemStack | null, out: Change[]): void {
+  const def = objectDef(obj.kind);
+  switch (def.interact) {
+    case 'chest':
+      if (!obj.items) obj.items = makeInventory(CHEST_SIZE);
+      out.push({ t: 'open', to: p.id, ui: 'chest', id: obj.id });
+      return;
+    case 'catalogue':
+    case 'sell':
+    case 'workbench':
+    case 'wardrobe':
+      out.push({ t: 'open', to: p.id, ui: def.interact });
+      return;
+    case 'water':
+      if (held && item(held.item).tool === 'can') {
+        held.charges = WATERING_CAN_CHARGES;
+        out.push(fx(obj.x, obj.y, 'water'), toast(p.id, T.filledCan), playerChange(p));
+      }
+      return;
+    case 'feed': {
+      if (!obj.items) obj.items = makeInventory(1);
+      const stored = obj.items[0]?.count ?? 0;
+      if (held?.item === 'hay') {
+        const room = MAX_STACK - stored;
+        const take = Math.min(room, held.count);
+        if (take > 0) {
+          removeItem(p.inventory, 'hay', take);
+          obj.items[0] = makeStack('hay', stored + take);
+          out.push(toast(p.id, fmt(T.troughFilled, { count: stored + take })), playerChange(p), { t: 'object', id: obj.id, obj });
+        }
+      } else if (stored > 0) out.push(toast(p.id, fmt(T.troughHas, { count: stored })));
+      else out.push(toast(p.id, T.troughEmpty));
+      return;
+    }
+  }
+}
+
+function breakObject(world: WorldState, p: PlayerState, obj: WorldObject, ctx: SimCtx, out: Change[]): void {
+  const def = objectDef(obj.kind);
+  removeObject(world, obj.id);
+  out.push({ t: 'object', id: obj.id, obj: null });
+  out.push(fx(obj.x, obj.y, def.breakWith === 'axe' || def.breakWith === 'pick' ? 'chop' : 'poof'));
+  // Chest contents spill out
+  if (obj.items) for (const s of obj.items) if (s) giveItems(world, p, s.item, s.count, out);
+  for (const d of def.drops ?? []) giveItems(world, p, d.item, randInt(ctx.rnd, d.min, d.max), out);
+  if (obj.kind === 'tree' || obj.kind === 'tree_pine' || obj.kind === 'tree_apple') {
+    const stump = addObject(world, 'stump', obj.x, obj.y);
+    if (stump) out.push({ t: 'object', id: stump.id, obj: stump });
+  }
+  if (def.houses) {
+    // Animals that lived here now live "nowhere"; they keep wandering around the spot.
+    for (const a of Object.values(world.animals)) if (a.homeId === obj.id) a.homeId = 0;
+    // Refund any pending order for this house, from whoever placed it
+    for (const pl of Object.values(world.players)) {
+      const keep = pl.orders.filter((o) => o.homeId !== obj.id);
+      for (const o of pl.orders) if (o.homeId === obj.id) pl.coins += ITEMS[`animal_${o.species}`]?.buy ?? 0;
+      if (keep.length !== pl.orders.length) {
+        pl.orders = keep;
+        if (pl.id !== p.id) out.push(playerChange(pl));
+      }
+    }
+  }
+  out.push(playerChange(p));
+}
+
+const cropMature = (c: CropState): boolean => c.stage >= (CROPS[c.crop]?.stages.length ?? 99);
+
+function actOnCrop(
+  world: WorldState,
+  p: PlayerState,
+  tx: number,
+  ty: number,
+  crop: CropState,
+  held: ItemStack | null,
+  ctx: SimCtx,
+  out: Change[],
+): void {
+  const ck = key(tx, ty);
+  const def = CROPS[crop.crop];
+  if (!def) return;
+  const tool = held ? item(held.item).tool : undefined;
+  if (cropMature(crop)) {
+    giveItems(world, p, def.produce, randInt(ctx.rnd, def.yield[0], def.yield[1]), out);
+    giveItems(world, p, def.seed, randInt(ctx.rnd, def.seedsBack[0], def.seedsBack[1]), out);
+    if (def.regrowTo !== undefined) {
+      crop.stage = def.regrowTo;
+      crop.progress = 0;
+      crop.watered = false;
+      out.push({ t: 'crop', k: ck, crop });
+    } else {
+      delete world.crops[ck];
+      out.push({ t: 'crop', k: ck, crop: null });
+    }
+    out.push(fx(tx, ty, 'sparkle'), playerChange(p));
+    return;
+  }
+  if (tool === 'can' && held) {
+    if ((held.charges ?? 0) <= 0) {
+      out.push(toast(p.id, T.emptyCan));
+      return;
+    }
+    if (crop.watered) return;
+    held.charges = (held.charges ?? 0) - 1;
+    crop.watered = true;
+    world.terrain[tileIndex(tx, ty)] = 'soil_wet';
+    out.push({ t: 'crop', k: ck, crop }, { t: 'terrain', x: tx, y: ty, terrain: 'soil_wet' }, fx(tx, ty, 'water'), playerChange(p));
+    return;
+  }
+  if (tool === 'hoe') {
+    delete world.crops[ck];
+    giveItems(world, p, def.seed, 1, out);
+    out.push({ t: 'crop', k: ck, crop: null }, fx(tx, ty, 'poof'), playerChange(p));
+  }
+}
+
+function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number, held: ItemStack | null, ctx: SimCtx, out: Change[]): void {
+  const ti = tileIndex(tx, ty);
+  const terrain = world.terrain[ti]!;
+  const setTerrain = (t: Terrain) => {
+    world.terrain[ti] = t;
+    out.push({ t: 'terrain', x: tx, y: ty, terrain: t });
+  };
+  if (!held) return;
+  const def = item(held.item);
+  switch (def.tool) {
+    case 'hoe':
+      if (terrain === 'grass' && !objectAt(world, tx, ty)) {
+        setTerrain('soil');
+        out.push(fx(tx, ty, 'poof'));
+      }
+      return;
+    case 'can':
+      if (terrain === 'water') {
+        held.charges = WATERING_CAN_CHARGES;
+        out.push(fx(tx, ty, 'water'), toast(p.id, T.filledCan), playerChange(p));
+      } else if (terrain === 'soil') {
+        if ((held.charges ?? 0) <= 0) {
+          out.push(toast(p.id, T.emptyCan));
+          return;
+        }
+        held.charges = (held.charges ?? 0) - 1;
+        setTerrain('soil_wet');
+        out.push(fx(tx, ty, 'water'), playerChange(p));
+      } else if (terrain === 'soil_wet' && (held.charges ?? 0) <= 0) {
+        out.push(toast(p.id, T.emptyCan));
+      }
+      return;
+    case 'scythe':
+      if (terrain === 'soil' || terrain === 'soil_wet') {
+        setTerrain('grass');
+        out.push(fx(tx, ty, 'poof'));
+      }
+      return;
+    case 'hammer': {
+      const back = TERRAIN_ITEM[terrain];
+      if (back) {
+        setTerrain('grass');
+        giveItems(world, p, back, 1, out);
+        out.push(fx(tx, ty, 'poof'), playerChange(p));
+      }
+      return;
+    }
+    case 'axe':
+    case 'pick':
+    case 'brush':
+      return;
+  }
+  if (def.category === 'seed' && def.crop) {
+    if (terrain !== 'soil' && terrain !== 'soil_wet') return;
+    if (objectAt(world, tx, ty)) return;
+    takeFromSlot(p.inventory, p.selected, 1);
+    const crop: CropState = { crop: def.crop, stage: 0, progress: 0, watered: terrain === 'soil_wet' };
+    world.crops[key(tx, ty)] = crop;
+    out.push({ t: 'crop', k: key(tx, ty), crop }, fx(tx, ty, 'sparkle'), playerChange(p));
+    return;
+  }
+  if (def.category === 'placeable' && def.places) {
+    const floor = FLOOR_ITEMS[def.places];
+    if (floor) {
+      if (terrain === 'water' || terrain === floor) return;
+      if (terrain === 'soil' || terrain === 'soil_wet') return;
+      const obj = objectAt(world, tx, ty);
+      if (obj && objectDef(obj.kind).solid) return;
+      const back = TERRAIN_ITEM[terrain];
+      takeFromSlot(p.inventory, p.selected, 1);
+      if (back) giveItems(world, p, back, 1, out);
+      setTerrain(floor);
+      out.push(playerChange(p));
+      return;
+    }
+    const odef = objectDef(def.places);
+    if (footprintOccupied(world, tx, ty, odef.w, odef.h)) {
+      out.push(toast(p.id, T.cantPlaceHere));
+      return;
+    }
+    const extra: Partial<WorldObject> = { by: p.id };
+    if (odef.interact === 'chest') extra.items = makeInventory(CHEST_SIZE);
+    if (odef.interact === 'feed') extra.items = makeInventory(1);
+    const obj = addObject(world, def.places, tx, ty, extra);
+    if (!obj) {
+      out.push(toast(p.id, T.cantPlaceHere));
+      return;
+    }
+    takeFromSlot(p.inventory, p.selected, 1);
+    out.push({ t: 'object', id: obj.id, obj }, fx(tx, ty, 'poof'), playerChange(p));
+    return;
+  }
+  void ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Inventory / economy / misc messages
+// ---------------------------------------------------------------------------
+
+const chestNear = (world: WorldState, p: PlayerState, chestId: number): WorldObject | null => {
+  const obj = world.objects[chestId];
+  if (!obj || !obj.items) return null;
+  const def = objectDef(obj.kind);
+  if (def.interact !== 'chest') return null;
+  const dx = Math.abs(obj.x + 0.5 - p.x / TILE);
+  const dy = Math.abs(obj.y + 0.5 - p.y / TILE);
+  return dx <= REACH + 1.5 && dy <= REACH + 1.5 ? obj : null;
+};
+
+export function swapSlots(world: WorldState, playerId: string, a: SlotRef, b: SlotRef): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  const out: Change[] = [];
+  const resolve = (r: SlotRef): Inventory | null => {
+    if (r.chest === undefined) return p.inventory;
+    const c = chestNear(world, p, r.chest);
+    return c?.items ?? null;
+  };
+  const ia = resolve(a);
+  const ib = resolve(b);
+  if (!ia || !ib) return out;
+  moveStack(ia, a.slot, ib, b.slot);
+  out.push(playerChange(p));
+  if (a.chest !== undefined) out.push({ t: 'object', id: a.chest, obj: world.objects[a.chest]! });
+  if (b.chest !== undefined && b.chest !== a.chest) out.push({ t: 'object', id: b.chest, obj: world.objects[b.chest]! });
+  return out;
+}
+
+export function selectSlot(world: WorldState, playerId: string, slot: number): Change[] {
+  const p = world.players[playerId];
+  if (!p || slot < 0 || slot >= INVENTORY_SIZE) return [];
+  p.selected = slot;
+  return [];
+}
+
+export function craft(world: WorldState, playerId: string, recipeId: string): Change[] {
+  const p = world.players[playerId];
+  const r = RECIPES.find((x) => x.id === recipeId);
+  if (!p || !r) return [];
+  for (const i of r.in) if (countItem(p.inventory, i.item) < i.count) return [toast(p.id, T.notNow)];
+  const out: Change[] = [];
+  for (const i of r.in) removeItem(p.inventory, i.item, i.count);
+  giveItems(world, p, r.out.item, r.out.count, out);
+  out.push(toast(p.id, fmt(T.bought, { item: itemName(r.out.item) }).replace('Köpt', 'Snickrade')), playerChange(p));
+  return out;
+}
+
+export const catalogueAvailable = (id: string, season: Season): boolean => {
+  const d = ITEMS[id];
+  if (!d || d.buy === undefined) return false;
+  if (d.season && d.season !== season) return false;
+  return true;
+};
+
+export function buy(world: WorldState, playerId: string, id: string, qty: number, ctx: SimCtx): Change[] {
+  const p = world.players[playerId];
+  if (!p || !catalogueAvailable(id, ctx.season)) return [];
+  const d = item(id);
+  qty = Math.max(1, Math.min(99, Math.floor(qty)));
+  if (d.category === 'animal' || d.category === 'clothing') qty = 1;
+  const cost = (d.buy ?? 0) * qty;
+  if (p.coins < cost) return [toast(p.id, T.notEnoughCoins)];
+  const out: Change[] = [];
+  if (d.category === 'animal' && d.species) {
+    const adef = ANIMALS[d.species]!;
+    const houses = Object.values(world.objects).filter((o) => objectDef(o.kind).houses?.species === d.species);
+    if (houses.length === 0) return [toast(p.id, fmt(T.needHouse, { house: itemName(adef.house) }))];
+    const occupancy = (homeId: number) =>
+      Object.values(world.animals).filter((a) => a.homeId === homeId).length +
+      Object.values(world.players).reduce((n, pl) => n + pl.orders.filter((o) => o.homeId === homeId).length, 0);
+    const home = houses.find((h) => occupancy(h.id) < (objectDef(h.kind).houses?.capacity ?? 0));
+    if (!home) return [toast(p.id, fmt(T.houseFull, { house: itemName(adef.house) }))];
+    p.coins -= cost;
+    p.orders.push({ species: d.species, homeId: home.id });
+    out.push(toast(p.id, fmt(T.animalOrdered, { species: SPECIES_NAMES[d.species] ?? d.species })), fx(tileOf(p.x), tileOf(p.y), 'coin'), playerChange(p));
+    return out;
+  }
+  if (d.category === 'clothing') {
+    if (p.wardrobe.includes(id)) return [toast(p.id, T.notNow)];
+    p.coins -= cost;
+    p.wardrobe.push(id);
+    out.push(toast(p.id, fmt(T.bought, { item: itemName(id) })), playerChange(p));
+    return out;
+  }
+  if (!hasSpace(p.inventory, id, qty)) return [toast(p.id, T.inventoryFull)];
+  p.coins -= cost;
+  addItem(p.inventory, id, qty);
+  out.push(toast(p.id, fmt(T.bought, { item: `${qty} ${itemName(id)}` })), playerChange(p));
+  return out;
+}
+
+export function sell(world: WorldState, playerId: string, slot: number, qty: number): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  const s = p.inventory[slot];
+  if (!s) return [];
+  const d = item(s.item);
+  if (d.sell === undefined) return [toast(p.id, T.notNow)];
+  const taken = takeFromSlot(p.inventory, slot, Math.max(1, Math.floor(qty)));
+  if (!taken) return [];
+  p.coins += d.sell * taken.count;
+  return [fx(tileOf(p.x), tileOf(p.y), 'coin'), playerChange(p)];
+}
+
+export function equip(world: WorldState, playerId: string, slot: ClothingSlot, id: string | null): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  if (id === null) {
+    if (slot === 'hat') delete p.outfit.hat;
+    else return []; // shirts, pants and shoes always stay on
+  } else {
+    const d = ITEMS[id];
+    if (!d?.clothing || d.clothing.slot !== slot || !p.wardrobe.includes(id)) return [];
+    p.outfit[slot] = id;
+  }
+  return [playerChange(p)];
+}
+
+export function emote(world: WorldState, playerId: string, id: string, ctx: SimCtx): Change[] {
+  const p = world.players[playerId];
+  if (!p || !T.emotes.includes(id)) return [];
+  p.emote = { id, until: ctx.now + EMOTE_MS };
+  return [];
+}
+
+export function dropItem(world: WorldState, playerId: string, slot: number, qty: number): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  const taken = takeFromSlot(p.inventory, slot, Math.max(1, Math.floor(qty)));
+  if (!taken) return [];
+  const f = facingTile(p);
+  let x = f.tx * TILE + TILE / 2;
+  let y = f.ty * TILE + TILE / 2;
+  if (isSolidForPlayer(world, f.tx, f.ty)) {
+    x = p.x;
+    y = p.y;
+  }
+  const d = spawnDrop(world, taken.item, taken.count, x, y, p.id);
+  if (taken.charges !== undefined) d.count = 1;
+  return [{ t: 'drop', id: d.id, drop: d }, playerChange(p)];
+}
+
+export function nameAnimal(world: WorldState, playerId: string, id: number, name: string): Change[] {
+  const a = world.animals[id];
+  const p = world.players[playerId];
+  if (!a || !p) return [];
+  const clean = name.replace(/\s+/g, ' ').trim().slice(0, 14);
+  if (!clean) return [];
+  const old = animalDisplayName(a);
+  a.name = clean;
+  a.named = true;
+  return [{ t: 'animal', id, animal: a }, toast(null, fmt(T.renamed, { name: old, newName: clean }))];
+}
+
+export function setOnline(world: WorldState, playerId: string, online: boolean): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  p.online = online;
+  p.moving = false;
+  return [playerChange(p)];
+}
+
+export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean): void {
+  const p = world.players[playerId];
+  if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, x, y);
+  p.x = r.x;
+  p.y = r.y;
+  p.facing = facing;
+  p.moving = moving;
+}
+
+// ---------------------------------------------------------------------------
+// Tick
+// ---------------------------------------------------------------------------
+
+export const anyoneOnline = (world: WorldState): boolean => Object.values(world.players).some((p) => p.online);
+
+export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
+  const out: Change[] = [];
+  if (!anyoneOnline(world)) return out;
+  world.timeMs += dtMs;
+  tickAnimals(world, dtMs, ctx);
+  tickDrops(world, out);
+  for (const p of Object.values(world.players)) if (p.emote && p.emote.until < ctx.now) delete p.emote;
+  if (world.timeMs >= DAY_LENGTH_MS) {
+    world.timeMs -= DAY_LENGTH_MS;
+    newDay(world, ctx, out);
+  }
+  return out;
+}
+
+const homeCenter = (world: WorldState, a: AnimalState): { x: number; y: number } => {
+  const home = world.objects[a.homeId];
+  if (!home) return { x: a.x, y: a.y };
+  const def = objectDef(home.kind);
+  return { x: (home.x + def.w / 2) * TILE, y: (home.y + def.h + 1) * TILE };
+};
+
+const LEASH = 7 * TILE;
+
+function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx): void {
+  for (const a of Object.values(world.animals)) {
+    if (a.waitMs > 0) {
+      a.waitMs -= dtMs;
+      a.moving = false;
+      continue;
+    }
+    if (a.tx === undefined || a.ty === undefined) {
+      const c = homeCenter(world, a);
+      const ang = ctx.rnd() * Math.PI * 2;
+      const r = ctx.rnd() * LEASH;
+      a.tx = Math.min(MAP_W * TILE - 8, Math.max(8, c.x + Math.cos(ang) * r));
+      a.ty = Math.min(MAP_H * TILE - 8, Math.max(8, c.y + Math.sin(ang) * r));
+    }
+    const dx = a.tx - a.x;
+    const dy = a.ty - a.y;
+    const dist = Math.hypot(dx, dy);
+    const speed = ANIMALS[a.species]?.speed ?? 16;
+    const step = (speed * dtMs) / 1000;
+    if (dist <= step) {
+      a.moving = false;
+      delete a.tx;
+      delete a.ty;
+      a.waitMs = 1000 + ctx.rnd() * 4000;
+      continue;
+    }
+    const nx = a.x + (dx / dist) * step;
+    const ny = a.y + (dy / dist) * step;
+    const r = resolveMove((tx, ty) => isSolidForAnimal(world, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+    const moved = Math.hypot(r.x - a.x, r.y - a.y);
+    if (moved < step * 0.5) {
+      // Blocked (fence, water, another building): give up and rest a bit
+      a.moving = false;
+      delete a.tx;
+      delete a.ty;
+      a.waitMs = 500 + ctx.rnd() * 2000;
+      continue;
+    }
+    a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    a.x = r.x;
+    a.y = r.y;
+    a.moving = true;
+  }
+}
+
+function tickDrops(world: WorldState, out: Change[]): void {
+  for (const d of Object.values(world.drops)) {
+    if (d.ignore && --d.ignore.ticks <= 0) delete d.ignore;
+    for (const p of Object.values(world.players)) {
+      if (!p.online) continue;
+      if (d.ignore?.player === p.id) continue;
+      if (Math.hypot(p.x - d.x, p.y - d.y) > PICKUP_RADIUS) continue;
+      const left = addItem(p.inventory, d.item, d.count);
+      if (left === d.count) continue;
+      out.push(playerChange(p));
+      if (left === 0) {
+        delete world.drops[d.id];
+        out.push({ t: 'drop', id: d.id, drop: null });
+      } else {
+        d.count = left;
+        out.push({ t: 'drop', id: d.id, drop: d });
+      }
+      break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Day rollover
+// ---------------------------------------------------------------------------
+
+/** Wild resources that regrow over time, never beyond how many the fresh map had. */
+const REGROW: { kind: string; perDay: number; where: (x: number, y: number) => boolean; variant?: number }[] = [
+  { kind: 'tree', perDay: 4, where: (x, y) => edgeDist(x, y) <= 3 || x >= 48 || y >= 50 },
+  { kind: 'tree_pine', perDay: 2, where: (x, y) => edgeDist(x, y) <= 3 || x >= 48 || y >= 50 },
+  { kind: 'tree_apple', perDay: 1, where: (x, y) => edgeDist(x, y) <= 3 || x >= 48 || y >= 50 },
+  { kind: 'rock', perDay: 2, where: (x, y) => x >= 46 && x <= 60 && y >= 6 && y <= 34 },
+  { kind: 'rock_small', perDay: 3, where: (x, y) => x >= 46 && x <= 60 && y >= 6 && y <= 34 },
+  { kind: 'grass_tuft', perDay: 12, where: () => true, variant: 3 },
+  { kind: 'flower', perDay: 4, where: () => true, variant: 4 },
+  { kind: 'bush', perDay: 1, where: (x, y) => !(x >= 4 && x <= 40 && y >= 4 && y <= 46) },
+];
+let baselineCounts: Record<string, number> | null = null;
+const baseline = (kind: string): number => {
+  if (!baselineCounts) {
+    baselineCounts = {};
+    for (const o of Object.values(generateWorld().objects)) baselineCounts[o.kind] = (baselineCounts[o.kind] ?? 0) + 1;
+  }
+  return baselineCounts[kind] ?? 0;
+};
+const edgeDist = (x: number, y: number): number => Math.min(x, y, MAP_W - 1 - x, MAP_H - 1 - y);
+const nearHouse = (x: number, y: number): boolean => x >= 5 && x <= 18 && y >= 3 && y <= 14;
+
+const freeGrass = (world: WorldState, x: number, y: number): boolean =>
+  inBounds(x, y) &&
+  world.terrain[tileIndex(x, y)] === 'grass' &&
+  !objectAt(world, x, y) &&
+  !world.crops[key(x, y)] &&
+  !nearHouse(x, y) &&
+  !footprintOccupied(world, x, y, 1, 1);
+
+function spawnWild(world: WorldState, kind: string, count: number, cap: number, where: (x: number, y: number) => boolean, ctx: SimCtx, out: Change[], variants = 0): void {
+  let have = 0;
+  for (const o of Object.values(world.objects)) if (o.kind === kind) have++;
+  let tries = count * 80;
+  while (count > 0 && have < cap && tries-- > 0) {
+    const x = randInt(ctx.rnd, 2, MAP_W - 3);
+    const y = randInt(ctx.rnd, 2, MAP_H - 3);
+    if (!where(x, y) || !freeGrass(world, x, y)) continue;
+    const obj = addObject(world, kind, x, y, variants ? { variant: randInt(ctx.rnd, 0, variants - 1) } : {});
+    if (!obj) continue;
+    out.push({ t: 'object', id: obj.id, obj });
+    have++;
+    count--;
+  }
+}
+
+export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Change[] {
+  world.day++;
+  world.timeMs = Math.min(world.timeMs, 1000);
+  out.push({ t: 'day', day: world.day });
+
+  // Crops grow if watered
+  for (const [k, c] of Object.entries(world.crops)) {
+    const def = CROPS[c.crop];
+    if (!def) continue;
+    if (c.watered && !cropMature(c)) {
+      c.progress++;
+      if (c.progress >= (def.stages[c.stage] ?? 1)) {
+        c.stage++;
+        c.progress = 0;
+      }
+    }
+    c.watered = false;
+    out.push({ t: 'crop', k, crop: c });
+  }
+  // Wet soil dries
+  for (let i = 0; i < world.terrain.length; i++)
+    if (world.terrain[i] === 'soil_wet') {
+      world.terrain[i] = 'soil';
+      out.push({ t: 'terrain', x: i % MAP_W, y: Math.floor(i / MAP_W), terrain: 'soil' });
+    }
+
+  // Troughs feed nearby animals
+  const troughs = Object.values(world.objects).filter((o) => o.kind === 'trough' && (o.items?.[0]?.count ?? 0) > 0);
+  for (const a of Object.values(world.animals)) {
+    if (a.fed) continue;
+    const t = troughs.find((o) => (o.items![0]?.count ?? 0) > 0 && Math.hypot((o.x + 0.5) * TILE - a.x, (o.y + 0.5) * TILE - a.y) <= 8 * TILE);
+    if (t) {
+      t.items![0]!.count--;
+      if (t.items![0]!.count === 0) t.items![0] = null;
+      a.fed = true;
+      out.push({ t: 'object', id: t.id, obj: t });
+    }
+  }
+
+  // Animals: hearts, products, growing up
+  for (const a of Object.values(world.animals)) {
+    const def = ANIMALS[a.species];
+    if (!def) continue;
+    let gain = 0;
+    if (a.fed) gain += 0.34;
+    if (a.petted) gain += 0.2;
+    if (a.brushed) gain += 0.2;
+    a.heartProgress += gain;
+    while (a.heartProgress >= 1 && a.hearts < 5) {
+      a.hearts++;
+      a.heartProgress -= 1;
+    }
+    if (a.hearts >= 5) a.heartProgress = Math.min(a.heartProgress, 0.99);
+    a.age++;
+    if (def.product && a.fed && a.hearts >= 1 && a.age >= def.growDays) a.hasProduct = true;
+    a.fed = false;
+    a.petted = false;
+    a.brushed = false;
+    out.push({ t: 'animal', id: a.id, animal: a });
+  }
+
+  // Ordered animals arrive
+  for (const p of Object.values(world.players)) {
+    if (p.orders.length === 0) continue;
+    for (const o of p.orders) {
+      const home = world.objects[o.homeId];
+      const def = ANIMALS[o.species];
+      if (!def) continue;
+      const c = home ? homeCenter(world, { ...dummyAnimal, homeId: home.id }) : { x: p.x, y: p.y };
+      const a: AnimalState = {
+        ...dummyAnimal,
+        id: world.nextId++,
+        species: o.species,
+        name: DEFAULT_ANIMAL_NAMES[randInt(ctx.rnd, 0, DEFAULT_ANIMAL_NAMES.length - 1)] ?? 'Ny vän',
+        x: c.x,
+        y: c.y,
+        homeId: home?.id ?? 0,
+        waitMs: 2000,
+      };
+      world.animals[a.id] = a;
+      out.push({ t: 'animal', id: a.id, animal: a }, toast(null, fmt(T.animalArrived, { name: `${animalDisplayName(a)} (${SPECIES_NAMES[o.species] ?? o.species})` })));
+    }
+    p.orders = [];
+    out.push(playerChange(p));
+  }
+
+  // Resources regrow
+  for (const r of REGROW) spawnWild(world, r.kind, r.perDay, baseline(r.kind), r.where, ctx, out, r.variant ?? 0);
+
+  // Season twists
+  if (ctx.season === 'halloween') spawnWild(world, 'wild_pumpkin', 3, 12, (x, y) => !(x >= 4 && x <= 40 && y >= 4 && y <= 46) || edgeDist(x, y) <= 6, ctx, out);
+  if (ctx.season === 'midsommar') spawnWild(world, 'wild_flower_mid', 20, 80, () => true, ctx, out, 3);
+  for (const o of Object.values(world.objects)) {
+    if ((o.kind === 'wild_pumpkin' && ctx.season !== 'halloween') || (o.kind === 'wild_flower_mid' && ctx.season !== 'midsommar')) {
+      removeObject(world, o.id);
+      out.push({ t: 'object', id: o.id, obj: null });
+    }
+  }
+
+  out.push(toast(null, `${fmt(T.day, { day: world.day })} – ${T.newDay}`));
+  return out;
+}
+
+const dummyAnimal: AnimalState = {
+  id: 0,
+  species: 'hen',
+  name: '',
+  x: 0,
+  y: 0,
+  facing: 'down',
+  moving: false,
+  hearts: 0,
+  heartProgress: 0,
+  fed: false,
+  petted: false,
+  brushed: false,
+  hasProduct: false,
+  named: false,
+  age: 0,
+  homeId: 0,
+  waitMs: 0,
+};
+
+/** Convenience for tests and the admin page: add a grown animal next to a house. */
+export function addAnimal(world: WorldState, species: string, homeId: number, name?: string): AnimalState {
+  const a: AnimalState = { ...dummyAnimal, id: world.nextId++, species, homeId, name: name ?? '', named: !!name, age: 10 };
+  const c = homeCenter(world, a);
+  a.x = c.x;
+  a.y = c.y;
+  world.animals[a.id] = a;
+  return a;
+}
+
+export const isBaby = (a: AnimalState): boolean => a.age < (ANIMALS[a.species]?.growDays ?? 3);
+
+/** 0 = midday … 1 = deepest night, for the client's night overlay. */
+export function nightAmount(timeMs: number): number {
+  const f = timeMs / DAY_LENGTH_MS;
+  if (f < 0.65) return 0;
+  if (f < 0.8) return ((f - 0.65) / 0.15) * 0.8;
+  return 0.8;
+}
+
+export const describeTile = (world: WorldState, tx: number, ty: number): string => {
+  const a = animalAt(world, tx, ty);
+  if (a) return animalDisplayName(a);
+  const o = objectAt(world, tx, ty);
+  if (o) return objectName(o.kind);
+  const c = world.crops[key(tx, ty)];
+  if (c) return itemName(c.crop);
+  return '';
+};
