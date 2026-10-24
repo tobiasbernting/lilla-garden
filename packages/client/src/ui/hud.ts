@@ -5,6 +5,7 @@ import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
 import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
+import { isMuted, setMuted } from '../sound.ts';
 
 export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; picked?: boolean; key?: string; onTap?: () => void } = {}): HTMLDivElement {
   const art = getArt();
@@ -44,7 +45,7 @@ export class Hud {
     this.joy = h('div', { class: 'joy' }, this.joyKnob);
     const zone = h('div', { class: 'joy-zone' }, this.joy);
     const act = h('div', { class: 'act-btn' }, '✋');
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('❓', () => this.openMenu('help')));
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn());
     this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act);
     ui.append(this.root);
     this.setupJoystick(zone);
@@ -58,6 +59,20 @@ export class Hud {
     bus.on('day', () => this.renderTop());
     bus.on('toast', (text) => this.toast(text));
     this.render();
+  }
+
+  private muteBtn(): HTMLElement {
+    const b = h('div', { class: 'round small' }, isMuted() ? '🔇' : '🔊');
+    onTap(b, () => {
+      setMuted(!isMuted());
+      b.textContent = isMuted() ? '🔇' : '🔊';
+      try {
+        localStorage.setItem('lilla-garden.muted', isMuted() ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+    });
+    return b;
   }
 
   private roundBtn(label: string, fn: () => void): HTMLElement {

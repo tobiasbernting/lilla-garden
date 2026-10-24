@@ -13,6 +13,14 @@ export const ITEM_NAMES: Record<string, string> = {
   fish_perch: 'Abborre',
   fish_pike: 'Gädda',
   fish_gold: 'Guldfisk',
+  pancakes: 'Pannkakor',
+  carrot_cake: 'Morotskaka',
+  pumpkin_pie: 'Pumpapaj',
+  strawberry_jam: 'Jordgubbssylt',
+  fish_soup: 'Fisksoppa',
+  bread: 'Bröd',
+  animal_dog: 'Hund',
+  animal_cat: 'Katt',
   bed: 'Säng',
   rug: 'Matta',
   chair: 'Stol',
@@ -137,6 +145,8 @@ export const SPECIES_NAMES: Record<string, string> = {
   rabbit: 'Kanin',
   sheep: 'Får',
   cow: 'Ko',
+  dog: 'Hund',
+  cat: 'Katt',
 };
 
 export const SEASON_NAMES: Record<string, string> = {
@@ -167,6 +177,9 @@ export const T = {
   sellOne: 'Sälj 1',
   sellAll: 'Sälj alla',
   craft: 'Snickra',
+  cook: 'Laga mat',
+  cooked: 'Lagade: {item}',
+  petArrived: '{name} följer nu med dig överallt!',
   wardrobe: 'Garderob',
   buy: 'Köp',
   coins: 'kr',
@@ -252,6 +265,7 @@ export const QUEST_TEXTS: Record<string, string[]> = {
   material: ['Staketet har gått sönder. Jag behöver {n} {item}.', 'Kan du hämta {n} {item} till mig?'],
   fish: ['Jag är sugen på fisk! Fånga {n} {item} åt mig.', 'En {item} till middag vore gott. Kan du fånga {n}?'],
   rod: ['Hjälp mig med ved till brasan, så får du mitt extra fiskespö! Jag behöver {n} {item}.'],
+  dish: ['Jag har hört att du lagar god mat. Kan jag få {n} {item}?', 'Mmm, {item}! Jag vill ha {n}.'],
 };
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
@@ -368,6 +382,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'egg', text: 'När det glittrar ✨ över djuret: använd det för att hämta ägg, ull eller mjölk.' },
       { icon: 'trough', text: 'Snickra en matho och lägg hö i den, så äter djuren själva på natten.' },
       { icon: 'emoji:🐣', text: 'Ungar växer upp på tre dagar.' },
+      { icon: 'animal_dog', text: 'En hund eller katt från brevlådan behöver inget hus. Den följer med dig överallt!' },
     ],
   },
   {
@@ -380,6 +395,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'chair', text: 'Möbler snickrar du vid arbetsbänken eller köper under Möbler i brevlådan.' },
       { icon: 'bed', text: 'Håll möbeln och använd den på golvet där du vill ha den. Hammaren tar bort den igen.' },
       { icon: 'lamp', text: 'Lampor och spisen lyser mysigt på kvällen.' },
+      { icon: 'pancakes', text: 'Använd spisen för att laga mat av det du odlat. Mat säljer för mycket mer än råvarorna!' },
       { icon: 'emoji:🖼️', text: 'Tavlor, mattor och klockor kan du gå på. Du kan även möblera ute på gården.' },
     ],
   },

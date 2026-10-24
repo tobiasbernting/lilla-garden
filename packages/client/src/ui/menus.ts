@@ -2,6 +2,7 @@
 import {
   ANIMALS,
   CHEST_SIZE,
+  COOKING,
   HELP,
   NPCS,
   openQuests,
@@ -18,6 +19,7 @@ import {
   itemName,
   type ClothingSlot,
   type ItemDef,
+  type RecipeDef,
   type SlotRef,
 } from '@lilla-garden/shared';
 import { portraitUrl, getArt } from '../art/textures.js';
@@ -27,7 +29,7 @@ import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season'] as const;
@@ -113,6 +115,7 @@ export class Menus {
       emotes: '😊',
       nameAnimal: '🐾',
       help: `❓ ${T.help}`,
+      cook: `🍳 ${T.cook}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
@@ -135,7 +138,10 @@ export class Menus {
         this.renderSell(body);
         break;
       case 'workbench':
-        this.renderCraft(body);
+        this.renderCraft(body, RECIPES, 'craft');
+        break;
+      case 'cook':
+        this.renderCraft(body, COOKING, 'cook');
         break;
       case 'wardrobe':
         this.renderWardrobe(panel, body);
@@ -290,10 +296,10 @@ export class Menus {
 
   // ---- craft ----
 
-  private renderCraft(body: HTMLElement): void {
+  private renderCraft(body: HTMLElement, recipes: RecipeDef[], msg: 'craft' | 'cook'): void {
     const me = myPlayer()!;
     const rows = h('div', { class: 'rows' });
-    for (const r of RECIPES) {
+    for (const r of recipes) {
       const ok = r.in.every((i) => countItem(me.inventory, i.item) >= i.count);
       const needs = h(
         'span',
@@ -303,8 +309,8 @@ export class Menus {
           return h('span', { class: `need ${have >= i.count ? 'ok' : 'no'}` }, `${idx ? ' · ' : ''}${itemName(i.item)} ${have}/${i.count}`);
         }),
       );
-      const b = h('button', { disabled: !ok }, T.craft);
-      onTap(b, () => net.send({ t: 'craft', recipe: r.id }));
+      const b = h('button', { disabled: !ok }, msg === 'cook' ? T.cook : T.craft);
+      onTap(b, () => net.send({ t: msg, recipe: r.id }));
       rows.append(h('div', { class: `row${ok ? '' : ' off'}` }, icon(getArt().iconUrl[r.out.item] ?? ''), h('span', { class: 'name' }, `${itemName(r.out.item)}${r.out.count > 1 ? ` × ${r.out.count}` : ''}`, h('br'), needs), b));
     }
     body.append(rows);

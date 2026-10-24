@@ -99,7 +99,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -116,6 +116,8 @@ export interface AnimalDef {
   /** Days until a baby is grown. */
   growDays: number;
   speed: number;
+  /** Pets follow their owner instead of wandering near a house. */
+  pet?: boolean;
 }
 
 export interface RecipeDef {
@@ -235,6 +237,8 @@ export interface AnimalState {
   named: boolean;
   age: number; // days; < growDays = baby
   homeId: number; // object id of its house
+  /** Pets: the player they follow. */
+  owner?: string;
   /** Wander target. */
   tx?: number;
   ty?: number;

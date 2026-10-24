@@ -52,6 +52,14 @@ add(I('milk', 'animal_product', { sell: 40 }));
 add(I('wool', 'animal_product', { sell: 50 }));
 add(I('egg_pask', 'animal_product', { sell: 25 }));
 
+// Dishes (cooked at the stove)
+add(I('pancakes', 'crop', { sell: 70 }));
+add(I('carrot_cake', 'crop', { sell: 60 }));
+add(I('pumpkin_pie', 'crop', { sell: 120 }));
+add(I('strawberry_jam', 'crop', { sell: 55 }));
+add(I('fish_soup', 'crop', { sell: 65 }));
+add(I('bread', 'crop', { sell: 30 }));
+
 // Fish
 add(I('fish_roach', 'fish', { sell: 8 }));
 add(I('fish_perch', 'fish', { sell: 14 }));
@@ -63,6 +71,8 @@ add(I('animal_hen', 'animal', { species: 'hen', buy: 150, tab: 'animals', stack:
 add(I('animal_rabbit', 'animal', { species: 'rabbit', buy: 200, tab: 'animals', stack: 1 }));
 add(I('animal_sheep', 'animal', { species: 'sheep', buy: 400, tab: 'animals', stack: 1 }));
 add(I('animal_cow', 'animal', { species: 'cow', buy: 600, tab: 'animals', stack: 1 }));
+add(I('animal_dog', 'animal', { species: 'dog', buy: 250, tab: 'animals', stack: 1 }));
+add(I('animal_cat', 'animal', { species: 'cat', buy: 250, tab: 'animals', stack: 1 }));
 
 // Placeables (crafted or bought)
 const place = (id: string, extra: Partial<ItemDef> = {}) =>
@@ -220,7 +230,7 @@ built('bookshelf');
 built('lamp', { light: true });
 built('plant');
 built('painting', { solid: false, flat: true });
-built('stove', { light: true });
+built('stove', { light: true, interact: 'cook' });
 built('clock', { solid: false, flat: true });
 built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
 built('coop', { w: 2, h: 2, houses: { species: 'hen', capacity: 4 } });
@@ -258,6 +268,9 @@ export const ANIMALS: Record<string, AnimalDef> = {
   rabbit: { species: 'rabbit', house: 'hutch', growDays: 3, speed: 28 },
   sheep: { species: 'sheep', product: 'wool', house: 'sheepfold', growDays: 3, speed: 16 },
   cow: { species: 'cow', product: 'milk', house: 'barn', growDays: 3, speed: 14 },
+  // Pets follow their owner and need no house
+  dog: { species: 'dog', house: '', growDays: 0, speed: 70, pet: true },
+  cat: { species: 'cat', house: '', growDays: 0, speed: 60, pet: true },
 };
 
 // ---------- Recipes ----------
@@ -298,6 +311,16 @@ export const RECIPES: RecipeDef[] = [
   R('rug', 1, ['fiber', 8]),
   R('lamp', 1, ['wood', 2], ['fiber', 2]),
   R('plant', 1, ['fiber', 3], ['stone', 1]),
+];
+
+/** Recipes cooked at the stove (same shape as crafting recipes). */
+export const COOKING: RecipeDef[] = [
+  R('bread', 2, ['wheat', 3]),
+  R('pancakes', 1, ['wheat', 2], ['egg', 1], ['milk', 1]),
+  R('carrot_cake', 1, ['carrot', 3], ['egg', 1], ['wheat', 1]),
+  R('pumpkin_pie', 1, ['pumpkin', 1], ['egg', 1], ['wheat', 1]),
+  R('strawberry_jam', 1, ['strawberry', 4]),
+  R('fish_soup', 1, ['fish_perch', 1], ['potato', 2], ['carrot', 1]),
 ];
 
 // ---------- Villagers ----------

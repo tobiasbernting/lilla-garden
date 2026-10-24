@@ -24,7 +24,7 @@ export type Change =
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
-  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc'; id?: number; npc?: string }
+  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook'; id?: number; npc?: string }
   | { t: 'quests'; quests: Quest[] }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' };
 
@@ -41,6 +41,7 @@ export type ClientMsg =
   | { t: 'select'; slot: number }
   | { t: 'swap'; a: SlotRef; b: SlotRef }
   | { t: 'craft'; recipe: string }
+  | { t: 'cook'; recipe: string }
   | { t: 'buy'; item: string; qty: number }
   | { t: 'sell'; slot: number; qty: number }
   | { t: 'equip'; slot: 'hat' | 'shirt' | 'pants' | 'shoes'; item: string | null }

@@ -1,7 +1,7 @@
 // Authoritative world simulation. Pure functions over WorldState; no I/O.
 // The server runs this; the client reuses movement for prediction.
 
-import { ANIMALS, CROPS, FISH, ITEMS, NPCS, RECIPES, item, objectDef } from './data.ts';
+import { ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, item, objectDef } from './data.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -396,6 +396,7 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
     case 'sell':
     case 'workbench':
     case 'wardrobe':
+    case 'cook':
       out.push({ t: 'open', to: p.id, ui: def.interact });
       return;
     case 'water':
@@ -647,6 +648,18 @@ export function craft(world: WorldState, playerId: string, recipeId: string): Ch
   return out;
 }
 
+export function cook(world: WorldState, playerId: string, recipeId: string): Change[] {
+  const p = world.players[playerId];
+  const r = COOKING.find((x) => x.id === recipeId);
+  if (!p || !r) return [];
+  for (const i of r.in) if (countItem(p.inventory, i.item) < i.count) return [toast(p.id, T.notNow)];
+  const out: Change[] = [];
+  for (const i of r.in) removeItem(p.inventory, i.item, i.count);
+  giveItems(world, p, r.out.item, r.out.count, out);
+  out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'), toast(p.id, fmt(T.cooked, { item: itemName(r.out.item) })), playerChange(p));
+  return out;
+}
+
 export const catalogueAvailable = (id: string, season: Season): boolean => {
   const d = ITEMS[id];
   if (!d || d.buy === undefined) return false;
@@ -663,6 +676,14 @@ export function buy(world: WorldState, playerId: string, id: string, qty: number
   const cost = (d.buy ?? 0) * qty;
   if (p.coins < cost) return [toast(p.id, T.notEnoughCoins)];
   const out: Change[] = [];
+  if (d.category === 'animal' && d.species && ANIMALS[d.species]?.pet) {
+    const already = Object.values(world.animals).some((a) => a.owner === p.id && a.species === d.species) || p.orders.some((o) => o.species === d.species);
+    if (already) return [toast(p.id, T.notNow)];
+    p.coins -= cost;
+    p.orders.push({ species: d.species, homeId: 0 });
+    out.push(toast(p.id, fmt(T.animalOrdered, { species: SPECIES_NAMES[d.species] ?? d.species })), fx(tileOf(p.x), tileOf(p.y), 'coin'), playerChange(p));
+    return out;
+  }
   if (d.category === 'animal' && d.species) {
     const adef = ANIMALS[d.species]!;
     const houses = Object.values(world.objects).filter((o) => objectDef(o.kind).houses?.species === d.species);
@@ -839,6 +860,7 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'greta', kind: 'crop', items: ['carrot', 'potato', 'strawberry', 'tomato', 'pumpkin', 'sunflower', 'wheat'], count: [2, 5], stars: 1 },
   { npc: 'greta', kind: 'product', items: ['egg', 'milk', 'wool'], count: [1, 2], stars: 2 },
   { npc: 'greta', kind: 'material', items: ['wood', 'stone', 'fiber'], count: [6, 12], stars: 1 },
+  { npc: 'greta', kind: 'dish', items: ['bread', 'pancakes', 'carrot_cake', 'strawberry_jam'], count: [1, 2], stars: 3 },
   { npc: 'sven', kind: 'fish', items: ['fish_roach', 'fish_perch', 'fish_pike'], count: [1, 3], stars: 2 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
 ];
@@ -955,8 +977,43 @@ const homeCenter = (world: WorldState, a: AnimalState): { x: number; y: number }
 
 const LEASH = 7 * TILE;
 
+const PET_FOLLOW = 26;
+const PET_TELEPORT = 7 * TILE;
+
+function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
+  const owner = a.owner ? world.players[a.owner] : undefined;
+  if (!owner || !owner.online) return false;
+  const dx = owner.x - a.x;
+  const dy = owner.y - a.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > PET_TELEPORT) {
+    // Lost (fence, house door…): pop up next to the owner
+    a.x = owner.x - 10;
+    a.y = owner.y + 2;
+    a.moving = false;
+    return true;
+  }
+  if (dist <= PET_FOLLOW) {
+    a.moving = false;
+    delete a.tx;
+    delete a.ty;
+    return true;
+  }
+  const speed = ANIMALS[a.species]?.speed ?? 60;
+  const step = Math.min(dist - PET_FOLLOW + 1, (speed * dtMs) / 1000);
+  const nx = a.x + (dx / dist) * step;
+  const ny = a.y + (dy / dist) * step;
+  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+  a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+  a.moving = r.x !== a.x || r.y !== a.y;
+  a.x = r.x;
+  a.y = r.y;
+  return true;
+}
+
 function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx): void {
   for (const a of Object.values(world.animals)) {
+    if (ANIMALS[a.species]?.pet && tickPet(world, a, dtMs)) continue;
     if (a.waitMs > 0) {
       a.waitMs -= dtMs;
       a.moving = false;
@@ -1157,8 +1214,12 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
         homeId: home?.id ?? 0,
         waitMs: 2000,
       };
+      if (def.pet) {
+        a.owner = p.id;
+        a.age = 10;
+      }
       world.animals[a.id] = a;
-      out.push({ t: 'animal', id: a.id, animal: a }, toast(null, fmt(T.animalArrived, { name: `${animalDisplayName(a)} (${SPECIES_NAMES[o.species] ?? o.species})` })));
+      out.push({ t: 'animal', id: a.id, animal: a }, toast(null, fmt(def.pet ? T.petArrived : T.animalArrived, { name: `${animalDisplayName(a)} (${SPECIES_NAMES[o.species] ?? o.species})` })));
     }
     p.orders = [];
     out.push(playerChange(p));

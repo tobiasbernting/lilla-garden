@@ -9,6 +9,7 @@ import {
   addObject,
   applyMove,
   completeQuest,
+  cook,
   buy,
   countItem,
   craft,
@@ -603,5 +604,39 @@ describe('house, villagers, fishing', () => {
     performAction(world, p.id, wx, wy, c);
     applyMove(world, p.id, p.x - 5, p.y, 'left', true);
     expect(p.fishing).toBeUndefined();
+  });
+});
+
+describe('cooking and pets', () => {
+  it('cooks dishes at the stove', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'wheat', 3);
+    expect(toasts(cook(world, p.id, 'pancakes'))).toContain('Inget händer här');
+    cook(world, p.id, 'bread');
+    expect(countItem(p.inventory, 'bread')).toBe(2);
+    expect(countItem(p.inventory, 'wheat')).toBe(0);
+    const stove = Object.values(world.objects).find((o) => o.kind === 'stove')!;
+    standAt(world, p, stove.x, stove.y + 1);
+    const ch = performAction(world, p.id, stove.x, stove.y, ctx());
+    expect(ch.some((c) => c.t === 'open' && c.ui === 'cook')).toBe(true);
+  });
+
+  it('a dog needs no house, arrives next morning and follows its owner', () => {
+    const { world, p } = setup();
+    p.coins = 500;
+    buy(world, p.id, 'animal_dog', 1, ctx());
+    expect(p.orders).toEqual([{ species: 'dog', homeId: 0 }]);
+    expect(toasts(buy(world, p.id, 'animal_dog', 1, ctx()))).toContain('Inget händer här');
+    standAt(world, p, 20, 20);
+    newDay(world, ctx());
+    const dog = Object.values(world.animals).find((a) => a.species === 'dog')!;
+    expect(dog.owner).toBe(p.id);
+    standAt(world, p, 24, 20);
+    for (let i = 0; i < 40; i++) tick(world, 50, ctx());
+    expect(Math.hypot(dog.x - p.x, dog.y - p.y)).toBeLessThan(30);
+    // far away (e.g. into the house): pops up next to the owner
+    standAt(world, p, 57, 58);
+    tick(world, 50, ctx());
+    expect(Math.hypot(dog.x - p.x, dog.y - p.y)).toBeLessThan(16);
   });
 });
