@@ -29,12 +29,14 @@ import {
   type Change,
   type DropState,
   type PlayerState,
+  type Terrain,
   type WorldObject,
 } from '@lilla-garden/shared';
 import { animalKey, ANIMAL_SIZE } from '../art/animals.js';
 import { dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
+import { NEW_ART } from '../art/style.ts';
 import { net } from '../net.js';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '../state.js';
 
@@ -57,12 +59,18 @@ export interface InputSource {
   dy: number;
 }
 
+const lerpColor = (a: number, b: number, t: number): number => {
+  const ch = (sh: number) => Math.round(((a >> sh) & 0xff) * (1 - t) + ((b >> sh) & 0xff) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+
 export class GameScene extends Phaser.Scene {
   private layer!: Phaser.Tilemaps.TilemapLayer;
   private map!: Phaser.Tilemaps.Tilemap;
   private waterTiles: [number, number][] = [];
   private waterFrame = 0;
   private objects = new Map<number, Phaser.GameObjects.Image>();
+  private objectShadows = new Map<number, Phaser.GameObjects.Image>();
   private crops = new Map<string, Phaser.GameObjects.Image>();
   private drops = new Map<number, Phaser.GameObjects.Image>();
   private players = new Map<string, Actor>();
@@ -100,6 +108,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     // A restart keeps class fields: drop everything that belonged to the previous scene
     this.objects.clear();
+    this.objectShadows.clear();
     this.crops.clear();
     this.drops.clear();
     this.players.clear();
@@ -197,37 +206,48 @@ export class GameScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ terrain
 
+  /** Sides of (x,y) whose ground is of another kind: 1 up, 2 right, 4 down, 8 left. */
+  private edgeMask(x: number, y: number, same: (t: Terrain | undefined) => boolean): number {
+    const T = this.world.terrain;
+    const at = (tx: number, ty: number) => (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H ? undefined : T[ty * MAP_W + tx]);
+    return (same(at(x, y - 1)) ? 0 : 1) | (same(at(x + 1, y)) ? 0 : 2) | (same(at(x, y + 1)) ? 0 : 4) | (same(at(x - 1, y)) ? 0 : 8);
+  }
+
+  private tileIndexFor(x: number, y: number, frame = 0): number {
+    const art = getArt();
+    const t = this.world.terrain[y * MAP_W + x]!;
+    if (this.area === 'dungeon') return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
+    const snowy = client.season === 'jul';
+    if (!art.terrain.edges) return art.terrain.index(t, x, y, snowy, 0, t === 'water' ? frame : 0);
+    if (t === 'water') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'water' || n === undefined), frame);
+    if (t === 'soil' || t === 'soil_wet') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'soil' || n === 'soil_wet' || n === undefined));
+    return art.terrain.index(t, x, y, snowy);
+  }
+
   private rebuildTerrain(): void {
     const world = this.world;
-    const art = getArt();
-    const snowy = client.season === 'jul';
     this.waterTiles = [];
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
-        const t = world.terrain[y * MAP_W + x]!;
-        if (this.area === 'dungeon') {
-          this.layer.putTileAt(t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false), x, y);
-          continue;
-        }
-        this.layer.putTileAt(art.terrain.index(t, x, y, snowy), x, y);
-        if (t === 'water') this.waterTiles.push([x, y]);
+        this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
+        if (this.area !== 'dungeon' && world.terrain[y * MAP_W + x] === 'water') this.waterTiles.push([x, y]);
       }
   }
 
   private setTerrain(x: number, y: number): void {
     const world = this.world;
-    const art = getArt();
     const t = world.terrain[y * MAP_W + x]!;
-    this.layer.putTileAt(art.terrain.index(t, x, y, client.season === 'jul'), x, y);
+    this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
     this.waterTiles = this.waterTiles.filter(([wx, wy]) => wx !== x || wy !== y);
     if (t === 'water') this.waterTiles.push([x, y]);
+    // neighbours' edges change too
+    if (getArt().terrain.edges) for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) if (x + dx >= 0 && y + dy >= 0 && x + dx < MAP_W && y + dy < MAP_H) this.layer.putTileAt(this.tileIndexFor(x + dx, y + dy, this.waterFrame), x + dx, y + dy);
   }
 
   private animateWorld(): void {
     const art = getArt();
     this.waterFrame = 1 - this.waterFrame;
-    const idx = art.terrain.waterFrames[this.waterFrame]!;
-    for (const [x, y] of this.waterTiles) this.layer.putTileAt(idx, x, y);
+    for (const [x, y] of this.waterTiles) this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
     this.animTick++;
     const world = this.world;
     for (const [id, img] of this.objects) {
@@ -273,6 +293,11 @@ export class GameScene extends Phaser.Scene {
     const img = this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0);
     img.setDepth(def.flat ? 1 : (o.y + def.h) * TILE);
     this.objects.set(o.id, img);
+    if (NEW_ART && (o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'bush')) {
+      this.objectShadows.get(o.id)?.destroy();
+      const sh = this.add.image(o.x * TILE + TILE / 2, (o.y + 1) * TILE - 2, 'fx-shadowBig-0').setDepth(1.5).setAlpha(0.7);
+      this.objectShadows.set(o.id, sh);
+    }
   }
 
   private putCrop(k: string, stage: number, crop: string): void {
@@ -396,6 +421,8 @@ export class GameScene extends Phaser.Scene {
           const gone = this.objects.get(c.id);
           gone?.destroy();
           this.objects.delete(c.id);
+          this.objectShadows.get(c.id)?.destroy();
+          this.objectShadows.delete(c.id);
           if (gone) this.refreshFenceNeighbours(Math.round(gone.x / TILE), Math.round(gone.y / TILE));
         }
         break;
@@ -801,6 +828,12 @@ export class GameScene extends Phaser.Scene {
   private drawNight(): void {
     const amount = this.area === 'dungeon' ? 0.82 : nightAmount(client.timeMs);
     this.night.clear();
+    if (NEW_ART && this.area !== 'dungeon' && !this.inside) {
+      const f = client.timeMs / DAY_LENGTH_MS;
+      // golden morning light and a warm sunset that fades into the blue night
+      if (f < 0.12) this.night.fill(0xffc070, 0.16 * (1 - f / 0.12));
+      else if (f > 0.5 && f < 0.7) this.night.fill(0xffa040, 0.22 * Math.sin(((f - 0.5) / 0.2) * Math.PI));
+    }
     if (this.inside) {
       const cam = this.cameras.main;
       this.night.fill(0x000000, 1);
@@ -808,7 +841,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (amount <= 0.01) return;
-    const color = this.area === 'dungeon' ? 0x05060c : client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
+    let color = this.area === 'dungeon' ? 0x05060c : client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
+    if (NEW_ART && this.area !== 'dungeon') {
+      // dusk: the dark comes in warm (purple-red) and cools to blue as the night deepens
+      const k = Math.min(1, Math.max(0, (client.timeMs / DAY_LENGTH_MS - 0.65) / 0.2));
+      color = lerpColor(0x8a2a50, color, k);
+    }
     this.night.fill(color, amount);
     const cam = this.cameras.main;
     const world = this.world;

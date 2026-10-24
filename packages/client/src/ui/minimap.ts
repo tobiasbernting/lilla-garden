@@ -36,9 +36,9 @@ export class Minimap {
     this.base.height = MAP_H * 2;
     this.el = h('div', { class: 'minimap', hidden: true }, this.canvas);
     try {
-      this.visible = localStorage.getItem('lilla-garden.minimap') === '1';
+      this.visible = localStorage.getItem('lilla-garden.minimap') !== '0';
     } catch {
-      /* ignore */
+      this.visible = true;
     }
     this.el.hidden = !this.visible;
     bus.on('change', (c) => {
