@@ -75,6 +75,11 @@ add(I('pumpkin_pie', 'crop', { sell: 120 }));
 add(I('strawberry_jam', 'crop', { sell: 55 }));
 add(I('fish_soup', 'crop', { sell: 65 }));
 add(I('bread', 'crop', { sell: 30 }));
+// Pizzeria menu (bought in the village, eaten for pizzapower)
+add(I('pizza', 'crop', { sell: 10, buy: 30, tab: 'pizzeria', food: { boostMs: 60_000 } }));
+add(I('pizza_kebab', 'crop', { sell: 12, buy: 40, tab: 'pizzeria', food: { boostMs: 60_000 } }));
+add(I('pizza_hawaii', 'crop', { sell: 11, buy: 35, tab: 'pizzeria', food: { boostMs: 60_000 } }));
+add(I('lemonade', 'crop', { sell: 3, buy: 10, tab: 'pizzeria', food: { boostMs: 20_000 } }));
 
 // Fish
 add(I('fish_roach', 'fish', { sell: 8 }));
@@ -250,6 +255,7 @@ addO(O('signpost', { breakWith: undefined }));
 addO(O('house_small', { w: 3, h: 3, breakWith: undefined }));
 addO(O('market', { w: 2, h: 2, interact: 'catalogue', breakWith: undefined }));
 addO(O('sellstall', { w: 2, h: 2, interact: 'sell', breakWith: undefined }));
+addO(O('pizzeria', { w: 3, h: 2, interact: 'pizzeria', breakWith: undefined, light: true }));
 addO(O('lantern', { solid: false, breakWith: undefined, light: true }));
 addO(O('town_well', { interact: 'water', breakWith: undefined }));
 
@@ -484,6 +490,23 @@ NPCS.bo = {
     { at: 0.7, x: 27, y: 30 },
   ],
 };
+NPCS.pino = {
+  id: 'pino',
+  name: 'Pizza-Pino',
+  area: VILLAGE_KEY,
+  x: 40,
+  y: 32,
+  appearance: { skin: '#dba97d', hair: '#2b2119', hairStyle: 'curly' },
+  outfit: { shirt: 'shirt_red', pants: 'pants_brown', shoes: 'shoes_boots', hat: 'hat_cap_red' },
+  greeting: ['Buongiorno! Vill du ha en pizza?', 'Pizzan är nybakad i stenugnen!', 'Tomater och vete – då blir det pizza!'],
+  routine: [
+    { at: 0, x: 40, y: 32 },
+    { at: 0.35, x: 34, y: 36 },
+    { at: 0.5, x: 40, y: 32 },
+    { at: 0.75, x: 36, y: 34 },
+    { at: 0.85, x: 40, y: 32 },
+  ],
+};
 NPCS.stina = {
   id: 'stina',
   name: 'Smed-Stina',
@@ -542,6 +565,12 @@ export const NPC_LINES: Record<string, { morning: string[]; day: string[]; eveni
     evening: ['Jag släcker ässjan nu.', 'God kväll!'],
     meet: ['Hej Bo! Bröd till lunch?', 'Fru Lind, honung till kaffet?'],
   },
+  pino: {
+    morning: ['Buongiorno! Ugnen är varm.', 'God morgon, {name}! Pizza till frukost?'],
+    day: ['Hej {name}! En pizza med extra ost?', 'Mamma mia, vilken dag!', 'Pizzapower gör dig snabb som vinden!'],
+    evening: ['Sista pizzan för idag!', 'Buonanotte, {name}!'],
+    meet: ['Bo! Har du vete till min deg?', 'Stina, ugnen behöver ses över!', 'Fru Lind, basilika till pizzan?'],
+  },
   lind: {
     morning: ['God morgon! Blommorna har vaknat.', 'Vilken fin dag!'],
     day: ['Hej {name}! Luktar du på rosorna?', 'Bina surrar så fint idag.'],
@@ -578,6 +607,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('fish_20', 'fish', 20, 2, 'fish_pike'),
   A('fish_gold', 'fish_gold', 1, 3, 'fish_gold'),
   A('cook_5', 'cook', 5, 2, 'pancakes'),
+  A('pizza_5', 'pizza', 5, 2, 'pizza'),
   A('quests_3', 'quests', 3, 1, 'egg_basket'),
   A('quests_15', 'quests', 15, 3, 'maypole'),
   A('coins_500', 'earned', 500, 1, 'animal_hen'),

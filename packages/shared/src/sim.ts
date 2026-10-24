@@ -457,6 +457,12 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     }
   }
 
+  // 0d. Food: eat it (unless pointing at something you can open)
+  if (held && item(held.item).food) {
+    const target = objectAt(world, tx, ty);
+    if (!target || !objectDef(target.kind).interact) return eat(world, p, held, ctx);
+  }
+
   // 1. Animal
   const animal = animalAt(world, tx, ty);
   if (animal) {
@@ -660,6 +666,7 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
     case 'workbench':
     case 'wardrobe':
     case 'cook':
+    case 'pizzeria':
       out.push({ t: 'open', to: p.id, ui: def.interact });
       return;
     case 'cave':
@@ -1255,6 +1262,7 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'elsa', kind: 'kid', items: ['strawberry', 'carrot', 'egg', 'bread', 'hay'], count: [1, 3], stars: 1 },
   { npc: 'elsa', kind: 'flowers', items: ['fiber'], count: [3, 6], stars: 1 },
   { npc: 'bo', kind: 'bake', items: ['wheat', 'egg', 'milk', 'honey'], count: [2, 4], stars: 2 },
+  { npc: 'pino', kind: 'pizza', items: ['tomato', 'wheat'], count: [2, 4], stars: 2 },
   { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem'], count: [1, 6], stars: 2 },
   { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
@@ -1760,6 +1768,7 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickAnimals(world, dtMs, ctx, out);
   tickNpcs(world, dtMs);
   tickDrops(world, out);
+  tickBoosts(world, ctx.now, out);
   tickFishing(world, ctx, out);
   tickOtherAreas(world, dtMs, ctx, out);
   for (const p of Object.values(world.players)) {
@@ -1862,6 +1871,32 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
     a.x = r.x;
     a.y = r.y;
     a.moving = true;
+  }
+}
+
+/** Speed multiplier while pizzapower lasts (client prediction uses the same number). */
+export const BOOST_SPEED_MUL = 1.3;
+
+/** Eats the held food: full hearts and a speed boost. */
+function eat(world: WorldState, p: PlayerState, held: ItemStack, ctx: SimCtx): Change[] {
+  const d = item(held.item);
+  if (!d.food) return [];
+  const out: Change[] = [];
+  takeFromSlot(p.inventory, p.selected, 1);
+  p.hearts = MAX_HEARTS;
+  p.boostUntil = Math.max(p.boostUntil ?? 0, ctx.now) + d.food.boostMs;
+  if (held.item.startsWith('pizza')) bump(p, 'pizza', 1, out);
+  out.push(fx(tileOf(p.x), tileOf(p.y), 'heart'), toast(p.id, fmt(T.ate, { item: itemName(held.item) })), toast(p.id, T.pizzaPower), playerChange(p));
+  void world;
+  return out;
+}
+
+function tickBoosts(world: WorldState, now: number, out: Change[]): void {
+  for (const p of Object.values(world.players)) {
+    if (p.boostUntil !== undefined && now >= p.boostUntil) {
+      delete p.boostUntil;
+      out.push(playerChange(p));
+    }
   }
 }
 

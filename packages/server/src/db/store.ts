@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureCave, ensureFarmExits, ensureInterior, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureCave, ensureFarmExits, ensureInterior, ensurePizzeria, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -105,6 +105,10 @@ export class PgStore implements Store {
       a.players = {};
       a.area = row.key;
       rebuildOccupancy(a);
+      if (ensurePizzeria(a)) {
+        console.log(`added the pizzeria to the saved village ${row.key}`);
+        this.dirtyAreas.add(row.key);
+      }
       world.areas[row.key] = a;
     }
     if (Object.keys(world.areas).length) console.log(`loaded ${Object.keys(world.areas).length} explored areas`);

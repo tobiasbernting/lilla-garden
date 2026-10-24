@@ -26,6 +26,7 @@ import {
   objectDef,
   stepPlayer,
   RIDE_SPEED_MUL,
+  BOOST_SPEED_MUL,
   tileOf,
   type AnimalState,
   type Change,
@@ -679,7 +680,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
     const running = !this.uiOpen && (this.keys.SHIFT!.isDown || this.runHeld);
-    stepPlayer(world, me, dx, dy, dt, me.riding !== undefined ? RIDE_SPEED_MUL : running ? 1.7 : 1);
+    const boost = me.boostUntil !== undefined && me.boostUntil > serverNow() ? BOOST_SPEED_MUL : 1;
+    stepPlayer(world, me, dx, dy, dt, (me.riding !== undefined ? RIDE_SPEED_MUL : running ? 1.7 : 1) * boost);
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 

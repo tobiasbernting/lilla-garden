@@ -29,6 +29,10 @@ export const ITEM_NAMES: Record<string, string> = {
   fish_pike: 'Gädda',
   fish_gold: 'Guldfisk',
   pancakes: 'Pannkakor',
+  pizza: 'Pizza Margherita',
+  pizza_kebab: 'Kebabpizza',
+  pizza_hawaii: 'Pizza Hawaii',
+  lemonade: 'Saft',
   carrot_cake: 'Morotskaka',
   pumpkin_pie: 'Pumpapaj',
   strawberry_jam: 'Jordgubbssylt',
@@ -149,6 +153,7 @@ export const ITEM_NAMES: Record<string, string> = {
 };
 
 export const OBJECT_NAMES: Record<string, string> = {
+  pizzeria: 'Pizzeria Pino',
   tree: 'Träd',
   tree_pine: 'Gran',
   tree_apple: 'Äppelträd',
@@ -266,6 +271,10 @@ export const T = {
   paintFill: 'Fyll',
   paintBrush: 'Pensel',
   bought: 'Köpt: {item}',
+  ate: 'Mums! {item}',
+  pizzaPower: 'Pizzapower! Du springer snabbare en stund.',
+  pizzeria: 'Pizzeria Pino',
+  pizzeriaHint: 'Håll pizzan i handen och tryck på marken för att äta. Pizzapower!',
   animalOrdered: 'En {species} flyttar in i morgon!',
   animalArrived: 'En ny vän har flyttat in: {name}!',
   nameAnimal: 'Vad ska {species} heta?',
@@ -380,6 +389,7 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   fish_20: { title: 'Fiskare', text: 'Fånga 20 fiskar' },
   fish_gold: { title: 'Guldfisken!', text: 'Fånga den sällsynta guldfisken' },
   cook_5: { title: 'Kock', text: 'Laga 5 rätter' },
+  pizza_5: { title: 'Pizzaälskare', text: 'Ät 5 pizzor' },
   quests_3: { title: 'Hjälpsam', text: 'Hjälp byborna 3 gånger' },
   quests_15: { title: 'Byns hjälte', text: 'Hjälp byborna 15 gånger' },
   coins_500: { title: 'Sparbössa', text: 'Tjäna 500 kr' },
@@ -409,6 +419,7 @@ export const QUEST_TEXTS: Record<string, string[]> = {
   kid: ['Jag vill ha {n} {item} till min picknick!', 'Kan du ge mig {n} {item}? Snälla!', 'Snövit skulle bli så glad för {n} {item}.'],
   flowers: ['Jag gör en blomsterkrans! Kan du ge mig {n} {item}?'],
   bake: ['Till dagens bak behöver jag {n} {item}.', 'Kunderna vill ha mer! Hämta {n} {item} åt mig.'],
+  pizza: ['Mamma mia, degen tar slut! Hämta {n} {item} till pizzerian.', 'Mina kunder vill ha pizza! Jag behöver {n} {item}.'],
   smith: ['Smedjan behöver {n} {item}. Kan du hjälpa till?', 'Jag ska smida något fint. {n} {item}, tack!'],
   garden: ['Till trädgården vill jag ha {n} {item}.', 'Kan du hitta {n} {item} åt mig? Det blir så fint.'],
 };
@@ -594,6 +605,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'emoji:🦊', text: 'Varje område har sina egna djur: rävar i skogen, rådjur på ängen, pingviner på isen, krabbor på stranden, getter i bergen och ödlor i öknen. Klappa dem!' },
       { icon: 'emoji:🗺️', text: 'Kartknappen visar alla områden du har upptäckt. Tryck på ett område för att åka dit direkt, eller på Hem.' },
       { icon: 'house_small', text: 'Öster om gården ligger Byn med Bagar-Bo, Smed-Stina och Fru Lind. På marknaden kan du köpa och sälja precis som hemma.' },
+      { icon: 'pizza', text: 'Pizzeria Pino ligger vid torget i Byn. Köp en pizza eller saft, håll den i handen och tryck på marken för att äta: hjärtana fylls och du får pizzapower – du springer snabbare en stund!' },
       { icon: 'emoji:🏃', text: 'Världen är oändlig. Hur långt vågar du gå?' },
     ],
   },

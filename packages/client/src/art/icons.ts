@@ -124,6 +124,18 @@ const produce = (id: string): Px => {
     case 'fish_soup':
       p.ellipse(1, 6, 14, 9, '#e0e0e0').ellipse(2, 5, 12, 5, '#e8a050').rect(5, 6, 3, 2, '#7aa060').rect(9, 5, 2, 2, '#f08a2a').rect(1, 9, 14, 1, '#b0b0b0');
       break;
+    case 'pizza':
+    case 'pizza_kebab':
+    case 'pizza_hawaii':
+      p.circle(8, 8, 7, '#e8b060').circle(8, 8, 6, '#e0453a').circle(8, 8, 5, '#f5d94a');
+      if (id === 'pizza') p.rect(5, 5, 2, 2, '#e0453a').rect(9, 8, 2, 2, '#e0453a').rect(6, 10, 2, 2, '#e0453a').px(9, 5, '#3f8a2e').px(5, 9, '#3f8a2e');
+      else if (id === 'pizza_kebab') p.rect(5, 5, 2, 2, '#8a4a2a').rect(9, 6, 2, 2, '#8a4a2a').rect(6, 9, 2, 2, '#8a4a2a').rect(9, 10, 2, 1, '#ffffff');
+      else p.rect(5, 5, 2, 2, '#f5e04a').rect(9, 6, 2, 2, '#f08a2a').rect(6, 9, 2, 2, '#e07a9a').rect(9, 10, 2, 2, '#f5e04a');
+      p.rect(8, 1, 1, 14, '#c89040').rect(1, 8, 14, 1, '#c89040');
+      break;
+    case 'lemonade':
+      p.rect(4, 3, 8, 11, '#ffb347').rect(4, 3, 8, 1, '#ffd08a').rect(3, 2, 10, 1, '#d8d8d8').rect(10, 1, 1, 6, '#e03a3a').rect(5, 6, 2, 2, '#ffffff').rect(6, 10, 1, 1, '#ffffff');
+      break;
     case 'bread':
       p.ellipse(1, 4, 14, 9, '#c8924a').ellipse(2, 3, 12, 6, '#e0b070').rect(5, 5, 2, 1, '#b07a3a').rect(9, 5, 2, 1, '#b07a3a');
       break;

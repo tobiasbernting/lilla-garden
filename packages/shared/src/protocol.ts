@@ -24,7 +24,7 @@ export type Change =
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
-  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint'; id?: number; npc?: string }
+  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria'; id?: number; npc?: string }
   | { t: 'quests'; quests: Quest[] }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom'; area?: string; from?: { x: number; y: number } }
   /** Sent to one player when they enter another map (full state) or when it is torn down (null). */
