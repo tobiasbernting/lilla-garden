@@ -40,7 +40,8 @@ export type ItemCategory =
   | 'feed'
   | 'clothing'
   | 'animal'
-  | 'decor';
+  | 'decor'
+  | 'fish';
 
 export type ClothingSlot = 'hat' | 'shirt' | 'pants' | 'shoes';
 
@@ -54,7 +55,7 @@ export interface ItemDef {
   /** Price in the catalogue; undefined = not for sale. */
   buy?: number;
   /** Catalogue tab, if sold. */
-  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'clothes' | 'season';
+  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season';
   /** Season this item is only available in (catalogue). */
   season?: Season;
   /** For seeds: the crop they grow. */
@@ -66,7 +67,7 @@ export interface ItemDef {
   /** For animals: species that moves in. */
   species?: string;
   /** For tools. */
-  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush';
+  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod';
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -99,6 +100,8 @@ export interface ObjectDef {
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
   interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed';
+  /** Gives light at night (client). */
+  light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
   flat?: boolean;
   /** Picked up by hand with any (or no) tool held. */
@@ -163,6 +166,33 @@ export interface PlayerState {
   emote?: { id: string; until: number };
   /** Pending catalogue animal deliveries (arrive next morning). */
   orders: { species: string; homeId: number }[];
+  /** Ids of quests this player has completed. */
+  questsDone: string[];
+  /** Stars earned from quests. */
+  stars: number;
+  /** Fishing in progress. */
+  fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
+}
+
+export interface Quest {
+  id: string;
+  npc: string;
+  want: { item: string; count: number };
+  reward: { coins: number; stars: number; item?: { item: string; count: number } };
+  /** Dialogue line (Swedish). */
+  text: string;
+  /** Fixed story quest (not replaced daily). */
+  fixed?: boolean;
+}
+
+export interface NpcDef {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  appearance: Appearance;
+  outfit: Outfit;
+  greeting: string[];
 }
 
 export interface CropState {
@@ -235,6 +265,10 @@ export interface WorldState {
   players: Record<string, PlayerState>;
   nextId: number;
   seasonOverride: Season | null;
+  /** Today's quest offers from the villagers. */
+  quests: Quest[];
+  /** Day the quests were generated for. */
+  questsDay: number;
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;

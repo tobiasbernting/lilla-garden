@@ -3,11 +3,15 @@ import Phaser from 'phaser';
 import {
   ANIMALS,
   CROPS,
+  INTERIOR,
   MAP_H,
   MAP_W,
+  NPCS,
   REACH,
+  T,
   TILE,
   facingTile,
+  inInterior,
   isBaby,
   nightAmount,
   objectDef,
@@ -54,6 +58,9 @@ export class GameScene extends Phaser.Scene {
   private crops = new Map<string, Phaser.GameObjects.Image>();
   private drops = new Map<number, Phaser.GameObjects.Image>();
   private players = new Map<string, Actor>();
+  private npcs = new Map<string, Actor>();
+  private inside = false;
+  private roomMask!: Phaser.GameObjects.Image;
   private animals = new Map<number, Actor>();
   private cursor!: Phaser.GameObjects.Image;
   private night!: Phaser.GameObjects.RenderTexture;
@@ -96,11 +103,29 @@ export class GameScene extends Phaser.Scene {
     for (const d of Object.values(world.drops)) this.putDrop(d);
     for (const a of Object.values(world.animals)) this.putAnimal(a);
     for (const p of Object.values(world.players)) if (p.online) this.putPlayer(p);
+    for (const npc of Object.values(NPCS)) {
+      const texture = characterTexture(this.textures, npc.appearance, npc.outfit);
+      const x = npc.x * TILE + TILE / 2;
+      const y = npc.y * TILE + TILE / 2;
+      const shadow = this.add.image(x, y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6);
+      const sprite = this.add.sprite(x, y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1).setDepth(y + 4);
+      this.npcs.set(npc.id, { sprite, shadow, label: this.makeLabel(npc.name, 'npc'), texture, x, y });
+    }
 
     // --- cursor, night, snow ---
     this.cursor = this.add.image(0, 0, 'fx-cursor-0').setOrigin(0).setDepth(9000).setAlpha(0.9);
     this.glow = this.makeGlowTexture();
     this.night = this.add.renderTexture(0, 0, VIEW_W, VIEW_H).setOrigin(0).setScrollFactor(0).setDepth(9500);
+    if (!this.textures.exists('fx-white')) {
+      const c = document.createElement('canvas');
+      c.width = 2;
+      c.height = 2;
+      c.getContext('2d')!.fillStyle = '#fff';
+      c.getContext('2d')!.fillRect(0, 0, 2, 2);
+      this.textures.addCanvas('fx-white', c);
+    }
+    this.roomMask = this.make.image({ key: 'fx-white', add: false }).setOrigin(0).setDisplaySize((INTERIOR.w + 2) * TILE, (INTERIOR.h + 2) * TILE);
+    this.inside = false;
     this.applySeason();
 
     // --- camera ---
@@ -133,6 +158,7 @@ export class GameScene extends Phaser.Scene {
       this.unsub.forEach((u) => u());
       this.unsub = [];
       this.labels.innerHTML = '';
+      this.npcs.clear();
     });
 
     this.time.addEvent({ delay: 400, loop: true, callback: () => this.animateWorld() });
@@ -503,7 +529,36 @@ export class GameScene extends Phaser.Scene {
 
     // --- camera ---
     const cam = this.cameras.main;
-    cam.centerOn(Math.round(me.x), Math.round(me.y));
+    const insideNow = inInterior(tileOf(me.x), tileOf(me.y));
+    if (insideNow !== this.inside) {
+      this.inside = insideNow;
+      if (insideNow) bus.emit('toast', T.enteredHouse);
+    }
+    if (insideNow) cam.centerOn((INTERIOR.x + INTERIOR.w / 2) * TILE, (INTERIOR.y + INTERIOR.h / 2) * TILE);
+    else cam.centerOn(Math.round(me.x), Math.round(me.y));
+
+    // --- villagers turn towards the nearest player ---
+    for (const [id, actor] of this.npcs) {
+      const npc = NPCS[id]!;
+      let best: PlayerState | null = null;
+      let bestD = 3.5 * TILE;
+      for (const p of Object.values(world.players)) {
+        if (!p.online) continue;
+        const d = Math.hypot(p.x - actor.x, p.y - actor.y);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
+      }
+      let facing: PlayerState['facing'] = 'down';
+      if (best) {
+        const dx = best.x - actor.x;
+        const dy = best.y - actor.y;
+        facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+      }
+      this.placeActor(actor, facing, false, true);
+      void npc;
+    }
 
     // --- cursor ---
     const target = !this.touch && this.hoverTile ? this.hoverTile : facingTile(me);
@@ -515,6 +570,7 @@ export class GameScene extends Phaser.Scene {
     const sx = cam.scrollX;
     const sy = cam.scrollY;
     for (const actor of this.players.values()) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 24 - sy) * zoom);
+    for (const actor of this.npcs.values()) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 24 - sy) * zoom);
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
       const near = a && Math.hypot(a.x - me.x, a.y - me.y) < 40;
@@ -592,6 +648,12 @@ export class GameScene extends Phaser.Scene {
   private drawNight(): void {
     const amount = nightAmount(client.timeMs);
     this.night.clear();
+    if (this.inside) {
+      const cam = this.cameras.main;
+      this.night.fill(0x000000, 1);
+      this.night.erase(this.roomMask, (INTERIOR.x - 1) * TILE - cam.scrollX, (INTERIOR.y - 1) * TILE - cam.scrollY);
+      return;
+    }
     if (amount <= 0.01) return;
     const color = client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
     this.night.fill(color, amount);
@@ -600,11 +662,11 @@ export class GameScene extends Phaser.Scene {
     // torches and lit windows push the dark away
     for (const o of Object.values(world.objects)) {
       let r = 0;
-      if (o.kind === 'torch') r = 1;
+      const def = objectDef(o.kind);
+      if (def.light || o.kind === 'torch') r = 1;
       else if (o.kind === 'house') r = 1.6;
       else if (o.kind === 'pumpkin_lantern' || o.kind === 'xmas_tree' || o.kind === 'lights') r = 0.8;
       if (!r) continue;
-      const def = objectDef(o.kind);
       const x = (o.x + def.w / 2) * TILE - cam.scrollX;
       const y = (o.y + def.h / 2) * TILE - cam.scrollY;
       if (x < -40 || y < -40 || x > VIEW_W + 40 || y > VIEW_H + 40) continue;

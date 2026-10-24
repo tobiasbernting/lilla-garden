@@ -514,8 +514,53 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('egg_basket', [eggBasket()]);
   set('maypole', [maypole()], 0, -16);
   set('flower_wreath_decor', [wreathDecor()]);
+  // Furniture
+  set('bed', [bed()], 0, -4);
+  set('rug', [rug()]);
+  set('chair', [chair()], 0, -4);
+  set('sofa', [sofa()], 0, -4);
+  set('bookshelf', [bookshelf()], 0, -8);
+  set('lamp', [lamp()], 0, -8);
+  set('plant', [plant()], 0, -6);
+  set('painting', [painting()], 0, -6);
+  set('stove', [stove()], 0, -6);
+  set('clock', [clock()], 0, -6);
+  set('door_out', [doorOut()]);
   return art;
 }
+
+const bed = (): Px => {
+  const p = new Px(16, 36).rect(1, 4, 14, 30, WOOD).rect(1, 4, 14, 2, WOOD_L).rect(2, 8, 12, 24, '#f4f0e6').rect(2, 8, 12, 6, '#ffffff').rect(2, 16, 12, 16, '#d9453b').rect(2, 16, 12, 1, '#ef7a6a');
+  for (let y = 19; y < 32; y += 4) p.rect(2, y, 12, 1, '#b5362c');
+  p.rect(1, 32, 14, 2, WOOD_D);
+  return p.outline(OUTLINE);
+};
+const rug = (): Px => {
+  const p = new Px(32, 32).rect(0, 0, 32, 32, '#b55a4a').rect(2, 2, 28, 28, '#d9736a').rect(5, 5, 22, 22, '#e8a898').rect(9, 9, 14, 14, '#d9736a');
+  for (let i = 0; i < 32; i += 4) p.rect(i, 0, 2, 1, '#f0c8b8').rect(i + 2, 31, 2, 1, '#f0c8b8');
+  return p;
+};
+const chair = (): Px => new Px(16, 20).rect(3, 2, 10, 2, WOOD_L).rect(3, 4, 10, 8, WOOD).rect(3, 11, 10, 3, WOOD_L).rect(3, 14, 2, 5, WOOD_D).rect(11, 14, 2, 5, WOOD_D).rect(4, 5, 8, 6, '#d9453b').outline(OUTLINE);
+const sofa = (): Px => new Px(32, 20).rect(1, 3, 30, 12, '#3b6fd9').rect(1, 3, 30, 1, '#6a95ea').rect(3, 7, 26, 6, '#5a8fe8').rect(1, 13, 30, 4, '#2f4c8a').rect(2, 17, 3, 2, WOOD_D).rect(27, 17, 3, 2, WOOD_D).rect(0, 5, 3, 12, '#3b6fd9').rect(29, 5, 3, 12, '#3b6fd9').outline(OUTLINE);
+const bookshelf = (): Px => {
+  const p = new Px(16, 24).rect(1, 0, 14, 24, WOOD_D).rect(2, 1, 12, 22, WOOD);
+  const cols = ['#d9453b', '#3b6fd9', '#3ba35b', '#e8c23a', '#8a4fd1', '#e87ab8'];
+  for (let shelf = 0; shelf < 3; shelf++) {
+    p.rect(2, 7 + shelf * 7, 12, 1, WOOD_D);
+    for (let i = 0; i < 5; i++) p.rect(3 + i * 2, 2 + shelf * 7 + (i % 2), 2, 5 - (i % 2), cols[(i + shelf) % cols.length]!);
+  }
+  return p.outline(OUTLINE);
+};
+const lamp = (): Px => new Px(16, 24).rect(7, 8, 2, 14, WOOD_D).rect(4, 20, 8, 2, WOOD_D).rect(3, 2, 10, 7, '#f5e04a').rect(4, 1, 8, 1, '#f5e04a').rect(3, 8, 10, 1, '#d9b53a').outline(OUTLINE);
+const plant = (): Px => new Px(16, 22).rect(4, 14, 8, 7, '#c0603a').rect(4, 14, 8, 1, '#e0805a').ellipse(2, 2, 12, 12, LEAF).ellipse(5, 0, 6, 6, LEAF_L).rect(7, 10, 2, 5, LEAF_D).outline(OUTLINE);
+const painting = (): Px => new Px(16, 14).rect(0, 0, 16, 14, WOOD_L).rect(2, 2, 12, 10, '#8fd0f0').rect(2, 8, 12, 4, '#4f9a3a').circle(10, 5, 2, '#f5e04a').outline(OUTLINE);
+const stove = (): Px => {
+  const p = new Px(16, 22).rect(1, 6, 14, 16, '#3a3a3a').rect(1, 6, 14, 1, '#5a5a5a').rect(3, 10, 10, 6, '#1b1a17').rect(5, 12, 6, 3, '#f5a623').rect(7, 11, 2, 1, '#ffd45a');
+  p.rect(5, 1, 6, 5, '#5a5a5a').rect(6, 0, 4, 1, '#5a5a5a').rect(2, 18, 12, 2, '#5a5a5a');
+  return p.outline(OUTLINE);
+};
+const clock = (): Px => new Px(16, 16).circle(8, 8, 7, WOOD).circle(8, 8, 5, '#f4f0e6').rect(8, 4, 1, 4, OUTLINE).rect(8, 8, 3, 1, OUTLINE).px(8, 8, '#d9453b').outline(OUTLINE);
+const doorOut = (): Px => new Px(16, 16).rect(0, 0, 16, 16, '#b9b6ad').rect(1, 1, 14, 14, WOOD).rect(2, 2, 12, 12, WOOD_D).rect(3, 3, 10, 10, WOOD).rect(11, 7, 2, 2, '#f2d35a').rect(5, 12, 6, 1, '#f2d35a');
 
 // ---------------------------------------------------------------------------
 // Crops: one 16x16 frame per stage (stages.length growth stages + mature).
@@ -618,4 +663,6 @@ export const EMOTE_GLYPH: Record<string, string> = {
   hjälp: '🆘',
   titta: '👀',
   sova: '💤',
+  fiske: '🎣',
+  napp: '❗',
 };

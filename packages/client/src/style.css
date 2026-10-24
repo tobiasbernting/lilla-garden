@@ -74,6 +74,9 @@ body {
 .label.me {
   color: #ffe98a;
 }
+.label.npc {
+  color: #ffd1f0;
+}
 .label.animal {
   color: #d8f5c8;
   font-size: calc(3.5 * var(--u));
@@ -658,4 +661,31 @@ input[type='text'] {
 }
 .help-icon.emoji {
   font-size: calc(8 * var(--u));
+}
+
+/* ---- villagers ---- */
+.npc-talk {
+  display: flex;
+  gap: calc(3 * var(--u));
+  align-items: center;
+  margin-bottom: calc(2 * var(--u));
+}
+.bubble-text {
+  flex: 1;
+  background: #fff;
+  border: var(--u) solid var(--ink);
+  border-radius: calc(3 * var(--u));
+  padding: calc(2 * var(--u)) calc(3 * var(--u));
+  font-weight: 800;
+  font-size: calc(5 * var(--u));
+  position: relative;
+}
+.bubble-text::before {
+  content: '';
+  position: absolute;
+  left: calc(-2 * var(--u));
+  top: 40%;
+  border: var(--u) solid transparent;
+  border-right-color: var(--ink);
+  border-width: var(--u) calc(2 * var(--u)) var(--u) 0;
 }

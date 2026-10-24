@@ -8,6 +8,7 @@ import {
   addItem,
   addObject,
   applyMove,
+  completeQuest,
   buy,
   countItem,
   craft,
@@ -512,5 +513,95 @@ describe('season calendar', () => {
     expect(seasonForDate(new Date('2026-06-15T10:00:00+02:00'))).toBe('midsommar');
     expect(seasonForDate(new Date('2026-06-21T10:00:00+02:00'))).toBe('midsommar');
     expect(seasonForDate(new Date('2026-06-22T10:00:00+02:00'))).toBe('none');
+  });
+});
+
+describe('house, villagers, fishing', () => {
+  it('walking into the farmhouse door teleports inside and back out', () => {
+    const { world, p } = setup();
+    standAt(world, p, 10, 9);
+    for (let i = 0; i < 10 && Math.floor(p.x / 16) !== 57; i++) stepPlayer(world, p, 0, -1, 50);
+    expect(Math.floor(p.x / 16)).toBe(57);
+    expect(Math.floor(p.y / 16)).toBe(59);
+    expect(p.facing).toBe('up');
+    expect(objectAt(world, 56, 60)?.kind).toBeUndefined();
+    expect(objectAt(world, 51, 59)?.kind).toBe('wall_wood');
+    for (let i = 0; i < 12 && p.y > 20 * 16; i++) stepPlayer(world, p, 0, 1, 50);
+    expect(Math.floor(p.x / 16)).toBe(10);
+    expect(Math.floor(p.y / 16)).toBe(9);
+  });
+
+  it('the server accepts a predicted move through the portal', () => {
+    const { world, p } = setup();
+    standAt(world, p, 10, 9);
+    applyMove(world, p.id, 57 * 16 + 8, 58 * 16 + 12, 'up', true);
+    expect(Math.floor(p.x / 16)).toBe(57);
+    expect(Math.floor(p.y / 16)).toBe(58);
+  });
+
+  it('furniture can be placed inside', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'chair', 1);
+    standAt(world, p, 53, 59);
+    select(p, 'chair');
+    performAction(world, p.id, 54, 59, ctx());
+    expect(objectAt(world, 54, 59)?.kind).toBe('chair');
+  });
+
+  it('villagers offer daily quests that reward coins and stars', () => {
+    const { world, p } = setup();
+    tick(world, 50, ctx());
+    expect(world.quests.length).toBeGreaterThanOrEqual(5);
+    const greta = world.quests.filter((q) => q.npc === 'greta');
+    expect(greta.length).toBe(2);
+    const q = greta[0]!;
+    standAt(world, p, 20, 14);
+    const open = performAction(world, p.id, 20, 13, ctx());
+    expect(open.some((c) => c.t === 'open' && c.ui === 'npc' && c.npc === 'greta')).toBe(true);
+    expect(toasts(completeQuest(world, p.id, q.id))).toContain('Du har inte det än');
+    addItem(p.inventory, q.want.item, q.want.count);
+    const coins = p.coins;
+    completeQuest(world, p.id, q.id);
+    expect(p.coins).toBe(coins + q.reward.coins);
+    expect(p.stars).toBe(q.reward.stars);
+    expect(countItem(p.inventory, q.want.item)).toBe(0);
+    expect(completeQuest(world, p.id, q.id)).toEqual([]);
+    // Sven's fixed quest gives the fishing rod
+    addItem(p.inventory, 'wood', 5);
+    standAt(world, p, 37, 37);
+    completeQuest(world, p.id, 'sven_rod');
+    expect(countItem(p.inventory, 'rod')).toBe(1);
+    newDay(world, ctx());
+    expect(p.questsDone).toEqual(['sven_rod']);
+    expect(world.quests.filter((q2) => q2.npc === 'greta')[0]!.id).not.toBe(q.id);
+  });
+
+  it('fishing: wait for the bite, then act to catch', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'rod', 1);
+    select(p, 'rod');
+    const water = world.terrain.indexOf('water');
+    const wx = water % 64;
+    const wy = Math.floor(water / 64);
+    standAt(world, p, wx - 1, wy);
+    const c = ctx();
+    performAction(world, p.id, wx, wy, c);
+    expect(p.fishing).toBeDefined();
+    expect(p.emote?.id).toBe('fiske');
+    // too early: fish gets away
+    expect(toasts(performAction(world, p.id, wx, wy, c))).toContain('Fisken simmade iväg…');
+    performAction(world, p.id, wx, wy, c);
+    const bite = { ...c, now: c.now + 6000 };
+    tick(world, 50, bite);
+    expect(p.fishing?.bite).toBe(true);
+    expect(p.emote?.id).toBe('napp');
+    const ch = performAction(world, p.id, wx, wy, bite);
+    expect(toasts(ch)[0]).toContain('Du fick en');
+    expect(p.inventory.some((s) => s?.item.startsWith('fish_'))).toBe(true);
+    expect(p.fishing).toBeUndefined();
+    // moving cancels
+    performAction(world, p.id, wx, wy, c);
+    applyMove(world, p.id, p.x - 5, p.y, 'left', true);
+    expect(p.fishing).toBeUndefined();
   });
 });

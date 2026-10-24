@@ -5,6 +5,7 @@ import {
   TICK_HZ,
   applyMove,
   buy,
+  completeQuest,
   craft,
   createPlayer,
   dropItem,
@@ -281,6 +282,9 @@ export class Game {
         break;
       case 'nameAnimal':
         changes = nameAnimal(w, pid, msg.id, String(msg.name ?? ''));
+        break;
+      case 'quest':
+        changes = completeQuest(w, pid, String(msg.id ?? ''));
         break;
     }
     if (changes.length) {

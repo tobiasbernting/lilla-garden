@@ -8,6 +8,21 @@ export const ITEM_NAMES: Record<string, string> = {
   scythe: 'Lie',
   hammer: 'Hammare',
   brush: 'Borste',
+  rod: 'Fiskespö',
+  fish_roach: 'Mört',
+  fish_perch: 'Abborre',
+  fish_pike: 'Gädda',
+  fish_gold: 'Guldfisk',
+  bed: 'Säng',
+  rug: 'Matta',
+  chair: 'Stol',
+  sofa: 'Soffa',
+  bookshelf: 'Bokhylla',
+  lamp: 'Lampa',
+  plant: 'Krukväxt',
+  painting: 'Tavla',
+  stove: 'Spis',
+  clock: 'Klocka',
   carrot_seed: 'Morotsfrön',
   potato_seed: 'Sättpotatis',
   strawberry_seed: 'Jordgubbsplantor',
@@ -114,6 +129,7 @@ export const OBJECT_NAMES: Record<string, string> = {
   wardrobe: 'Garderob',
   start_chest: 'Kista',
   start_bench: 'Arbetsbänk',
+  door_out: 'Dörr ut',
 };
 
 export const SPECIES_NAMES: Record<string, string> = {
@@ -159,6 +175,7 @@ export const T = {
   tabFeed: 'Foder',
   tabMaterials: 'Material',
   tabClothes: 'Kläder',
+  tabFurniture: 'Möbler',
   tabSeason: 'Säsong',
   needHouse: 'Bygg ett {house} först',
   houseFull: 'Fullt i {house}',
@@ -199,6 +216,20 @@ export const T = {
   admin: 'Föräldrasida',
   help: 'Hjälp',
   helpHint: 'Tryck på ? när du vill veta hur man gör',
+  stars: 'stjärnor',
+  questWant: 'Vill ha',
+  questReward: 'Belöning',
+  questGive: 'Lämna',
+  questDone: 'Tack så mycket! Här får du {reward}.',
+  questNoItems: 'Du har inte det än',
+  questAllDone: 'Jag har inget mer idag. Kom tillbaka i morgon!',
+  questNew: 'Byborna har nya önskningar!',
+  fishingStart: 'Vänta på napp…',
+  fishingBite: 'Napp! Tryck igen!',
+  fishingCaught: 'Du fick en {fish}!',
+  fishingLost: 'Fisken simmade iväg…',
+  needRod: 'Du behöver ett fiskespö för att fiska',
+  enteredHouse: 'Välkommen in! Möblera som du vill.',
   players: 'Spelare',
   nobodyOnline: 'Ingen online – världen är pausad',
   saved: 'Sparat',
@@ -213,6 +244,15 @@ export const DEFAULT_ANIMAL_NAMES = [
   'Pelle', 'Lisa', 'Molly', 'Stina', 'Kalle', 'Maja', 'Ludde', 'Nisse', 'Bella', 'Sigge',
   'Tindra', 'Alfons', 'Majken', 'Doris', 'Gösta', 'Selma', 'Rufus', 'Svea', 'Pricken', 'Tulla',
 ];
+
+/** Daily quest text templates. {n} and {item} are filled in. */
+export const QUEST_TEXTS: Record<string, string[]> = {
+  crop: ['Jag ska baka en paj och behöver {n} {item}!', 'Kan du odla {n} {item} åt mig?', 'Mina barnbarn kommer på besök. Har du {n} {item}?'],
+  product: ['Jag skulle så gärna vilja ha {n} {item}.', 'Till frukost vill jag ha {n} {item}!'],
+  material: ['Staketet har gått sönder. Jag behöver {n} {item}.', 'Kan du hämta {n} {item} till mig?'],
+  fish: ['Jag är sugen på fisk! Fånga {n} {item} åt mig.', 'En {item} till middag vore gott. Kan du fånga {n}?'],
+  rod: ['Hjälp mig med ved till brasan, så får du mitt extra fiskespö! Jag behöver {n} {item}.'],
+};
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
 export const objectName = (kind: string): string => OBJECT_NAMES[kind] ?? ITEM_NAMES[kind] ?? kind;
@@ -328,6 +368,42 @@ export const HELP: HelpTopic[] = [
       { icon: 'egg', text: 'När det glittrar ✨ över djuret: använd det för att hämta ägg, ull eller mjölk.' },
       { icon: 'trough', text: 'Snickra en matho och lägg hö i den, så äter djuren själva på natten.' },
       { icon: 'emoji:🐣', text: 'Ungar växer upp på tre dagar.' },
+    ],
+  },
+  {
+    id: 'house',
+    emoji: '🏠',
+    title: 'Huset',
+    intro: 'Gå in genom dörren på huset.',
+    steps: [
+      { icon: 'emoji:🚪', text: 'Gå rakt in i dörren på huset så kommer du in. Gå ut genom dörren längst ner.' },
+      { icon: 'chair', text: 'Möbler snickrar du vid arbetsbänken eller köper under Möbler i brevlådan.' },
+      { icon: 'bed', text: 'Håll möbeln och använd den på golvet där du vill ha den. Hammaren tar bort den igen.' },
+      { icon: 'lamp', text: 'Lampor och spisen lyser mysigt på kvällen.' },
+      { icon: 'emoji:🖼️', text: 'Tavlor, mattor och klockor kan du gå på. Du kan även möblera ute på gården.' },
+    ],
+  },
+  {
+    id: 'villagers',
+    emoji: '🧓',
+    title: 'Tant Greta och Fiskar-Sven',
+    intro: 'Byborna har nya önskningar varje dag.',
+    steps: [
+      { icon: 'emoji:💬', text: 'Tant Greta står vid stigen öster om huset. Fiskar-Sven står vid dammen. Använd dem för att prata.' },
+      { icon: 'carrot', text: 'De berättar vad de vill ha. Samla sakerna och tryck Lämna.' },
+      { icon: 'emoji:⭐', text: 'Du får kr och stjärnor. Stjärnorna syns uppe i hörnet.' },
+      { icon: 'rod', text: 'Hjälp Sven med 5 trä så får du ett fiskespö!' },
+    ],
+  },
+  {
+    id: 'fishing',
+    emoji: '🎣',
+    title: 'Fiska',
+    steps: [
+      { icon: 'rod', text: 'Håll fiskespöet och använd det på vattnet i dammen.' },
+      { icon: 'emoji:🎣', text: 'Stå stilla och vänta. Om du går iväg försvinner fisken.' },
+      { icon: 'emoji:❗', text: 'När det står ❗ över dig: tryck snabbt igen för att dra upp fisken!' },
+      { icon: 'fish_perch', text: 'Sälj fisken i säljlådan eller ge den till Sven. Guldfisken är sällsynt.' },
     ],
   },
   {
