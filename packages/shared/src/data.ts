@@ -66,10 +66,12 @@ add(I('heartberry', 'crop', { sell: 20 }));
 add(I('egg', 'animal_product', { sell: 15 }));
 add(I('milk', 'animal_product', { sell: 40 }));
 add(I('wool', 'animal_product', { sell: 50 }));
+add(I('truffle', 'animal_product', { sell: 60 }));
 add(I('egg_pask', 'animal_product', { sell: 25 }));
 
 // Dishes (cooked at the stove)
 add(I('pancakes', 'crop', { sell: 70 }));
+add(I('truffle_pasta', 'crop', { sell: 160 }));
 add(I('carrot_cake', 'crop', { sell: 60 }));
 add(I('pumpkin_pie', 'crop', { sell: 120 }));
 add(I('strawberry_jam', 'crop', { sell: 55 }));
@@ -88,6 +90,7 @@ add(I('animal_rabbit', 'animal', { species: 'rabbit', buy: 200, tab: 'animals', 
 add(I('animal_sheep', 'animal', { species: 'sheep', buy: 400, tab: 'animals', stack: 1 }));
 add(I('animal_cow', 'animal', { species: 'cow', buy: 600, tab: 'animals', stack: 1 }));
 add(I('animal_horse', 'animal', { species: 'horse', buy: 500, tab: 'animals', stack: 1 }));
+add(I('animal_pig', 'animal', { species: 'pig', buy: 350, tab: 'animals', stack: 1 }));
 add(I('animal_dog', 'animal', { species: 'dog', buy: 250, tab: 'animals', stack: 1 }));
 add(I('animal_cat', 'animal', { species: 'cat', buy: 250, tab: 'animals', stack: 1 }));
 
@@ -116,6 +119,7 @@ place('hutch', { sell: 15 });
 place('sheepfold', { sell: 30 });
 place('barn', { sell: 50 });
 place('stall', { sell: 60 });
+place('pigsty', { sell: 25 });
 place('flowerbox', { sell: 5 });
 place('well', { sell: 20 });
 // Furniture (Möbler) – crafted or bought, usable inside the house and outside
@@ -294,6 +298,7 @@ built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
 built('barn', { w: 3, h: 2, houses: { species: 'cow', capacity: 2 } });
 built('stall', { w: 3, h: 2, houses: { species: 'horse', capacity: 2 } });
+built('pigsty', { w: 2, h: 2, houses: { species: 'pig', capacity: 3 } });
 built('pumpkin_lantern');
 built('ghost_flag', { solid: false });
 built('xmas_tree', { w: 1, h: 2 });
@@ -325,6 +330,8 @@ export const ANIMALS: Record<string, AnimalDef> = {
   rabbit: { species: 'rabbit', house: 'hutch', growDays: 3, speed: 28 },
   sheep: { species: 'sheep', product: 'wool', house: 'sheepfold', growDays: 3, speed: 16 },
   cow: { species: 'cow', product: 'milk', house: 'barn', growDays: 3, speed: 14 },
+  // Pigs root up truffles in the morning
+  pig: { species: 'pig', product: 'truffle', house: 'pigsty', growDays: 3, speed: 16 },
   // Horses give nothing but can be ridden by their owner once grown
   horse: { species: 'horse', house: 'stall', growDays: 3, speed: 24 },
   // Pets follow their owner and need no house
@@ -378,6 +385,7 @@ export const RECIPES: RecipeDef[] = [
   R('sheepfold', 1, ['wood', 25], ['stone', 6]),
   R('barn', 1, ['wood', 40], ['stone', 15]),
   R('stall', 1, ['wood', 45], ['stone', 10]),
+  R('pigsty', 1, ['wood', 24], ['stone', 8]),
   R('hay', 2, ['fiber', 3]),
   R('chair', 1, ['wood', 3]),
   R('bed', 1, ['wood', 10], ['fiber', 6]),
@@ -410,6 +418,7 @@ export const COOKING: RecipeDef[] = [
   R('pumpkin_pie', 1, ['pumpkin', 1], ['egg', 1], ['wheat', 1]),
   R('strawberry_jam', 1, ['strawberry', 4]),
   R('fish_soup', 1, ['fish_perch', 1], ['potato', 2], ['carrot', 1]),
+  R('truffle_pasta', 1, ['truffle', 1], ['wheat', 2], ['milk', 1]),
 ];
 
 // ---------- Villagers ----------
@@ -596,6 +605,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('paint_10', 'paint', 10, 3, 'paper'),
   A('ride_1', 'ride', 1, 1, 'animal_horse'),
   A('ride_25', 'ride', 25, 2, 'stall'),
+  A('truffle_1', 'truffle', 1, 1, 'truffle'),
+  A('truffle_20', 'truffle', 20, 2, 'animal_pig'),
 ];
 
 /** Fish and how likely they bite (weights). */

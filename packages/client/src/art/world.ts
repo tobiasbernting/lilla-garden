@@ -554,6 +554,18 @@ const building = (w: number, h: number, wallC: string, roofC: string, door = tru
   return p.outline(OUTLINE);
 };
 
+const pigsty = (): Px => {
+  // a low wooden shed with an open front and a muddy wallow in front of it
+  const p = new Px(32, 38);
+  const shed = building(32, 26, '#c58f55', '#7a5230', false, { roofH: 10 });
+  p.blit(shed, 0, 0);
+  // open doorway with a pig looking out
+  p.rect(11, 14, 10, 11, '#3a2414').rect(13, 18, 6, 5, '#f2b8c6').rect(18, 19, 2, 2, '#e8899e').px(14, 19, OUTLINE).px(17, 19, OUTLINE);
+  // mud wallow
+  p.ellipse(3, 27, 26, 10, '#6b4a2a').ellipse(6, 28, 20, 7, '#8a6238').ellipse(10, 30, 6, 3, '#5a3d20').ellipse(19, 29, 5, 3, '#5a3d20');
+  return p.outline(OUTLINE);
+};
+
 const horseStable = (): Px => {
   // a wooden stable: brown plank walls, dark roof, a wide half-door with a horse looking out
   const p = building(48, 44, '#a8743c', '#4e3520', false, { windows: 1, roofH: 18 });
@@ -730,6 +742,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('sheepfold', [building(32, 36, '#c9c6bd', '#6f6c66', true, { windows: 2, roofH: 14 })], 0, -4);
   set('barn', [building(48, 44, '#b5413a', '#6f4a26', true, { windows: 2, roofH: 18 })], 0, -12);
   set('stall', [horseStable()], 0, -12);
+  set('pigsty', [pigsty()], 0, -6);
   set('house', PAINT_COLORS.map((_, i) => house(i)), 0, -20);
   set('mailbox', [mailbox()], 0, -8);
   set('sellbox', [sellbox()]);

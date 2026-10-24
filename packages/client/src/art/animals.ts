@@ -7,6 +7,7 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   rabbit: { w: 16, h: 14 },
   sheep: { w: 18, h: 16 },
   cow: { w: 24, h: 18 },
+  pig: { w: 18, h: 14 },
   horse: { w: 26, h: 24 },
   dog: { w: 16, h: 14 },
   cat: { w: 14, h: 12 },
@@ -50,6 +51,20 @@ function cow(p: Px, f: number): void {
   p.rect(3 + f, 13, 3, 5, c).rect(8, 13, 3, 5, c).rect(13 - f, 13, 3, 5, c).rect(3 + f, 17, 3, 1, '#3a3129').rect(8, 17, 3, 1, '#3a3129').rect(13 - f, 17, 3, 1, '#3a3129');
   p.rect(0, 5, 2, 6, c).px(0, 11, '#3a3129');
   p.rect(2, 10, 3, 2, '#f0b8a8');
+}
+
+function pig(p: Px, f: number): void {
+  // side view facing right: round pink body, snout, floppy ear and a curly tail
+  const c = '#f2b8c6';
+  const d = shade(c, 0.8);
+  p.ellipse(1, 3, 14, 9, c).rect(3, 5, 11, 6, c);
+  p.ellipse(10, 2, 8, 8, c); // head
+  p.rect(16, 5, 2, 3, '#e8899e').px(16, 6, d).px(17, 6, d); // snout with nostrils
+  p.rect(11, 1, 2, 3, d).px(12, 0, d); // ear
+  p.px(14, 4, OUTLINE); // eye
+  p.px(0, 4, d).px(1, 3, d).px(0, 2, d); // curly tail
+  p.rect(3 + f, 11, 2, 3, d).rect(7, 11, 2, 3, d).rect(12 - f, 11, 2, 3, d); // trotters
+  p.rect(5, 8, 4, 2, shade(c, 0.9)); // belly shadow
 }
 
 function horse(p: Px, f: number): void {
@@ -157,10 +172,10 @@ function lizard(p: Px, f: number): void {
   p.rect(5 + f, 7, 2, 1, c).rect(10 - f, 7, 2, 1, c).rect(7, 1, 1, 1, shade(c, 0.7));
 }
 
-const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, slime, bat, troll, boss };
+const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, slime, bat, troll, boss };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
-const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0] };
+const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], pig: [14, -1], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0] };
 
 export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean): Px {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };

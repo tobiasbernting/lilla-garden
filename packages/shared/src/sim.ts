@@ -546,6 +546,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
       a.hasProduct = false;
       giveItems(world, p, product, 1, out);
       bump(p, 'product', 1, out);
+      if (product === 'truffle') bump(p, 'truffle', 1, out);
       out.push(fx(atx, aty, 'sparkle'), toast(p.id, fmt(T.collected, { item: itemName(product), name })), playerChange(p), {
         t: 'animal',
         id: a.id,

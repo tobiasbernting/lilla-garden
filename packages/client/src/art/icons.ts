@@ -155,6 +155,12 @@ const produce = (id: string): Px => {
     case 'rocket':
       p.rect(6, 2, 4, 9, '#d8d8d8').rect(6, 2, 1, 9, '#ffffff').rect(9, 2, 1, 9, '#a8a8a8').tpl(5, 0, ['..##..', '.####.'], { '#': '#e04a2a' }).rect(4, 9, 2, 4, '#e04a2a').rect(10, 9, 2, 4, '#e04a2a').rect(7, 11, 2, 2, '#ffb24a').px(7, 13, '#ffe66a').px(8, 14, '#ff6a2a');
       break;
+    case 'truffle':
+      p.ellipse(3, 4, 10, 9, '#3a2a1e').ellipse(4, 5, 8, 7, '#5a4030').px(6, 6, '#8a6a50').px(9, 8, '#8a6a50').px(5, 9, '#8a6a50').px(10, 5, '#2a1a10');
+      break;
+    case 'truffle_pasta':
+      p.ellipse(1, 7, 14, 8, '#e0e0e0').ellipse(2, 5, 12, 7, '#f2d35a').rect(3, 7, 10, 1, '#e0b040').rect(6, 5, 3, 2, '#5a4030').rect(9, 8, 2, 2, '#5a4030').rect(1, 11, 14, 1, '#b0b0b0');
+      break;
     case 'wool':
       p.ellipse(2, 3, 12, 10, '#f7f3ee').ellipse(1, 6, 5, 5, '#f7f3ee').ellipse(10, 6, 5, 5, '#f7f3ee').px(7, 8, '#d8d4ce');
       break;

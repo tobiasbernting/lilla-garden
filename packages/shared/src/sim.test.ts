@@ -1321,3 +1321,52 @@ describe('hästar', () => {
     expect(Object.values(areaOf(world, p).animals).some((a) => a.species === 'horse')).toBe(false);
   });
 });
+
+describe('grisar', () => {
+  it('need a pigsty, root up truffles once grown and happy, and unlock Grisbonde', () => {
+    const { world, p } = setup();
+    p.coins = 2000;
+    expect(toasts(buy(world, p.id, 'animal_pig', 1, ctx()))).toContain('Bygg ett Svinstia först');
+    for (let y = 30; y < 36; y++) for (let x = 30; x < 36; x++) clearTile(world, x, y);
+    const sty = addObject(world, 'pigsty', 30, 30)!;
+    for (let i = 0; i < 3; i++) expect(toasts(buy(world, p.id, 'animal_pig', 1, ctx()))[0]).toContain('flyttar in i morgon');
+    expect(toasts(buy(world, p.id, 'animal_pig', 1, ctx()))).toContain('Fullt i Svinstia');
+    expect(p.coins).toBe(2000 - 3 * 350);
+    newDay(world, ctx());
+    const pig = Object.values(world.animals).find((a) => a.species === 'pig')!;
+    expect(pig.homeId).toBe(sty.id);
+    pig.x = 33 * TILE + 8;
+    pig.y = 33 * TILE + 8;
+    standAt(world, p, 32, 33);
+    addItem(p.inventory, 'hay', 10);
+    for (let d = 0; d < 3; d++) {
+      select(p, 'hay');
+      performAction(world, p.id, 33, 33, ctx());
+      expect(pig.fed).toBe(true);
+      select(p, 'hoe');
+      performAction(world, p.id, 33, 33, ctx()); // pet
+      expect(pig.hasProduct).toBe(false);
+      newDay(world, ctx());
+      pig.x = 33 * TILE + 8;
+      pig.y = 33 * TILE + 8;
+    }
+    expect(pig.age).toBe(3);
+    expect(pig.hasProduct).toBe(true);
+    const ch = performAction(world, p.id, 33, 33, ctx());
+    expect(countItem(p.inventory, 'truffle')).toBe(1);
+    expect(pig.hasProduct).toBe(false);
+    expect(p.stats?.truffle).toBe(1);
+    expect(p.achievements).toContain('truffle_1');
+    expect(toasts(ch).some((t) => t.includes('Grisbonde'))).toBe(true);
+  });
+
+  it('truffle pasta is cooked at the stove from truffle, wheat and milk', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'truffle', 1);
+    addItem(p.inventory, 'wheat', 2);
+    addItem(p.inventory, 'milk', 1);
+    cook(world, p.id, 'truffle_pasta');
+    expect(countItem(p.inventory, 'truffle_pasta')).toBe(1);
+    expect(countItem(p.inventory, 'truffle')).toBe(0);
+  });
+});
