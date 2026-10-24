@@ -47,6 +47,15 @@ const tool = (kind: string): Px => {
     case 'rod':
       p.line(2, 14, 12, 2, WOOD).line(3, 14, 13, 2, WOOD_D).line(12, 2, 14, 9, '#d8d8d8').rect(13, 9, 2, 2, '#d8d8d8').rect(12, 11, 2, 2, '#e04a2a');
       break;
+    case 'lasso':
+      // a rope loop with the coiled end
+      p.circle(6, 7, 5.5, WOOD_L).circle(6, 7, 4.5, WOOD_D);
+      p.ctx.clearRect(3, 4, 6, 6);
+      p.rect(10, 9, 5, 2, WOOD_L).rect(13, 7, 2, 2, WOOD_L).rect(14, 5, 1, 2, WOOD_L).rect(11, 10, 3, 1, WOOD_D);
+      break;
+    case 'fur':
+      p.ellipse(1, 4, 14, 9, '#8a5a2a').ellipse(3, 3, 10, 7, '#a9784a').rect(2, 10, 2, 3, '#8a5a2a').rect(12, 10, 2, 3, '#8a5a2a').rect(6, 2, 4, 2, '#8a5a2a').px(4, 6, '#c58f55').px(9, 7, '#c58f55');
+      break;
     case 'brush':
       p.rect(6, 1, 4, 7, WOOD).rect(9, 1, 1, 7, WOOD_D).rect(3, 8, 10, 4, '#d8363a').rect(3, 12, 10, 3, '#e6c15a');
       for (let x = 3; x < 13; x += 2) p.rect(x, 12, 1, 3, '#cfa84a');
@@ -124,6 +133,18 @@ const produce = (id: string): Px => {
     case 'fish_soup':
       p.ellipse(1, 6, 14, 9, '#e0e0e0').ellipse(2, 5, 12, 5, '#e8a050').rect(5, 6, 3, 2, '#7aa060').rect(9, 5, 2, 2, '#f08a2a').rect(1, 9, 14, 1, '#b0b0b0');
       break;
+    case 'pizza':
+    case 'pizza_kebab':
+    case 'pizza_hawaii':
+      p.circle(8, 8, 7, '#e8b060').circle(8, 8, 6, '#e0453a').circle(8, 8, 5, '#f5d94a');
+      if (id === 'pizza') p.rect(5, 5, 2, 2, '#e0453a').rect(9, 8, 2, 2, '#e0453a').rect(6, 10, 2, 2, '#e0453a').px(9, 5, '#3f8a2e').px(5, 9, '#3f8a2e');
+      else if (id === 'pizza_kebab') p.rect(5, 5, 2, 2, '#8a4a2a').rect(9, 6, 2, 2, '#8a4a2a').rect(6, 9, 2, 2, '#8a4a2a').rect(9, 10, 2, 1, '#ffffff');
+      else p.rect(5, 5, 2, 2, '#f5e04a').rect(9, 6, 2, 2, '#f08a2a').rect(6, 9, 2, 2, '#e07a9a').rect(9, 10, 2, 2, '#f5e04a');
+      p.rect(8, 1, 1, 14, '#c89040').rect(1, 8, 14, 1, '#c89040');
+      break;
+    case 'lemonade':
+      p.rect(4, 3, 8, 11, '#ffb347').rect(4, 3, 8, 1, '#ffd08a').rect(3, 2, 10, 1, '#d8d8d8').rect(10, 1, 1, 6, '#e03a3a').rect(5, 6, 2, 2, '#ffffff').rect(6, 10, 1, 1, '#ffffff');
+      break;
     case 'bread':
       p.ellipse(1, 4, 14, 9, '#c8924a').ellipse(2, 3, 12, 6, '#e0b070').rect(5, 5, 2, 1, '#b07a3a').rect(9, 5, 2, 1, '#b07a3a');
       break;
@@ -155,6 +176,12 @@ const produce = (id: string): Px => {
     case 'rocket':
       p.rect(6, 2, 4, 9, '#d8d8d8').rect(6, 2, 1, 9, '#ffffff').rect(9, 2, 1, 9, '#a8a8a8').tpl(5, 0, ['..##..', '.####.'], { '#': '#e04a2a' }).rect(4, 9, 2, 4, '#e04a2a').rect(10, 9, 2, 4, '#e04a2a').rect(7, 11, 2, 2, '#ffb24a').px(7, 13, '#ffe66a').px(8, 14, '#ff6a2a');
       break;
+    case 'truffle':
+      p.ellipse(3, 4, 10, 9, '#3a2a1e').ellipse(4, 5, 8, 7, '#5a4030').px(6, 6, '#8a6a50').px(9, 8, '#8a6a50').px(5, 9, '#8a6a50').px(10, 5, '#2a1a10');
+      break;
+    case 'truffle_pasta':
+      p.ellipse(1, 7, 14, 8, '#e0e0e0').ellipse(2, 5, 12, 7, '#f2d35a').rect(3, 7, 10, 1, '#e0b040').rect(6, 5, 3, 2, '#5a4030').rect(9, 8, 2, 2, '#5a4030').rect(1, 11, 14, 1, '#b0b0b0');
+      break;
     case 'wool':
       p.ellipse(2, 3, 12, 10, '#f7f3ee').ellipse(1, 6, 5, 5, '#f7f3ee').ellipse(10, 6, 5, 5, '#f7f3ee').px(7, 8, '#d8d4ce');
       break;
@@ -179,6 +206,19 @@ const clothingIcon = (d: ItemDef): Px => {
   const D = shade(C, 0.75);
   switch (c.slot) {
     case 'shirt':
+      if (c.style.startsWith('dress') || c.style === 'gown') {
+        // a-line dress on a hanger
+        const gown = c.style === 'gown';
+        p.rect(5, 2, 6, 4, C).rect(2, 2, 3, 3, C).rect(11, 2, 3, 3, C);
+        for (let y = 6; y < 14; y++) {
+          const half = 3 + Math.round(((y - 6) / 7) * (gown ? 4 : 3));
+          p.rect(8 - half, y, half * 2, 1, y === 13 ? D : C);
+        }
+        if (c.style === 'dress_belt' || gown) p.rect(5, 6, 6, 1, '#ffffff');
+        if (c.style === 'dress_flowers') p.px(6, 9, '#ffffff').px(10, 11, '#f5e04a').px(8, 12, '#ffffff').px(5, 12, '#f5e04a');
+        if (gown) p.px(8, 8, shade(C, 1.3)).px(8, 10, shade(C, 1.3)).px(3, 12, '#ffffff').px(12, 12, '#ffffff');
+        break;
+      }
       p.rect(4, 3, 8, 10, C).rect(1, 3, 3, 5, C).rect(12, 3, 3, 5, C).rect(6, 2, 4, 1, D).rect(4, 12, 8, 1, D);
       if (c.style === 'stripes') for (let y = 5; y < 12; y += 2) p.rect(4, y, 8, 1, '#ffffff');
       if (c.style === 'overalls') p.rect(4, 3, 8, 10, '#f0e4c8').rect(6, 3, 4, 10, C).rect(5, 3, 1, 3, C).rect(10, 3, 1, 3, C);

@@ -3,7 +3,8 @@
 
 import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
-import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, type Biome } from './biomes.ts';
+import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
+import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -97,6 +98,22 @@ export const npcAt = (world: WorldState, tx: number, ty: number) =>
 
 export const isMob = (a: AnimalState): boolean => !!ANIMALS[a.species]?.mob;
 
+/** Hit points and drops for anything that can be fought: cave monsters and untamed predators. */
+export const combatDef = (a: AnimalState): { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] } | undefined => {
+  const def = ANIMALS[a.species];
+  if (!def) return undefined;
+  if (def.mob) return def.mob;
+  if (def.predator && !a.owner) return { hp: def.predator.hp, drops: [{ item: 'fur', min: 1, max: 1, chance: 1 }] };
+  return undefined;
+};
+/** Monsters and wild predators that chase and bite players. */
+export const isHostile = (a: AnimalState): boolean => !!combatDef(a);
+/** Pets follow their owner: dogs and cats, and wild animals caught with a lasso. */
+export const isPetAnimal = (a: AnimalState): boolean => {
+  const def = ANIMALS[a.species];
+  return !!def && (!!def.pet || (!!def.wild && !!a.owner));
+};
+
 export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
   if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
@@ -122,7 +139,7 @@ export function applyPortal(p: { x: number; y: number; facing: Facing }, world?:
 export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
   const t = world.terrain[tileIndex(tx, ty)];
-  if (t === 'water' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields
+  if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields (and out of the pool)
   if (world.crops[key(tx, ty)]) return true;
   if (npcAt(world, tx, ty) || portalAt(tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
@@ -182,6 +199,7 @@ export function stepPlayer(
   }
   const ux = dx / len;
   const uy = dy / len;
+  if (inPool(world, p)) speedMul *= SWIM_SPEED_MUL;
   const dist = (PLAYER_SPEED * speedMul * dtMs) / 1000;
   const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, p.x + ux * dist, p.y + uy * dist);
   p.moving = r.x !== p.x || r.y !== p.y;
@@ -190,6 +208,9 @@ export function stepPlayer(
   p.facing = Math.abs(ux) > Math.abs(uy) ? (ux > 0 ? 'right' : 'left') : uy > 0 ? 'down' : 'up';
   applyPortal(p, world);
 }
+
+/** Standing in the bath house pool? */
+export const inPool = (world: WorldState, p: { x: number; y: number }): boolean => world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] === 'pool';
 
 /** The tile in front of the player (for the context action button). */
 export function facingTile(p: { x: number; y: number; facing: Facing }): { tx: number; ty: number } {
@@ -261,7 +282,7 @@ export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.sele
 
 const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
 const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom'): Change => ({
+const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -387,6 +408,23 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     return out;
   }
 
+  // 0b. Lasso: catches wild animals anywhere outdoors
+  if (tool === 'lasso') {
+    throwLasso(world, p, ctx, out);
+    return out;
+  }
+  // 0c. Outside the cave, sword and bow only work on wild predators
+  if (world.area !== 'dungeon' && (tool === 'sword' || tool === 'bow')) {
+    const target = animalAt(world, tx, ty);
+    if (tool === 'sword') {
+      if (target && isHostile(target)) attackMob(world, p, target, 2, ctx, out);
+      else if (!target) out.push(fx(tx, ty, 'hit'));
+      return out;
+    }
+    shootArrow(world, p, ctx, out);
+    return out;
+  }
+
   // 0a. In the cave: weapons, exit, treasure
   if (world.area === 'dungeon') {
     const target = animalAt(world, tx, ty);
@@ -455,6 +493,12 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
       out.push({ t: 'open', to: p.id, ui: 'paint' });
       return out;
     }
+  }
+
+  // 0d. Food: eat it (unless pointing at something you can open)
+  if (held && item(held.item).food) {
+    const target = objectAt(world, tx, ty);
+    if (!target || !objectDef(target.kind).interact) return eat(world, p, held, ctx);
   }
 
   // 1. Animal
@@ -546,6 +590,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
       a.hasProduct = false;
       giveItems(world, p, product, 1, out);
       bump(p, 'product', 1, out);
+      if (product === 'truffle') bump(p, 'truffle', 1, out);
       out.push(fx(atx, aty, 'sparkle'), toast(p.id, fmt(T.collected, { item: itemName(product), name })), playerChange(p), {
         t: 'animal',
         id: a.id,
@@ -555,7 +600,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     }
   }
   // Pet
-  const wild = !!ANIMALS[a.species]?.wild;
+  const wild = !!ANIMALS[a.species]?.wild && !a.owner;
   if (wild && !a.petted) bump(p, 'wildpet', 1, out);
   if (wild) {
     a.petted = true;
@@ -660,12 +705,18 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
     case 'workbench':
     case 'wardrobe':
     case 'cook':
+    case 'pizzeria':
       out.push({ t: 'open', to: p.id, ui: def.interact });
       return;
     case 'cave':
       out.push(...enterCave(world, p.id));
       return;
+    case 'bath':
+      out.push(...enterBath(world, p.id));
+      return;
     case 'exit':
+      if (isBathKey(world.area)) out.push(...leaveBath(world, p.id));
+      return;
     case 'treasure':
       return;
     case 'water':
@@ -839,6 +890,10 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
   }
   if (def.category === 'placeable' && def.places) {
     const floor = FLOOR_ITEMS[def.places];
+    if (terrain === 'pool') {
+      out.push(toast(p.id, T.cantPlaceHere));
+      return;
+    }
     if (floor) {
       if (terrain === 'water' || terrain === floor) return;
       if ((terrain === 'soil' || terrain === 'soil_wet') && world.crops[key(tx, ty)]) return;
@@ -1219,7 +1274,7 @@ export function tickNpcs(world: WorldState, dtMs: number): void {
 const isSolidForNpc = (world: WorldState, tx: number, ty: number): boolean => {
   if (!inBounds(tx, ty)) return true;
   const t = world.terrain[tileIndex(tx, ty)];
-  if (t === 'water' || t === 'soil' || t === 'soil_wet') return true;
+  if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true;
   if (world.crops[key(tx, ty)] || portalAt(tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
   return !!obj && objectDef(obj.kind).solid;
@@ -1255,6 +1310,7 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'elsa', kind: 'kid', items: ['strawberry', 'carrot', 'egg', 'bread', 'hay'], count: [1, 3], stars: 1 },
   { npc: 'elsa', kind: 'flowers', items: ['fiber'], count: [3, 6], stars: 1 },
   { npc: 'bo', kind: 'bake', items: ['wheat', 'egg', 'milk', 'honey'], count: [2, 4], stars: 2 },
+  { npc: 'pino', kind: 'pizza', items: ['tomato', 'wheat'], count: [2, 4], stars: 2 },
   { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem'], count: [1, 6], stars: 2 },
   { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
@@ -1376,9 +1432,14 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
   if (!farm.areas) farm.areas = {};
   let a = farm.areas[keyStr];
   if (!a) {
-    const c = areaCoords(keyStr);
-    if (!c) return null;
-    a = generateArea(c.ax, c.ay);
+    if (isBathKey(keyStr)) {
+      if (!getArea(farm, villageOfBath(keyStr))) return null;
+      a = generateBath(villageOfBath(keyStr));
+    } else {
+      const c = areaCoords(keyStr);
+      if (!c) return null;
+      a = generateArea(c.ax, c.ay);
+    }
     farm.areas[keyStr] = a;
   }
   linkToFarm(a, farm);
@@ -1387,6 +1448,7 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
 
 export const areaName = (keyStr: string, world?: WorldState): string => {
   if (keyStr === 'farm' || keyStr === 'dungeon') return BIOME_NAMES[keyStr];
+  if (isBathKey(keyStr)) return T.bathhouseName;
   const a = world ? getArea(world, keyStr) : null;
   return BIOME_NAMES[(a?.biome as Biome) ?? 'ang'];
 };
@@ -1407,6 +1469,7 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   delete p.fishing;
   if (target !== farm) target.players[p.id] = p;
   p.moveLock = 30;
+  if (current !== target) movePetsAlong(current, target, keyStr, p, out);
   if (!p.visited) p.visited = ['farm'];
   const firstVisit = !p.visited.includes(keyStr);
   if (firstVisit) {
@@ -1417,6 +1480,28 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   out.push(playerChange(p));
   if (firstVisit && keyStr !== 'farm') out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })), fx(tx, ty, 'sparkle'));
   return true;
+}
+
+/** Pets (and lasso-tamed animals) follow their owner from map to map; they get a fresh id in the new map. */
+function movePetsAlong(from: WorldState, to: WorldState, toKey: string, p: PlayerState, out: Change[]): void {
+  if (to.area === 'dungeon') return;
+  const fromKey = from.area ?? 'farm';
+  for (const a of Object.values(from.animals)) {
+    if (a.owner !== p.id || !isPetAnimal(a)) continue;
+    delete from.animals[a.id];
+    const gone: Change = { t: 'animal', id: a.id, animal: null };
+    if (fromKey !== 'farm') gone.area = fromKey;
+    a.id = to.nextId++;
+    a.x = p.x;
+    a.y = p.y + 3;
+    a.moving = false;
+    delete a.tx;
+    delete a.ty;
+    to.animals[a.id] = a;
+    const here: Change = { t: 'animal', id: a.id, animal: a };
+    if (toKey !== 'farm') here.area = toKey;
+    out.push(gone, here);
+  }
 }
 
 const DIRS: Record<'n' | 's' | 'e' | 'w', { dx: number; dy: number; opposite: 'n' | 's' | 'e' | 'w' }> = {
@@ -1513,8 +1598,9 @@ export function leaveCave(world: WorldState, playerId: string, knockedOut: boole
 }
 
 function attackMob(d: WorldState, p: PlayerState, mob: AnimalState, dmg: number, ctx: SimCtx, out: Change[]): void {
-  const def = ANIMALS[mob.species]?.mob;
+  const def = combatDef(mob);
   if (!def) return;
+  const predator = !ANIMALS[mob.species]?.mob;
   mob.hp = (mob.hp ?? def.hp) - dmg;
   const mtx = tileOf(mob.x);
   const mty = tileOf(mob.y);
@@ -1531,7 +1617,11 @@ function attackMob(d: WorldState, p: PlayerState, mob: AnimalState, dmg: number,
     const dr = spawnDrop(d, drop.item, n, mob.x + (ctx.rnd() - 0.5) * 10, mob.y + (ctx.rnd() - 0.5) * 10);
     out.push({ t: 'drop', id: dr.id, drop: dr });
   }
-  bump(p, 'mobs', 1, out);
+  bump(p, predator ? 'predators' : 'mobs', 1, out);
+  if (predator) {
+    out.push(toast(p.id, fmt(T.predatorDown, { name: mob.name })), playerChange(p));
+    return;
+  }
   if (def.boss) {
     bump(p, 'boss', 1, out);
     const chest = addObject(d, 'treasure', mtx, mty) ?? addObject(d, 'treasure', mtx + 1, mty) ?? addObject(d, 'treasure', mtx, mty + 1);
@@ -1553,7 +1643,7 @@ function shootArrow(d: WorldState, p: PlayerState, ctx: SimCtx, out: Change[]): 
     const obj = objectAt(d, tx, ty);
     if (obj && objectDef(obj.kind).solid) break;
     const mob = animalAt(d, tx, ty);
-    if (mob) {
+    if (mob && isHostile(mob)) {
       out.push({ t: 'fx', x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2, kind: 'arrow', from });
       attackMob(d, p, mob, 1, ctx, out);
       return;
@@ -1599,7 +1689,7 @@ function explode(world: WorldState, p: PlayerState, cx: number, cy: number, ctx:
   out.push(fx(cx, cy, 'boom'));
   const r2 = 1.5 * 1.5;
   for (const mob of Object.values(world.animals)) {
-    if (!ANIMALS[mob.species]?.mob) continue;
+    if (!isHostile(mob)) continue;
     const dx = tileOf(mob.x) - cx;
     const dy = tileOf(mob.y) - cy;
     if (dx * dx + dy * dy <= r2) attackMob(world, p, mob, ROCKET_DAMAGE, ctx, out);
@@ -1649,6 +1739,132 @@ function openTreasure(d: WorldState, p: PlayerState, chest: WorldObject, ctx: Si
   out.push(toast(p.id, fmt(T.treasureOpened, { loot: loot.join(' + ') })), toast(null, T.caveCleared), playerChange(p));
 }
 
+// ---------------------------------------------------------------------------
+// Lasso, predators and hearts outside the cave
+// ---------------------------------------------------------------------------
+
+const LASSO_RANGE = 3;
+const FLEE_MS = 3000;
+
+/** Throws the lasso straight ahead; the first wild animal within range may become a pet. */
+function throwLasso(world: WorldState, p: PlayerState, ctx: SimCtx, out: Change[]): void {
+  const dir = DIR_VEC[p.facing];
+  let tx = tileOf(p.x);
+  let ty = tileOf(p.y);
+  const from = { x: p.x, y: p.y };
+  for (let i = 0; i < LASSO_RANGE; i++) {
+    tx += dir.dx;
+    ty += dir.dy;
+    if (!inBounds(tx, ty)) break;
+    const obj = objectAt(world, tx, ty);
+    if (obj && objectDef(obj.kind).solid) break;
+    const a = animalAt(world, tx, ty);
+    if (!a) continue;
+    const def = ANIMALS[a.species];
+    out.push({ t: 'fx', x: a.x, y: a.y, kind: 'lasso', from });
+    if (!def?.wild || a.owner) {
+      out.push(toast(p.id, T.lassoNoTarget));
+      return;
+    }
+    const name = animalDisplayName(a);
+    if (ctx.rnd() < (def.tame ?? 0.6)) {
+      a.owner = p.id;
+      a.named = false;
+      a.petted = true;
+      delete a.fleeUntil;
+      delete a.tx;
+      delete a.ty;
+      a.waitMs = 0;
+      const first = !(p.stats?.[`tame_${a.species}`] ?? 0);
+      bump(p, 'tame', 1, out);
+      bump(p, `tame_${a.species}`, 1, out);
+      if (first) bump(p, 'tame_species', 1, out);
+      out.push(fx(tx, ty, 'heart'), toast(p.id, fmt(T.tamed, { name })), { t: 'animal', id: a.id, animal: a }, playerChange(p), { t: 'open', to: p.id, ui: 'nameAnimal', id: a.id });
+    } else {
+      a.fleeUntil = ctx.now + FLEE_MS;
+      a.fleeX = p.x;
+      a.fleeY = p.y;
+      delete a.tx;
+      delete a.ty;
+      a.waitMs = 0;
+      out.push(fx(tx, ty, 'poof'), toast(p.id, fmt(T.tameMissed, { name })), { t: 'animal', id: a.id, animal: a });
+    }
+    return;
+  }
+  out.push({ t: 'fx', x: (tx - dir.dx) * TILE + TILE / 2, y: (ty - dir.dy) * TILE + TILE / 2, kind: 'lasso', from }, toast(p.id, T.lassoNoTarget));
+}
+
+/** Knocked out outdoors: wake up at home with full hearts (inventory kept). */
+function faintHome(world: WorldState, p: PlayerState, out: Change[]): void {
+  const farm = farmOf(world);
+  placeIn(farm, p, 'farm', SPAWN.x, SPAWN.y, 'down', out);
+  p.hearts = MAX_HEARTS;
+  delete p.hurtUntil;
+  delete p.healAt;
+  out.push(playerChange(p), toast(p.id, T.fainted));
+}
+
+/** One bite or hit on a player; returns true when they went down. */
+function hurtPlayer(world: WorldState, target: PlayerState, ctx: SimCtx, out: Change[]): boolean {
+  const held = heldItem(target);
+  if (held && item(held.item).tool === 'shield') {
+    out.push(fx(tileOf(target.x), tileOf(target.y), 'hit'), toast(target.id, T.blocked));
+    return false;
+  }
+  if (ctx.now < (target.hurtUntil ?? 0)) return false;
+  target.hearts -= 1;
+  target.hurtUntil = ctx.now + 900;
+  if (target.healAt === undefined) target.healAt = ctx.now + HEAL_MS;
+  out.push(fx(tileOf(target.x), tileOf(target.y), 'hit'));
+  if (target.hearts <= 0) {
+    if (world.area === 'dungeon') out.push(...leaveCave(world, target.id, true));
+    else faintHome(world, target, out);
+    return true;
+  }
+  out.push(playerChange(target));
+  return false;
+}
+
+/** Hearts grow back one per game hour outside the cave. */
+const HEAL_MS = DAY_LENGTH_MS / 24;
+function tickHearts(world: WorldState, ctx: SimCtx, out: Change[]): void {
+  for (const p of Object.values(world.players)) {
+    if (!p.online || p.area === 'dungeon' || p.hearts >= MAX_HEARTS) {
+      if (p.hearts >= MAX_HEARTS && p.healAt !== undefined) delete p.healAt;
+      continue;
+    }
+    if (p.healAt === undefined) p.healAt = ctx.now + HEAL_MS;
+    if (ctx.now < p.healAt) continue;
+    p.hearts = Math.min(MAX_HEARTS, p.hearts + 1);
+    if (p.hearts >= MAX_HEARTS) delete p.healAt;
+    else p.healAt = ctx.now + HEAL_MS;
+    out.push(playerChange(p), fx(tileOf(p.x), tileOf(p.y), 'heart'));
+  }
+}
+
+/** Scared animals run away from where the lasso came from. */
+function tickFlee(world: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx): boolean {
+  if (a.fleeUntil === undefined || ctx.now >= a.fleeUntil) {
+    if (a.fleeUntil !== undefined) {
+      delete a.fleeUntil;
+      delete a.fleeX;
+      delete a.fleeY;
+    }
+    return false;
+  }
+  const dx = a.x - (a.fleeX ?? a.x);
+  const dy = a.y - (a.fleeY ?? a.y);
+  const dist = Math.hypot(dx, dy) || 1;
+  const speed = (ANIMALS[a.species]?.speed ?? 20) * 1.5;
+  const step = (speed * dtMs) / 1000;
+  const r = resolveMove((tx, ty) => isSolidForAnimal(world, tx, ty), a.x, a.y, a.x + (dx / dist) * step, a.y + (dy / dist) * step, ANIMAL_HALF_W, ANIMAL_HALF_H);
+  a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+  a.moving = r.x !== a.x || r.y !== a.y;
+  a.x = r.x;
+  a.y = r.y;
+  return true;
+}
+
 const MOB_SIGHT = 7 * TILE;
 
 /** True when no wall or rock lies on the straight tile line between two points. */
@@ -1665,12 +1881,17 @@ function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y1: numb
   return true;
 }
 
-/** Monsters chase and hit players; everything else in the cave wanders. */
+/** Monsters (cave) and wild predators (outdoors) chase and bite players; everything else wanders. */
 function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: Change[]): boolean {
+  const predator = ANIMALS[a.species]?.predator;
+  // predators notice you closer than cave monsters do, and keep chasing a bit further than that
+  const sight = predator ? predator.aggroRange * TILE : MOB_SIGHT;
+  const keep = predator ? (a.moving ? sight * 1.5 : sight) : MOB_SIGHT;
+  const areaKeyStr = d.area ?? 'farm';
   let target: PlayerState | null = null;
-  let best = MOB_SIGHT;
+  let best = keep;
   for (const p of Object.values(d.players)) {
-    if (!p.online || p.area !== 'dungeon') continue;
+    if (!p.online || p.area !== areaKeyStr) continue;
     const dist = Math.hypot(p.x - a.x, p.y - a.y);
     if (dist < best) {
       best = dist;
@@ -1684,17 +1905,8 @@ function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: 
   if (best <= 1.4 * TILE) {
     a.moving = false;
     if (ctx.now >= (a.attackAt ?? 0)) {
-      a.attackAt = ctx.now + 1300;
-      const held = heldItem(target);
-      if (held && item(held.item).tool === 'shield') {
-        out.push(fx(tileOf(target.x), tileOf(target.y), 'hit'), toast(target.id, T.blocked));
-      } else if (ctx.now >= (target.hurtUntil ?? 0)) {
-        target.hearts -= 1;
-        target.hurtUntil = ctx.now + 900;
-        out.push(fx(tileOf(target.x), tileOf(target.y), 'hit'));
-        if (target.hearts <= 0) out.push(...leaveCave(d, target.id, true));
-        else out.push(playerChange(target));
-      }
+      a.attackAt = ctx.now + (predator ? 1500 : 1300);
+      hurtPlayer(d, target, ctx, out);
     }
     return true;
   }
@@ -1739,8 +1951,64 @@ function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Chang
     tickAnimals(a, dtMs, ctx, local);
     tickNpcs(a, dtMs);
     tickDrops(a, local);
+    if (isBathKey(k)) tickBath(a, local, out);
     out.push(...tagArea(local, k));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Badhuset
+// ---------------------------------------------------------------------------
+
+/** Walks into the bath house from the village square. */
+export function enterBath(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon' || p.area === 'farm' || isBathKey(p.area)) return [];
+  const out: Change[] = [];
+  if (!placeIn(farm, p, bathKey(p.area), BATH_EXIT.x, BATH_EXIT.y - 1, 'up', out)) return [];
+  out.push(toast(p.id, T.enteredBath));
+  return out;
+}
+
+/** Back out through the door to the village. */
+export function leaveBath(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !isBathKey(p.area)) return [];
+  const villageKey = villageOfBath(p.area);
+  const village = getArea(farm, villageKey);
+  if (!village) return [];
+  const door = bathhouseDoorTile(village);
+  const out: Change[] = [];
+  delete p.swimming;
+  placeIn(farm, p, villageKey, door.x, door.y, 'down', out);
+  return out;
+}
+
+/** Splashes when someone jumps in, counts swims, and lets players walk out through the door. */
+function tickBath(bath: WorldState, local: Change[], out: Change[]): void {
+  for (const p of Object.values(bath.players)) {
+    if (!p.online) continue;
+    if (p.moveLock) continue;
+    const tx = tileOf(p.x);
+    const ty = tileOf(p.y);
+    if (tx === BATH_EXIT.x && ty === BATH_EXIT.y) {
+      out.push(...leaveBath(bath, p.id));
+      continue;
+    }
+    const swimming = inPool(bath, p);
+    if (swimming && !p.swimming) {
+      p.swimming = true;
+      local.push(fx(tx, ty, 'splash'));
+      bump(p, 'swim', 1, out);
+      out.push(playerChange(p));
+    } else if (!swimming && p.swimming) {
+      delete p.swimming;
+      out.push(playerChange(p));
+    }
+  }
+  void BATH_POOL;
 }
 
 // ---------------------------------------------------------------------------
@@ -1760,7 +2028,9 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickAnimals(world, dtMs, ctx, out);
   tickNpcs(world, dtMs);
   tickDrops(world, out);
+  tickBoosts(world, ctx.now, out);
   tickFishing(world, ctx, out);
+  tickHearts(world, ctx, out);
   tickOtherAreas(world, dtMs, ctx, out);
   for (const p of Object.values(world.players)) {
     if (p.emote && p.emote.until < ctx.now) delete p.emote;
@@ -1787,7 +2057,7 @@ const PET_TELEPORT = 7 * TILE;
 
 function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
   const owner = a.owner ? world.players[a.owner] : undefined;
-  if (!owner || !owner.online || owner.area !== 'farm') return false;
+  if (!owner || !owner.online || owner.area !== (world.area ?? 'farm')) return false;
   const dx = owner.x - a.x;
   const dy = owner.y - a.y;
   const dist = Math.hypot(dx, dy);
@@ -1820,8 +2090,9 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
   if (isFarm(world)) tickRiding(world, out);
   for (const a of Object.values(world.animals)) {
     if (a.species === 'horse' && riderOf(world, a)) continue;
-    if (ANIMALS[a.species]?.pet && tickPet(world, a, dtMs)) continue;
-    if (world.area === 'dungeon' && isMob(a) && tickMob(world, a, dtMs, ctx, out)) continue;
+    if (isPetAnimal(a) && tickPet(world, a, dtMs)) continue;
+    if (tickFlee(world, a, dtMs, ctx)) continue;
+    if (isHostile(a) && tickMob(world, a, dtMs, ctx, out)) continue;
     if (a.waitMs > 0) {
       a.waitMs -= dtMs;
       a.moving = false;
@@ -1862,6 +2133,32 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
     a.x = r.x;
     a.y = r.y;
     a.moving = true;
+  }
+}
+
+/** Speed multiplier while pizzapower lasts (client prediction uses the same number). */
+export const BOOST_SPEED_MUL = 1.3;
+
+/** Eats the held food: full hearts and a speed boost. */
+function eat(world: WorldState, p: PlayerState, held: ItemStack, ctx: SimCtx): Change[] {
+  const d = item(held.item);
+  if (!d.food) return [];
+  const out: Change[] = [];
+  takeFromSlot(p.inventory, p.selected, 1);
+  p.hearts = MAX_HEARTS;
+  p.boostUntil = Math.max(p.boostUntil ?? 0, ctx.now) + d.food.boostMs;
+  if (held.item.startsWith('pizza')) bump(p, 'pizza', 1, out);
+  out.push(fx(tileOf(p.x), tileOf(p.y), 'heart'), toast(p.id, fmt(T.ate, { item: itemName(held.item) })), toast(p.id, T.pizzaPower), playerChange(p));
+  void world;
+  return out;
+}
+
+function tickBoosts(world: WorldState, now: number, out: Change[]): void {
+  for (const p of Object.values(world.players)) {
+    if (p.boostUntil !== undefined && now >= p.boostUntil) {
+      delete p.boostUntil;
+      out.push(playerChange(p));
+    }
   }
 }
 
@@ -2018,8 +2315,15 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
     out.push({ t: 'animal', id: a.id, animal: a });
   }
 
-  // Wild animals out in the world are happy to be petted again tomorrow
-  for (const a of Object.values(world.areas ?? {})) for (const an of Object.values(a.animals)) an.petted = false;
+  // Wild animals out in the world are happy to be petted again tomorrow, and the ones that ran off come back
+  for (const [k, a] of Object.entries(world.areas ?? {})) {
+    for (const an of Object.values(a.animals)) an.petted = false;
+    if (a.biome) {
+      const local: Change[] = [];
+      for (const an of spawnWildAnimals(a, a.biome as Biome, ctx.rnd, true)) local.push({ t: 'animal', id: an.id, animal: an });
+      out.push(...tagArea(local, k));
+    }
+  }
 
   // Ordered animals arrive
   for (const p of Object.values(world.players)) {

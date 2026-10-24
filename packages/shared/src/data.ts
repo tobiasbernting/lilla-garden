@@ -31,6 +31,8 @@ add(I('shield', 'tool', { tool: 'shield' }));
 add(I('bow', 'tool', { tool: 'bow' }));
 add(I('bazooka', 'tool', { tool: 'bazooka' }));
 add(I('rocket', 'material', { sell: 3 }));
+add(I('lasso', 'tool', { tool: 'lasso' }));
+add(I('fur', 'material', { sell: 15 }));
 
 // Seeds + crops
 const crop = (id: string, buySeed: number, sellCrop: number) => {
@@ -66,15 +68,22 @@ add(I('heartberry', 'crop', { sell: 20 }));
 add(I('egg', 'animal_product', { sell: 15 }));
 add(I('milk', 'animal_product', { sell: 40 }));
 add(I('wool', 'animal_product', { sell: 50 }));
+add(I('truffle', 'animal_product', { sell: 60 }));
 add(I('egg_pask', 'animal_product', { sell: 25 }));
 
 // Dishes (cooked at the stove)
 add(I('pancakes', 'crop', { sell: 70 }));
+add(I('truffle_pasta', 'crop', { sell: 160 }));
 add(I('carrot_cake', 'crop', { sell: 60 }));
 add(I('pumpkin_pie', 'crop', { sell: 120 }));
 add(I('strawberry_jam', 'crop', { sell: 55 }));
 add(I('fish_soup', 'crop', { sell: 65 }));
 add(I('bread', 'crop', { sell: 30 }));
+// Pizzeria menu (bought in the village, eaten for pizzapower)
+add(I('pizza', 'crop', { sell: 10, buy: 30, tab: 'pizzeria', food: { boostMs: 60_000 } }));
+add(I('pizza_kebab', 'crop', { sell: 12, buy: 40, tab: 'pizzeria', food: { boostMs: 60_000 } }));
+add(I('pizza_hawaii', 'crop', { sell: 11, buy: 35, tab: 'pizzeria', food: { boostMs: 60_000 } }));
+add(I('lemonade', 'crop', { sell: 3, buy: 10, tab: 'pizzeria', food: { boostMs: 20_000 } }));
 
 // Fish
 add(I('fish_roach', 'fish', { sell: 8 }));
@@ -88,6 +97,7 @@ add(I('animal_rabbit', 'animal', { species: 'rabbit', buy: 200, tab: 'animals', 
 add(I('animal_sheep', 'animal', { species: 'sheep', buy: 400, tab: 'animals', stack: 1 }));
 add(I('animal_cow', 'animal', { species: 'cow', buy: 600, tab: 'animals', stack: 1 }));
 add(I('animal_horse', 'animal', { species: 'horse', buy: 500, tab: 'animals', stack: 1 }));
+add(I('animal_pig', 'animal', { species: 'pig', buy: 350, tab: 'animals', stack: 1 }));
 add(I('animal_dog', 'animal', { species: 'dog', buy: 250, tab: 'animals', stack: 1 }));
 add(I('animal_cat', 'animal', { species: 'cat', buy: 250, tab: 'animals', stack: 1 }));
 
@@ -116,6 +126,7 @@ place('hutch', { sell: 15 });
 place('sheepfold', { sell: 30 });
 place('barn', { sell: 50 });
 place('stall', { sell: 60 });
+place('pigsty', { sell: 25 });
 place('flowerbox', { sell: 5 });
 place('well', { sell: 20 });
 // Furniture (Möbler) – crafted or bought, usable inside the house and outside
@@ -160,6 +171,17 @@ cloth('shirt_pink', 'shirt', 'plain', '#e87ab8', 60);
 cloth('shirt_purple', 'shirt', 'plain', '#8a4fd1', 60);
 cloth('shirt_stripes', 'shirt', 'stripes', '#3b6fd9', 90);
 cloth('shirt_overalls', 'shirt', 'overalls', '#3b5fa6', 120);
+// Dresses (worn in the shirt slot; they hide the pants)
+cloth('dress_pink', 'shirt', 'dress', '#e87ab8', 90);
+cloth('dress_blue', 'shirt', 'dress', '#5aa0e8', 90);
+cloth('dress_purple', 'shirt', 'dress', '#8a4fd1', 90);
+cloth('dress_mint', 'shirt', 'dress', '#5ac8a8', 90);
+cloth('dress_red_belt', 'shirt', 'dress_belt', '#d9453b', 110);
+cloth('dress_green_belt', 'shirt', 'dress_belt', '#3ba35b', 110);
+cloth('dress_yellow_flowers', 'shirt', 'dress_flowers', '#e8c23a', 120);
+cloth('dress_white_flowers', 'shirt', 'dress_flowers', '#f4f2ec', 120);
+cloth('dress_midsommar', 'shirt', 'dress_flowers', '#9ad0f0', 100, 'midsommar');
+cloth('dress_lucia', 'shirt', 'dress_belt', '#ffffff', 100, 'jul');
 cloth('pants_blue', 'pants', 'plain', '#2f4c8a', 50);
 cloth('pants_brown', 'pants', 'plain', '#7a5230', 50);
 cloth('pants_green', 'pants', 'plain', '#3f7a3a', 50);
@@ -188,6 +210,8 @@ starCloth('hat_party', 'hat', 'party', '#e87ab8', 5);
 starCloth('shirt_gold', 'shirt', 'plain', '#f2c230', 10);
 starCloth('hat_crown', 'hat', 'crown', '#f2d35a', 20);
 starCloth('shirt_star', 'shirt', 'star', '#3b3f8a', 30);
+starCloth('gown_gold', 'shirt', 'gown', '#f2c230', 15);
+starCloth('gown_blue', 'shirt', 'gown', '#3b6fd9', 15);
 // Cave treasure clothes (not for sale)
 add(I('hat_viking', 'clothing', { clothing: { slot: 'hat', style: 'viking', color: '#9d9a92' }, stack: 1 }));
 add(I('shirt_knight', 'clothing', { clothing: { slot: 'shirt', style: 'plain', color: '#b8bcc4' }, stack: 1 }));
@@ -250,6 +274,7 @@ addO(O('signpost', { breakWith: undefined }));
 addO(O('house_small', { w: 3, h: 3, breakWith: undefined }));
 addO(O('market', { w: 2, h: 2, interact: 'catalogue', breakWith: undefined }));
 addO(O('sellstall', { w: 2, h: 2, interact: 'sell', breakWith: undefined }));
+addO(O('pizzeria', { w: 3, h: 2, interact: 'pizzeria', breakWith: undefined, light: true }));
 addO(O('lantern', { solid: false, breakWith: undefined, light: true }));
 addO(O('town_well', { interact: 'water', breakWith: undefined }));
 
@@ -284,6 +309,8 @@ built('clock', { solid: false, flat: true });
 built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
 // Cave
 addO(O('cave', { w: 2, h: 2, interact: 'cave', breakWith: undefined }));
+addO(O('bathhouse', { w: 3, h: 2, interact: 'bath', breakWith: undefined }));
+addO(O('bath_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_wall', { breakWith: undefined }));
 addO(O('cave_torch', { solid: false, breakWith: undefined, light: true }));
@@ -294,6 +321,7 @@ built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
 built('barn', { w: 3, h: 2, houses: { species: 'cow', capacity: 2 } });
 built('stall', { w: 3, h: 2, houses: { species: 'horse', capacity: 2 } });
+built('pigsty', { w: 2, h: 2, houses: { species: 'pig', capacity: 3 } });
 built('pumpkin_lantern');
 built('ghost_flag', { solid: false });
 built('xmas_tree', { w: 1, h: 2 });
@@ -325,6 +353,8 @@ export const ANIMALS: Record<string, AnimalDef> = {
   rabbit: { species: 'rabbit', house: 'hutch', growDays: 3, speed: 28 },
   sheep: { species: 'sheep', product: 'wool', house: 'sheepfold', growDays: 3, speed: 16 },
   cow: { species: 'cow', product: 'milk', house: 'barn', growDays: 3, speed: 14 },
+  // Pigs root up truffles in the morning
+  pig: { species: 'pig', product: 'truffle', house: 'pigsty', growDays: 3, speed: 16 },
   // Horses give nothing but can be ridden by their owner once grown
   horse: { species: 'horse', house: 'stall', growDays: 3, speed: 24 },
   // Pets follow their owner and need no house
@@ -337,6 +367,13 @@ export const ANIMALS: Record<string, AnimalDef> = {
   crab: { species: 'crab', house: '', growDays: 0, speed: 20, wild: 'strand' },
   goat: { species: 'goat', house: '', growDays: 0, speed: 26, wild: 'berg' },
   lizard: { species: 'lizard', house: '', growDays: 0, speed: 36, wild: 'oken' },
+  hare: { species: 'hare', house: '', growDays: 0, speed: 40, wild: 'ang', wildCount: [2, 4] },
+  boar: { species: 'boar', house: '', growDays: 0, speed: 28, wild: 'skog', wildCount: [1, 2], tame: 0.5 },
+  moose: { species: 'moose', house: '', growDays: 0, speed: 22, wild: 'skog', wildCount: [0, 1], tame: 0.2 },
+  // Predators (mild): they chase you a little and bite one heart; a lasso makes them pets
+  bear: { species: 'bear', house: '', growDays: 0, speed: 26, wild: 'skog', wildCount: [1, 1], tame: 0.3, predator: { hp: 5, aggroRange: 4 } },
+  wolf: { species: 'wolf', house: '', growDays: 0, speed: 34, wild: 'berg|skog', wildCount: [1, 2], tame: 0.3, predator: { hp: 3, aggroRange: 4 } },
+  lynx: { species: 'lynx', house: '', growDays: 0, speed: 36, wild: 'berg', wildCount: [1, 1], tame: 0.3, predator: { hp: 3, aggroRange: 3 } },
   // Cave monsters (gentle): slime, bat, troll and the boss troll
   slime: { species: 'slime', house: '', growDays: 0, speed: 22, mob: { hp: 2, drops: [{ item: 'gold', min: 1, max: 2, chance: 0.8 }, { item: 'heartberry', min: 1, max: 1, chance: 0.25 }] } },
   bat: { species: 'bat', house: '', growDays: 0, speed: 44, mob: { hp: 1, drops: [{ item: 'gold', min: 1, max: 1, chance: 0.6 }] } },
@@ -378,6 +415,7 @@ export const RECIPES: RecipeDef[] = [
   R('sheepfold', 1, ['wood', 25], ['stone', 6]),
   R('barn', 1, ['wood', 40], ['stone', 15]),
   R('stall', 1, ['wood', 45], ['stone', 10]),
+  R('pigsty', 1, ['wood', 24], ['stone', 8]),
   R('hay', 2, ['fiber', 3]),
   R('chair', 1, ['wood', 3]),
   R('bed', 1, ['wood', 10], ['fiber', 6]),
@@ -388,6 +426,7 @@ export const RECIPES: RecipeDef[] = [
   R('sword', 1, ['wood', 5], ['stone', 4]),
   R('shield', 1, ['wood', 6], ['stone', 2]),
   R('bow', 1, ['wood', 4], ['fiber', 5]),
+  R('lasso', 1, ['fiber', 5], ['wood', 2]),
   R('bazooka', 1, ['stone', 12], ['wood', 8], ['gold', 2]),
   R('rocket', 3, ['stone', 2], ['wood', 1]),
   ...PAINT_NAMES.map((c) => R(`paint_${c}`, 1, ['wood', 1], ['fiber', 2])),
@@ -410,6 +449,7 @@ export const COOKING: RecipeDef[] = [
   R('pumpkin_pie', 1, ['pumpkin', 1], ['egg', 1], ['wheat', 1]),
   R('strawberry_jam', 1, ['strawberry', 4]),
   R('fish_soup', 1, ['fish_perch', 1], ['potato', 2], ['carrot', 1]),
+  R('truffle_pasta', 1, ['truffle', 1], ['wheat', 2], ['milk', 1]),
 ];
 
 // ---------- Villagers ----------
@@ -484,6 +524,23 @@ NPCS.bo = {
     { at: 0.7, x: 27, y: 30 },
   ],
 };
+NPCS.pino = {
+  id: 'pino',
+  name: 'Pizza-Pino',
+  area: VILLAGE_KEY,
+  x: 40,
+  y: 32,
+  appearance: { skin: '#dba97d', hair: '#2b2119', hairStyle: 'curly' },
+  outfit: { shirt: 'shirt_red', pants: 'pants_brown', shoes: 'shoes_boots', hat: 'hat_cap_red' },
+  greeting: ['Buongiorno! Vill du ha en pizza?', 'Pizzan är nybakad i stenugnen!', 'Tomater och vete – då blir det pizza!'],
+  routine: [
+    { at: 0, x: 40, y: 32 },
+    { at: 0.35, x: 34, y: 36 },
+    { at: 0.5, x: 40, y: 32 },
+    { at: 0.75, x: 36, y: 34 },
+    { at: 0.85, x: 40, y: 32 },
+  ],
+};
 NPCS.stina = {
   id: 'stina',
   name: 'Smed-Stina',
@@ -542,6 +599,12 @@ export const NPC_LINES: Record<string, { morning: string[]; day: string[]; eveni
     evening: ['Jag släcker ässjan nu.', 'God kväll!'],
     meet: ['Hej Bo! Bröd till lunch?', 'Fru Lind, honung till kaffet?'],
   },
+  pino: {
+    morning: ['Buongiorno! Ugnen är varm.', 'God morgon, {name}! Pizza till frukost?'],
+    day: ['Hej {name}! En pizza med extra ost?', 'Mamma mia, vilken dag!', 'Pizzapower gör dig snabb som vinden!'],
+    evening: ['Sista pizzan för idag!', 'Buonanotte, {name}!'],
+    meet: ['Bo! Har du vete till min deg?', 'Stina, ugnen behöver ses över!', 'Fru Lind, basilika till pizzan?'],
+  },
   lind: {
     morning: ['God morgon! Blommorna har vaknat.', 'Vilken fin dag!'],
     day: ['Hej {name}! Luktar du på rosorna?', 'Bina surrar så fint idag.'],
@@ -578,6 +641,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('fish_20', 'fish', 20, 2, 'fish_pike'),
   A('fish_gold', 'fish_gold', 1, 3, 'fish_gold'),
   A('cook_5', 'cook', 5, 2, 'pancakes'),
+  A('pizza_5', 'pizza', 5, 2, 'pizza'),
   A('quests_3', 'quests', 3, 1, 'egg_basket'),
   A('quests_15', 'quests', 15, 3, 'maypole'),
   A('coins_500', 'earned', 500, 1, 'animal_hen'),
@@ -596,6 +660,13 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('paint_10', 'paint', 10, 3, 'paper'),
   A('ride_1', 'ride', 1, 1, 'animal_horse'),
   A('ride_25', 'ride', 25, 2, 'stall'),
+  A('truffle_1', 'truffle', 1, 1, 'truffle'),
+  A('truffle_20', 'truffle', 20, 2, 'animal_pig'),
+  A('swim_1', 'swim', 1, 1, 'shell'),
+  A('swim_25', 'swim', 25, 2, 'shell'),
+  A('tame_1', 'tame', 1, 1, 'lasso'),
+  A('tame_bear', 'tame_bear', 1, 2, 'fur'),
+  A('tame_5', 'tame_species', 5, 3, 'animal_dog'),
 ];
 
 /** Fish and how likely they bite (weights). */

@@ -34,13 +34,13 @@ import {
 import { portraitUrl, getArt } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
 import { net } from '../net.js';
-import { bus, client, myPlayer } from '../state.js';
+import { activeWorld, bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}` };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
@@ -130,12 +130,13 @@ export class Menus {
       book: `📖 ${T.book}`,
       map: `🗺️ ${T.worldMap}`,
       paint: `🎨 ${T.paint}`,
+      pizzeria: `🍕 ${T.pizzeria}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
     const coins = h('span', { class: 'price' }, `${me.coins} ${T.coins}${this.kind === 'catalogue' ? ` · ⭐ ${me.stars}` : ''}`);
-    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' ? coins : null, closeBtn);
+    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' ? coins : null, closeBtn);
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: 'panel' }, head, body);
     switch (this.kind) {
@@ -150,6 +151,9 @@ export class Menus {
         break;
       case 'sell':
         this.renderSell(body);
+        break;
+      case 'pizzeria':
+        this.renderPizzeria(body);
         break;
       case 'workbench':
         this.renderCraft(body, RECIPES, 'craft');
@@ -296,6 +300,22 @@ export class Menus {
           row.append(b);
         }
       }
+      rows.append(row);
+    }
+    body.append(rows);
+  }
+
+  // ---- pizzeria ----
+
+  private renderPizzeria(body: HTMLElement): void {
+    const me = myPlayer()!;
+    body.append(h('div', { class: 'hint' }, T.pizzeriaHint));
+    const rows = h('div', { class: 'rows' });
+    for (const d of Object.values(ITEMS).filter((x) => x.tab === 'pizzeria' && catalogueAvailable(x.id, client.season))) {
+      const row = h('div', { class: 'row' }, icon(getArt().iconUrl[d.id] ?? ''), h('span', { class: 'name' }, itemName(d.id)), h('span', { class: 'price' }, `${d.buy} ${T.coins}`));
+      const b = h('button', { disabled: me.coins < (d.buy ?? 0) }, T.buy);
+      onTap(b, () => net.send({ t: 'buy', item: d.id, qty: 1 }));
+      row.append(b);
       rows.append(row);
     }
     body.append(rows);
@@ -559,7 +579,7 @@ export class Menus {
   // ---- animal name ----
 
   private renderName(body: HTMLElement): void {
-    const a = this.animalId !== null ? client.world?.animals[this.animalId] : undefined;
+    const a = this.animalId !== null ? activeWorld()?.animals[this.animalId] : undefined;
     if (!a) {
       this.close();
       return;

@@ -129,6 +129,24 @@ export function drawTerrainTiles(): TerrainTiles {
     waterShore.push(frames);
     if (m === 0) water.push(...frames);
   }
+  // pool (the bath house): bright turquoise, 2 frames; in the new style a pale stone rim on the open sides
+  const poolTile = (f: number, mask: number) => {
+    const p = new Px(16, 16).rect(0, 0, 16, 16, '#4fc0e6');
+    const o = f * 2;
+    p.rect(2 + o, 3, 4, 1, '#bff0ff').rect(9 + o, 8, 4, 1, '#bff0ff').rect(4 - o, 12, 3, 1, '#bff0ff').rect(11 - o, 1, 3, 1, '#2fa0d0');
+    speck(p, 700 + f, 3, '#8fe0f8', 1);
+    if (NEW_ART && mask) {
+      const rim = '#d8d4c8';
+      const rimD = '#a9a59a';
+      if (mask & 1) p.rect(0, 0, 16, 2, rim).rect(0, 2, 16, 1, rimD);
+      if (mask & 4) p.rect(0, 14, 16, 2, rim).rect(0, 13, 16, 1, rimD);
+      if (mask & 8) p.rect(0, 0, 2, 16, rim).rect(2, 0, 1, 16, rimD);
+      if (mask & 2) p.rect(14, 0, 2, 16, rim).rect(13, 0, 1, 16, rimD);
+    }
+    return add(p);
+  };
+  const pool: number[][] = [];
+  for (let m = 0; m < (NEW_ART ? 16 : 1); m++) pool.push([poolTile(0, m), poolTile(1, m)]);
   // sand
   const sandP = new Px(16, 16).rect(0, 0, 16, 16, '#e3d08f');
   speck(sandP, 600, 5, '#cdb878', 1);
@@ -206,6 +224,8 @@ export function drawTerrainTiles(): TerrainTiles {
           return gravelI;
         case 'ice':
           return iceI;
+        case 'pool':
+          return pool[mask % pool.length]![frame]!;
       }
     },
   };
@@ -554,6 +574,34 @@ const building = (w: number, h: number, wallC: string, roofC: string, door = tru
   return p.outline(OUTLINE);
 };
 
+const pigsty = (): Px => {
+  // a low wooden shed with an open front and a muddy wallow in front of it
+  const p = new Px(32, 38);
+  const shed = building(32, 26, '#c58f55', '#7a5230', false, { roofH: 10 });
+  p.blit(shed, 0, 0);
+  // open doorway with a pig looking out
+  p.rect(11, 14, 10, 11, '#3a2414').rect(13, 18, 6, 5, '#f2b8c6').rect(18, 19, 2, 2, '#e8899e').px(14, 19, OUTLINE).px(17, 19, OUTLINE);
+  // mud wallow
+  p.ellipse(3, 27, 26, 10, '#6b4a2a').ellipse(6, 28, 20, 7, '#8a6238').ellipse(10, 30, 6, 3, '#5a3d20').ellipse(19, 29, 5, 3, '#5a3d20');
+  return p.outline(OUTLINE);
+};
+const bathhouse = (): Px => {
+  // pale blue bath house with a turquoise roof, a round window and a wave sign over the door
+  const p = building(48, 44, '#dff2fb', '#3aa7c9', true, { windows: 2, roofH: 16 });
+  p.rect(0, 15, 48, 2, '#2b86a6');
+  // round window in the gable
+  p.circle(24, 8, 4, '#2b86a6').circle(24, 8, 3, '#bfeaff').rect(24, 5, 1, 6, '#2b86a6').rect(21, 8, 6, 1, '#2b86a6');
+  // wave sign
+  p.rect(16, 20, 16, 7, '#ffffff').box(16, 20, 16, 7, '#2b86a6');
+  p.tpl(18, 22, ['#..##..##..#', '.##..##..##.'], { '#': '#3aa7c9' });
+  // blue door with a porthole
+  p.rect(19, 30, 10, 13, '#2b86a6').rect(20, 31, 8, 12, '#4fb8da').circle(24, 35, 2, '#dff6ff');
+  // tiles along the base
+  for (let x = 2; x < 46; x += 4) p.rect(x, 41, 3, 2, '#bfe6f5');
+  return p.outline(OUTLINE);
+};
+const bathExit = (): Px => new Px(16, 16).rect(0, 0, 16, 16, '#b9b6ad').rect(1, 1, 14, 14, '#2b86a6').rect(2, 2, 12, 12, '#4fb8da').rect(3, 3, 10, 10, '#2b86a6').rect(4, 4, 8, 8, '#4fb8da').rect(11, 7, 2, 2, '#f2d35a').rect(5, 12, 6, 1, '#dff6ff');
+
 const horseStable = (): Px => {
   // a wooden stable: brown plank walls, dark roof, a wide half-door with a horse looking out
   const p = building(48, 44, '#a8743c', '#4e3520', false, { windows: 1, roofH: 18 });
@@ -730,6 +778,9 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('sheepfold', [building(32, 36, '#c9c6bd', '#6f6c66', true, { windows: 2, roofH: 14 })], 0, -4);
   set('barn', [building(48, 44, '#b5413a', '#6f4a26', true, { windows: 2, roofH: 18 })], 0, -12);
   set('stall', [horseStable()], 0, -12);
+  set('pigsty', [pigsty()], 0, -6);
+  set('bathhouse', [bathhouse()], 0, -12);
+  set('bath_exit', [bathExit()]);
   set('house', PAINT_COLORS.map((_, i) => house(i)), 0, -20);
   set('mailbox', [mailbox()], 0, -8);
   set('sellbox', [sellbox()]);
@@ -769,6 +820,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('house_small', [0, 1, 2, 3].map((v) => building(48, 52, ['#e8dcc0', '#f0d8a8', '#dce8c8', '#f4e0e0'][v]!, ['#b5413a', '#6f4a26', '#3b5fa6', '#2f7a3a'][v]!, true, { windows: 2, roofH: 20 })), 0, -4);
   set('market', [stall('#d9453b')], 0, -8);
   set('sellstall', [stall('#3b6fd9')], 0, -8);
+  set('pizzeria', [pizzeria()], 0, -12);
   set('lantern', [lantern(0), lantern(1)], 0, -8, true);
   set('town_well', [well()], 0, -8);
   // Cave
@@ -816,6 +868,19 @@ const stall = (awning: string): Px => {
   for (let x = 0; x < 32; x += 4) p.rect(x, 6, 4, 6, x % 8 === 0 ? awning : '#ffffff');
   p.rect(0, 5, 32, 1, shade(awning, 0.7)).rect(0, 12, 32, 1, shade(awning, 0.7));
   p.rect(6, 16, 5, 5, '#f08a2a').rect(13, 15, 5, 6, '#e03a3a').rect(20, 17, 6, 4, '#f5d94a');
+  return p.outline(OUTLINE);
+};
+const pizzeria = (): Px => {
+  const p = building(48, 44, '#f3e2c0', '#8a5a2a', true, { windows: 2, roofH: 16 });
+  // red-white striped awning over the door and windows
+  for (let x = 2; x < 46; x += 4) p.rect(x, 17, 4, 5, (x / 4) % 2 === 0 ? '#d9453b' : '#ffffff');
+  p.rect(2, 16, 44, 1, '#8f2f2a').rect(2, 22, 44, 1, '#8f2f2a');
+  // pizza sign on the roof
+  p.rect(16, 2, 16, 10, '#ffffff').box(16, 2, 16, 10, '#8f2f2a');
+  p.circle(21, 7, 3, '#e0453a').circle(21, 7, 2, '#f5d94a').px(20, 6, '#e0453a').px(22, 8, '#e0453a');
+  p.rect(26, 5, 4, 1, '#d9453b').rect(26, 7, 3, 1, '#2e8a3a').rect(26, 9, 4, 1, '#d9453b');
+  // stone oven glow by the door
+  p.rect(36, 34, 7, 8, STONE_D).rect(37, 36, 5, 4, '#f08a2a').rect(38, 37, 3, 2, '#ffd45a');
   return p.outline(OUTLINE);
 };
 const lantern = (f: number): Px => new Px(16, 24).rect(7, 8, 2, 16, '#3a3a3a').rect(4, 2, 8, 7, '#3a3a3a').rect(5, 3, 6, 5, f ? '#ffd45a' : '#f5a623').rect(7, 0, 2, 2, '#3a3a3a').rect(3, 22, 10, 2, '#3a3a3a').outline(OUTLINE);
@@ -970,9 +1035,23 @@ export function drawFx(): Record<string, Px[]> {
     return p;
   };
   const arrow = new Px(12, 3).rect(0, 1, 10, 1, WOOD_L).rect(9, 0, 3, 3, '#d8d8d8').px(11, 1, '#ffffff').rect(0, 0, 2, 3, '#e04a2a');
+  const splash = new Px(16, 12).tpl(0, 0, ['...#....#...', '..#.#..#.#..', '.#...##...#.', '#....##....#', '.##.####.##.', '..########..'], { '#': '#dff6ff' }).rect(5, 8, 2, 2, '#8fe0f8');
+  const ripple = (f: number) => {
+    const p = new Px(20, 10);
+    const w = 12 + f * 4;
+    const h = 5 + f * 2;
+    p.ellipse(10 - w / 2, 5 - h / 2, w, h, f ? '#dff6ff88' : '#dff6ffcc').ellipse(10 - w / 2 + 1, 5 - h / 2 + 1, w - 2, h - 2, '#00000000');
+    return p;
+  };
+  const lasso = new Px(12, 12).circle(6, 6, 5.5, WOOD_L).circle(6, 6, 4.5, WOOD_D);
+  lasso.ctx.clearRect(3, 3, 6, 6);
+  lasso.rect(5, 9, 2, 3, WOOD_L);
   return {
     hit: [hit],
     arrow: [arrow],
+    lasso: [lasso],
+    splash: [splash],
+    ripple: [ripple(0), ripple(1)],
     rocket: [rocket],
     smoke: [smoke(0), smoke(1)],
     boom: [boom(0), boom(1), boom(2)],

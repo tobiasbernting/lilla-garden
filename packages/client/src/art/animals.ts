@@ -7,6 +7,7 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   rabbit: { w: 16, h: 14 },
   sheep: { w: 18, h: 16 },
   cow: { w: 24, h: 18 },
+  pig: { w: 18, h: 14 },
   horse: { w: 26, h: 24 },
   dog: { w: 16, h: 14 },
   cat: { w: 14, h: 12 },
@@ -16,6 +17,12 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   crab: { w: 14, h: 10 },
   goat: { w: 16, h: 14 },
   lizard: { w: 16, h: 8 },
+  hare: { w: 14, h: 14 },
+  boar: { w: 18, h: 12 },
+  moose: { w: 28, h: 26 },
+  bear: { w: 24, h: 20 },
+  wolf: { w: 20, h: 14 },
+  lynx: { w: 18, h: 13 },
   slime: { w: 14, h: 12 },
   bat: { w: 16, h: 10 },
   troll: { w: 18, h: 22 },
@@ -50,6 +57,20 @@ function cow(p: Px, f: number): void {
   p.rect(3 + f, 13, 3, 5, c).rect(8, 13, 3, 5, c).rect(13 - f, 13, 3, 5, c).rect(3 + f, 17, 3, 1, '#3a3129').rect(8, 17, 3, 1, '#3a3129').rect(13 - f, 17, 3, 1, '#3a3129');
   p.rect(0, 5, 2, 6, c).px(0, 11, '#3a3129');
   p.rect(2, 10, 3, 2, '#f0b8a8');
+}
+
+function pig(p: Px, f: number): void {
+  // side view facing right: round pink body, snout, floppy ear and a curly tail
+  const c = '#f2b8c6';
+  const d = shade(c, 0.8);
+  p.ellipse(1, 3, 14, 9, c).rect(3, 5, 11, 6, c);
+  p.ellipse(10, 2, 8, 8, c); // head
+  p.rect(16, 5, 2, 3, '#e8899e').px(16, 6, d).px(17, 6, d); // snout with nostrils
+  p.rect(11, 1, 2, 3, d).px(12, 0, d); // ear
+  p.px(14, 4, OUTLINE); // eye
+  p.px(0, 4, d).px(1, 3, d).px(0, 2, d); // curly tail
+  p.rect(3 + f, 11, 2, 3, d).rect(7, 11, 2, 3, d).rect(12 - f, 11, 2, 3, d); // trotters
+  p.rect(5, 8, 4, 2, shade(c, 0.9)); // belly shadow
 }
 
 function horse(p: Px, f: number): void {
@@ -157,10 +178,67 @@ function lizard(p: Px, f: number): void {
   p.rect(5 + f, 7, 2, 1, c).rect(10 - f, 7, 2, 1, c).rect(7, 1, 1, 1, shade(c, 0.7));
 }
 
-const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, slime, bat, troll, boss };
+function hare(p: Px, f: number): void {
+  // brown hare with long ears, mid-hop on frame 1
+  const c = '#b58a55';
+  const d = shade(c, 0.75);
+  p.ellipse(1, 6 - f, 10, 6, c).circle(10, 6 - f, 3, c).rect(9, 0, 2, 5, c).rect(12, 0, 2, 5, c).px(10, 1, '#ffb0c8').px(13, 1, '#ffb0c8');
+  p.px(11, 5 - f, OUTLINE).px(13, 7 - f, '#3a2a1a').rect(2, 9 - f, 3, 2, '#f7f0e0');
+  p.rect(2, 11, 4, 2, d).rect(8 - f, 11, 3, 2, d).px(0, 7 - f, '#ffffff');
+}
+function boar(p: Px, f: number): void {
+  // dark grey wild boar with a bristly back and small tusks
+  const c = '#5a4a3e';
+  const d = shade(c, 0.7);
+  p.ellipse(1, 3, 13, 7, c).rect(2, 1, 9, 2, d).rect(12, 3, 5, 5, c).rect(13, 2, 2, 2, d).px(15, 5, OUTLINE).rect(16, 7, 1, 1, '#f4ead8').px(17, 6, '#f4ead8');
+  p.rect(0, 3, 2, 2, d);
+  p.rect(3 + f, 9, 2, 3, d).rect(7, 9, 2, 3, d).rect(11 - f, 9, 2, 3, d);
+}
+function moose(p: Px, f: number): void {
+  // tall dark moose with broad antlers and a dewlap
+  const c = '#5e4030';
+  const d = shade(c, 0.75);
+  const antler = '#c9b58a';
+  p.rect(4, 10, 16, 9, c).ellipse(3, 8, 18, 10, c).rect(16, 6, 7, 8, c).rect(19, 11, 6, 5, d).rect(22, 13, 3, 2, shade(c, 0.6));
+  p.rect(17, 14, 2, 3, d); // dewlap
+  p.px(21, 8, OUTLINE).px(24, 14, '#2a1a10');
+  // antlers
+  p.rect(16, 2, 1, 5, antler).rect(13, 1, 4, 2, antler).rect(12, 0, 1, 2, antler).rect(14, 0, 1, 1, antler).rect(16, 0, 1, 1, antler);
+  p.rect(21, 2, 1, 5, antler).rect(21, 1, 4, 2, antler).rect(25, 0, 1, 2, antler).rect(23, 0, 1, 1, antler);
+  p.rect(5 + f, 19, 3, 7, d).rect(10, 19, 3, 7, c).rect(14 - f, 19, 3, 7, c);
+  p.rect(2, 8, 3, 4, d); // tail stub
+}
+function bear(p: Px, f: number): void {
+  // big round brown bear with a lighter muzzle
+  const c = '#6b4a2e';
+  const d = shade(c, 0.75);
+  const l = '#a07a52';
+  p.ellipse(1, 3, 17, 13, c).circle(18, 7, 5, c).circle(15, 3, 2, d).circle(21, 3, 2, d).rect(19, 7, 5, 4, l).px(23, 8, OUTLINE).px(19, 5, OUTLINE).px(21, 5, OUTLINE);
+  p.rect(2, 7, 4, 5, d);
+  p.rect(3 + f, 15, 4, 5, d).rect(8, 15, 4, 5, c).rect(13 - f, 15, 4, 5, d);
+}
+function wolf(p: Px, f: number): void {
+  // grey wolf with a pale belly and pointed ears
+  const c = '#8a8f96';
+  const d = shade(c, 0.72);
+  p.ellipse(2, 3, 13, 7, c).rect(13, 2, 6, 5, c).rect(13, 0, 2, 3, d).rect(16, 0, 2, 3, d).rect(17, 5, 3, 2, d).px(17, 3, OUTLINE).px(19, 6, '#2a2a2a');
+  p.rect(0, 1, 3, 3, d).px(0, 0, d); // bushy tail up
+  p.rect(5, 8, 6, 2, '#d9dde2');
+  p.rect(3 + f, 10, 2, 4, d).rect(7, 10, 2, 4, c).rect(11 - f, 10, 2, 4, d);
+}
+function lynx(p: Px, f: number): void {
+  // sandy spotted lynx with ear tufts and a short tail
+  const c = '#c9a46a';
+  const d = shade(c, 0.72);
+  p.ellipse(1, 3, 12, 7, c).rect(11, 1, 6, 6, c).rect(12, 0, 1, 2, '#2a2a2a').rect(16, 0, 1, 2, '#2a2a2a').px(15, 3, OUTLINE).rect(13, 5, 4, 2, '#f4ead8');
+  p.px(3, 5, d).px(6, 4, d).px(8, 6, d).px(5, 7, d).rect(0, 4, 2, 2, '#2a2a2a');
+  p.rect(2 + f, 9, 2, 4, d).rect(6, 9, 2, 4, c).rect(10 - f, 9, 2, 4, d);
+}
+
+const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, hare, boar, moose, bear, wolf, lynx, slime, bat, troll, boss };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
-const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0] };
+const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], pig: [14, -1], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0], hare: [11, -1], boar: [14, 1], moose: [19, 0], bear: [18, 1], wolf: [16, 0], lynx: [14, 0] };
 
 export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean): Px {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };

@@ -1,12 +1,12 @@
 // HUD: top chips, hotbar, toasts, touch controls.
-import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
+import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, isBathKey, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
 import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
 import { stackIconUrl } from '../art/painting.ts';
 import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
-import { bus, client, myPlayer } from '../state.js';
+import { bus, client, myPlayer, serverNow } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { isMuted, setMuted } from '../sound.ts';
 
@@ -161,8 +161,10 @@ export class Hud {
     this.top.append(h('div', { class: 'chip' }, `${clock} ${fmt(T.day, { day: client.day })}`));
     if (me) this.top.append(h('div', { class: 'chip' }, h('span', { class: 'coins' }, `${me.coins} ${T.coins}`)));
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
-    if (me && me.area === 'dungeon') this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
-    if (me && me.area !== 'farm' && me.area !== 'dungeon') {
+    if (me && me.boostUntil !== undefined && me.boostUntil > serverNow()) this.top.append(h('div', { class: 'chip', title: T.pizzaPower }, '🍕💨'));
+    if (me && (me.area === 'dungeon' || me.hearts < MAX_HEARTS)) this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
+    if (me && isBathKey(me.area)) this.top.append(h('div', { class: 'chip' }, `🏊 ${T.bathhouseName}`));
+    else if (me && me.area !== 'farm' && me.area !== 'dungeon') {
       const b = (client.areas[me.area]?.biome as Biome | undefined) ?? 'ang';
       this.top.append(h('div', { class: 'chip' }, `${BIOME_EMOJI[b]} ${BIOME_NAMES[b]}`));
     }

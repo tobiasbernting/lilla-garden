@@ -28,7 +28,8 @@ export type Terrain =
   | 'floor_stone'
   | 'snow'
   | 'gravel'
-  | 'ice';
+  | 'ice'
+  | 'pool'; // swimmable water (the bath house)
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -59,7 +60,9 @@ export interface ItemDef {
   /** Price in the catalogue; undefined = not for sale. */
   buy?: number;
   /** Catalogue tab, if sold. */
-  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars';
+  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars' | 'pizzeria';
+  /** Edible: eating restores hearts and gives a speed boost for this long. */
+  food?: { boostMs: number };
   /** Price in stars (Stjärnor tab) instead of kr. */
   stars?: number;
   /** Season this item is only available in (catalogue). */
@@ -73,7 +76,7 @@ export interface ItemDef {
   /** For animals: species that moves in. */
   species?: string;
   /** For tools. */
-  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka';
+  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
   paint?: number;
   /** Icon reference in the generated atlas. */
@@ -107,7 +110,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -126,8 +129,14 @@ export interface AnimalDef {
   speed: number;
   /** Pets follow their owner instead of wandering near a house. */
   pet?: boolean;
-  /** Wild animals live in this biome only. */
+  /** Wild animals live in these biomes only ('skog' or 'skog|berg'). */
   wild?: string;
+  /** How many of them an area gets (default 3..5). */
+  wildCount?: [number, number];
+  /** Chance that a lasso throw tames it (default 0.6). */
+  tame?: number;
+  /** Predators chase players within aggroRange tiles and bite; hp like a monster, they drop fur. */
+  predator?: { hp: number; aggroRange: number };
   /** Dungeon monsters: hit points and whether it is the boss. */
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
 }
@@ -204,6 +213,12 @@ export interface PlayerState {
   moveLock?: number;
   /** Id of the horse the player is riding. */
   riding?: number;
+  /** Pizzapower: moves faster until this server time. */
+  boostUntil?: number;
+  /** Standing in a pool (set by the server tick, drives the splash and the Gårdsbok). */
+  swimming?: boolean;
+  /** Next time (wall clock) a lost heart grows back outside the cave. */
+  healAt?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -296,9 +311,13 @@ export interface AnimalState {
   homeId: number; // object id of its house
   /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
-  /** Mobs: remaining hit points and next time it may attack. */
+  /** Mobs and predators: remaining hit points and next time it may attack. */
   hp?: number;
   attackAt?: number;
+  /** Runs away from a point until (wall clock) after a missed lasso throw. */
+  fleeUntil?: number;
+  fleeX?: number;
+  fleeY?: number;
   /** Wander target. */
   tx?: number;
   ty?: number;

@@ -11,6 +11,13 @@ import {
   MAX_HEARTS,
   applyMove,
   areaOf,
+  getArea,
+  BATH_EXIT,
+  BATH_POOL,
+  SWIM_SPEED_MUL,
+  PLAYER_SPEED,
+  inPool,
+  ensureBathhouse,
   arrivalTile,
   biomeAt,
   generateArea,
@@ -35,6 +42,9 @@ import {
   equip,
   generateWorld,
   isSolidForPlayer,
+  isHostile,
+  isPetAnimal,
+  ANIMALS,
   key,
   mulberry32,
   nameAnimal,
@@ -46,6 +56,8 @@ import {
   sell,
   setOnline,
   stepPlayer,
+  BOOST_SPEED_MUL,
+  ensurePizzeria,
   swapSlots,
   tick,
   tileIndex,
@@ -1186,7 +1198,8 @@ describe('byn', () => {
     expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
     expect(kinds).toContain('market');
     expect(kinds).toContain('sellstall');
-    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'stina']);
+    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'pino', 'stina']);
+    expect(kinds).toContain('pizzeria');
     for (const n of npcsIn(v)) for (const w of [n, ...n.routine]) expect(objectAt(v, w.x, w.y)?.kind ?? 'free').toBe('free');
     const { world, p } = setup();
     world.timeMs = 1000;
@@ -1207,6 +1220,47 @@ describe('byn', () => {
     // the village keeps its own villagers moving when someone is there
     tick(world, 50, ctx());
     expect(village.npcs.bo).toBeDefined();
+  });
+});
+
+describe('pizzerian', () => {
+  it('sells pizza in the village, eating heals and gives pizzapower that wears off', () => {
+    const { world, p } = setup();
+    p.coins = 100;
+    // buy at the pizzeria (the UI is opened by acting on the building)
+    const village = generateArea(1, 0);
+    const pizzeria = Object.values(village.objects).find((o) => o.kind === 'pizzeria')!;
+    expect(pizzeria).toBeDefined();
+    expect(buy(world, p.id, 'pizza', 1, ctx()).some((c) => c.t === 'player')).toBe(true);
+    expect(p.coins).toBe(70);
+    expect(countItem(p.inventory, 'pizza')).toBe(1);
+    // eat it: hearts back, boost set, achievement progress
+    p.hearts = 1;
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    select(p, 'pizza');
+    const now = 1_000_000;
+    const ch = performAction(world, p.id, 21, 20, { ...ctx(), now });
+    expect(ch.some((c) => c.t === 'toast' && c.text.includes('Pizzapower'))).toBe(true);
+    expect(countItem(p.inventory, 'pizza')).toBe(0);
+    expect(p.hearts).toBe(MAX_HEARTS);
+    expect(p.boostUntil).toBe(now + 60_000);
+    expect(p.stats?.pizza).toBe(1);
+    // the boost makes the shared movement faster (same multiplier the client predicts with)
+    const walker = { x: 300, y: 300, facing: 'right' as const, moving: false };
+    stepPlayer(world, walker, 1, 0, 100);
+    const plain = walker.x - 300;
+    walker.x = 300;
+    stepPlayer(world, walker, 1, 0, 100, BOOST_SPEED_MUL);
+    expect(walker.x - 300).toBeCloseTo(plain * BOOST_SPEED_MUL, 3);
+    // wears off
+    tick(world, 50, { ...ctx(), now: now + 61_000 });
+    expect(p.boostUntil).toBeUndefined();
+    // saved villages without a pizzeria get one
+    delete village.objects[pizzeria.id];
+    expect(ensurePizzeria(village)).toBe(true);
+    expect(Object.values(village.objects).some((o) => o.kind === 'pizzeria')).toBe(true);
+    expect(ensurePizzeria(village)).toBe(false);
   });
 });
 
@@ -1319,5 +1373,256 @@ describe('hästar', () => {
     expect(p.riding).toBeUndefined();
     expect(horse.y).toBeLessThan(3 * TILE);
     expect(Object.values(areaOf(world, p).animals).some((a) => a.species === 'horse')).toBe(false);
+  });
+});
+
+describe('grisar', () => {
+  it('need a pigsty, root up truffles once grown and happy, and unlock Grisbonde', () => {
+    const { world, p } = setup();
+    p.coins = 2000;
+    expect(toasts(buy(world, p.id, 'animal_pig', 1, ctx()))).toContain('Bygg ett Svinstia först');
+    for (let y = 30; y < 36; y++) for (let x = 30; x < 36; x++) clearTile(world, x, y);
+    const sty = addObject(world, 'pigsty', 30, 30)!;
+    for (let i = 0; i < 3; i++) expect(toasts(buy(world, p.id, 'animal_pig', 1, ctx()))[0]).toContain('flyttar in i morgon');
+    expect(toasts(buy(world, p.id, 'animal_pig', 1, ctx()))).toContain('Fullt i Svinstia');
+    expect(p.coins).toBe(2000 - 3 * 350);
+    newDay(world, ctx());
+    const pig = Object.values(world.animals).find((a) => a.species === 'pig')!;
+    expect(pig.homeId).toBe(sty.id);
+    pig.x = 33 * TILE + 8;
+    pig.y = 33 * TILE + 8;
+    standAt(world, p, 32, 33);
+    addItem(p.inventory, 'hay', 10);
+    for (let d = 0; d < 3; d++) {
+      select(p, 'hay');
+      performAction(world, p.id, 33, 33, ctx());
+      expect(pig.fed).toBe(true);
+      select(p, 'hoe');
+      performAction(world, p.id, 33, 33, ctx()); // pet
+      expect(pig.hasProduct).toBe(false);
+      newDay(world, ctx());
+      pig.x = 33 * TILE + 8;
+      pig.y = 33 * TILE + 8;
+    }
+    expect(pig.age).toBe(3);
+    expect(pig.hasProduct).toBe(true);
+    const ch = performAction(world, p.id, 33, 33, ctx());
+    expect(countItem(p.inventory, 'truffle')).toBe(1);
+    expect(pig.hasProduct).toBe(false);
+    expect(p.stats?.truffle).toBe(1);
+    expect(p.achievements).toContain('truffle_1');
+    expect(toasts(ch).some((t) => t.includes('Grisbonde'))).toBe(true);
+  });
+
+  it('truffle pasta is cooked at the stove from truffle, wheat and milk', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'truffle', 1);
+    addItem(p.inventory, 'wheat', 2);
+    addItem(p.inventory, 'milk', 1);
+    cook(world, p.id, 'truffle_pasta');
+    expect(countItem(p.inventory, 'truffle_pasta')).toBe(1);
+    expect(countItem(p.inventory, 'truffle')).toBe(0);
+  });
+});
+
+describe('badhuset', () => {
+  const toVillage = () => {
+    const { world, p } = setup();
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    const village = areaOf(world, p);
+    expect(village.biome).toBe('by');
+    return { world, p, village };
+  };
+
+  it('every village has a bath house, also villages saved before it existed', () => {
+    const { village } = toVillage();
+    const bath = Object.values(village.objects).filter((o) => o.kind === 'bathhouse');
+    expect(bath).toHaveLength(1);
+    // a village without one gets one on load
+    delete village.objects[bath[0]!.id];
+    expect(ensureBathhouse(village)).toBe(true);
+    expect(ensureBathhouse(village)).toBe(false);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'bathhouse')).toHaveLength(1);
+  });
+
+  it('enter, swim slowly, earn the badge and walk out again', () => {
+    const { world, p, village } = toVillage();
+    const bath = Object.values(village.objects).find((o) => o.kind === 'bathhouse')!;
+    standAt(world, p, bath.x + 1, bath.y + 2);
+    p.facing = 'up';
+    const ch = performAction(village, p.id, bath.x + 1, bath.y + 1, ctx());
+    expect(p.area).toBe('bath:a:1,0');
+    expect(ch.some((c) => c.t === 'areaData' && c.key === 'bath:a:1,0')).toBe(true);
+    const inside = areaOf(world, p);
+    expect(inside).toBe(getArea(world, 'bath:a:1,0'));
+    expect(inside.terrain.filter((t) => t === 'pool')).toHaveLength(BATH_POOL.w * BATH_POOL.h);
+    expect(Math.floor(p.y / TILE)).toBe(BATH_EXIT.y - 1);
+    expect(() => JSON.stringify(ch)).not.toThrow();
+    // the pool is walkable but slow
+    const px = BATH_POOL.x + 2;
+    const py = BATH_POOL.y + 2;
+    expect(isSolidForPlayer(inside, px, py)).toBe(false);
+    standAt(world, p, px, py);
+    expect(inPool(inside, p)).toBe(true);
+    const x0 = p.x;
+    stepPlayer(inside, p, 1, 0, 1000);
+    expect(p.x - x0).toBeCloseTo(PLAYER_SPEED * SWIM_SPEED_MUL, 0);
+    // the server tick notices the swimmer: splash, badge, flag
+    delete p.moveLock;
+    const t1 = tick(world, 50, ctx());
+    expect(p.swimming).toBe(true);
+    expect(t1.some((c) => c.t === 'fx' && c.kind === 'splash' && c.area === 'bath:a:1,0')).toBe(true);
+    expect(p.achievements).toContain('swim_1');
+    expect(p.stats?.swim).toBe(1);
+    // out of the pool
+    standAt(world, p, BATH_EXIT.x, BATH_EXIT.y - 1);
+    tick(world, 50, ctx());
+    expect(p.swimming).toBeUndefined();
+    // the exit door takes you back to the village square
+    performAction(inside, p.id, BATH_EXIT.x, BATH_EXIT.y, ctx());
+    expect(p.area).toBe('a:1,0');
+    expect(Math.floor(p.x / TILE)).toBe(bath.x + 1);
+    expect(Math.floor(p.y / TILE)).toBe(bath.y + 2);
+    expect(Object.keys(inside.players)).toHaveLength(0);
+    // stepping on the door tile also walks you out
+    performAction(village, p.id, bath.x + 1, bath.y + 1, ctx());
+    expect(p.area).toBe('bath:a:1,0');
+    delete p.moveLock;
+    standAt(world, p, BATH_EXIT.x, BATH_EXIT.y);
+    tick(world, 50, ctx());
+    expect(p.area).toBe('a:1,0');
+    // and home works from inside too
+    performAction(village, p.id, bath.x + 1, bath.y + 1, ctx());
+    teleport(world, p.id, 'farm');
+    expect(p.area).toBe('farm');
+  });
+});
+
+describe('lasso och rovdjur', () => {
+  const at = (now: number, r: number): SimCtx => ({ season: 'none', rnd: () => r, now });
+  /** Player in the area north of the farm with a lasso in hand and a wild animal two tiles to the right. */
+  function outdoors(species: string) {
+    const { world, p } = setup();
+    standAt(world, p, 32, 0);
+    travel(world, p.id, 'n');
+    const area = areaOf(world, p);
+    for (const a of Object.values(area.animals)) delete area.animals[a.id];
+    standAt(world, p, 30, 30);
+    for (let x = 28; x <= 36; x++) for (let y = 27; y <= 33; y++) clearTile(area, x, y);
+    const a = spawnMob(area, species, 32, 30);
+    a.hp = ANIMALS[species]?.predator?.hp ?? 1;
+    addItem(p.inventory, 'lasso', 1);
+    p.selected = p.inventory.findIndex((s) => s?.item === 'lasso');
+    return { world, p, area, a };
+  }
+
+  it('a lucky throw tames the animal into a pet that asks for a name', () => {
+    const { world, p, area, a } = outdoors('hare');
+    const ch = performAction(area, p.id, 31, 30, at(1_000_000, 0.1));
+    expect(ch.some((c) => c.t === 'fx' && c.kind === 'lasso')).toBe(true);
+    expect(a.owner).toBe(p.id);
+    expect(isPetAnimal(a)).toBe(true);
+    expect(ch.some((c) => c.t === 'open' && c.ui === 'nameAnimal' && c.id === a.id)).toBe(true);
+    expect(toasts(ch).some((t) => t.includes('kompis'))).toBe(true);
+    expect(p.stats.tame).toBe(1);
+    expect(p.stats.tame_species).toBe(1);
+    expect(p.achievements).toContain('tame_1');
+    // it follows its owner now: moving away makes it walk after you
+    standAt(world, p, 30, 30);
+    a.x = 36 * TILE;
+    const before = a.x;
+    tick(world, 200, at(1_000_100, 0.5));
+    expect(a.x).toBeLessThan(before);
+    // and petting it is like petting a dog, not a wild animal
+    expect(p.stats.wildpet).toBeUndefined();
+  });
+
+  it('a missed throw scares the animal away for a while', () => {
+    const { world, p, area, a } = outdoors('hare');
+    const ch = performAction(area, p.id, 31, 30, at(1_000_000, 0.95));
+    expect(a.owner).toBeUndefined();
+    expect(a.fleeUntil).toBe(1_003_000);
+    expect(toasts(ch).some((t) => t.includes('Missade'))).toBe(true);
+    const before = a.x;
+    tick(world, 200, at(1_000_100, 0.5));
+    expect(a.x).toBeGreaterThan(before); // runs away from the player on its left
+    tick(world, 200, at(1_004_000, 0.5));
+    expect(a.fleeUntil).toBeUndefined();
+  });
+
+  it('predators bite one heart with a cooldown, tamed ones do not, and fainting sends you home', () => {
+    const { world, p, area, a } = outdoors('bear');
+    a.x = p.x + TILE; // right next to the player
+    a.y = p.y;
+    expect(isHostile(a)).toBe(true);
+    tick(world, 50, at(2_000_000, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 1);
+    tick(world, 50, at(2_000_100, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 1); // still on cooldown
+    tick(world, 50, at(2_001_700, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 2);
+    // hearts grow back after a game hour outdoors (and the bear bites again)
+    tick(world, 50, at(2_001_700 + DAY_LENGTH_MS / 24 + 1, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 2);
+    // a tamed bear is a friend
+    a.owner = p.id;
+    p.hearts = 3;
+    delete p.healAt;
+    const quiet = tick(world, 50, at(2_100_000, 0.5));
+    expect(p.hearts).toBe(3);
+    expect(quiet.some((c) => c.t === 'fx' && c.kind === 'hit')).toBe(false);
+    expect(isHostile(a)).toBe(false);
+    // fainting: last heart lost outdoors wakes you up at home with everything you carried
+    delete a.owner;
+    a.x = p.x + TILE;
+    a.y = p.y;
+    p.hearts = 1;
+    p.healAt = 9_000_000; // no heart grows back before the bite
+    addItem(p.inventory, 'fur', 2);
+    const ch = tick(world, 50, at(2_200_000, 0.5));
+    expect(p.area).toBe('farm');
+    expect(p.hearts).toBe(MAX_HEARTS);
+    expect(countItem(p.inventory, 'fur')).toBe(2);
+    expect(toasts(ch).some((t) => t.includes('svimmade'))).toBe(true);
+  });
+
+  it('a sword hurts predators outdoors but never other animals, and a beaten predator drops fur', () => {
+    const { p, area, a } = outdoors('bear');
+    a.x = p.x + TILE;
+    a.y = p.y;
+    addItem(p.inventory, 'sword', 1);
+    p.selected = p.inventory.findIndex((s) => s?.item === 'sword');
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    expect(a.hp).toBe(3);
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    expect(area.animals[a.id]).toBeUndefined();
+    expect(Object.values(area.drops).some((d) => d.item === 'fur')).toBe(true);
+    expect(p.stats.predators).toBe(1);
+    const hare = spawnMob(area, 'hare', 31, 30);
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    expect(area.animals[hare.id]).toBeDefined();
+  });
+
+  it('tamed animals come home with you and areas get their wild animals back the next day', () => {
+    const { world, p, area, a } = outdoors('wolf');
+    performAction(area, p.id, 31, 30, at(1_000_000, 0.1));
+    expect(a.owner).toBe(p.id);
+    standAt(world, p, 32, 63);
+    const ch = travel(world, p.id, 's');
+    expect(p.area).toBe('farm');
+    expect(Object.values(area.animals).some((x) => x.species === 'wolf')).toBe(false);
+    const home = Object.values(world.animals).find((x) => x.species === 'wolf')!;
+    expect(home).toBeDefined();
+    expect(home.owner).toBe(p.id);
+    expect(ch.some((c) => c.t === 'animal' && c.animal === null && c.area === 'a:0,-1')).toBe(true);
+    expect(ch.some((c) => c.t === 'animal' && c.animal?.species === 'wolf' && c.area === undefined)).toBe(true);
+    // the emptied area is restocked with its own wild animals at dawn
+    const before = Object.keys(area.animals).length;
+    newDay(world, ctx());
+    expect(Object.keys(area.animals).length).toBeGreaterThan(before);
+    expect(Object.values(area.animals).every((x) => ANIMALS[x.species]?.wild?.split('|').includes(area.biome!))).toBe(true);
   });
 });

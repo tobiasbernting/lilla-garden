@@ -217,6 +217,32 @@ export function drawTerrainTilesHD(): TerrainTiles {
     ),
   );
 
+  const pool: number[][] = Array.from({ length: 16 }, (_, mask) =>
+    [0, 1].map((frame) =>
+      tile((ctx) => {
+        // pale stone rim underneath
+        ctx.fillStyle = lin(ctx, 0, 0, 16, 16, [[0, '#e2ded2'], [1, '#c9c5b8']]);
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.save();
+        insetPath(ctx, mask, 1.5, 3);
+        ctx.clip();
+        ctx.fillStyle = lin(ctx, 0, 0, 0, 16, [[0, '#5fd0f0'], [1, '#38aee0']]);
+        ctx.fillRect(-8, -8, 32, 32);
+        const sh = frame ? 3 : 0;
+        scatter(ctx, 130 + mask, 4, (x, y, i) => {
+          const w = 2.5 + rnd(mask, 70 + i) * 3;
+          stroke(ctx, [[x + sh - w, y], [x + sh - w / 2, y - 0.6], [x + sh, y], [x + sh + w / 2, y - 0.6], [x + sh + w, y]], 'rgba(230,250,255,0.6)', 0.8);
+        });
+        if (mask) {
+          insetPath(ctx, mask, 1.5, 3);
+          ctx.strokeStyle = 'rgba(0,60,90,0.25)';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }),
+    ),
+  );
   const sand = tile((ctx) => {
     ctx.fillStyle = lin(ctx, 0, 0, 16, 16, [[0, '#e8d6a4'], [1, '#d8c48c']]);
     ctx.fillRect(0, 0, 16, 16);
@@ -316,6 +342,8 @@ export function drawTerrainTilesHD(): TerrainTiles {
           return gravel;
         case 'ice':
           return ice;
+        case 'pool':
+          return pool[mask & 15]![frame]!;
       }
     },
   };
@@ -634,6 +662,49 @@ export interface HdLook {
   hat?: { style: string; color: string };
 }
 
+const DRESS_STYLES = ['dress', 'dress_belt', 'dress_flowers', 'gown'];
+
+/** A-line skirt from the waist to just above the shoes; the gown is wider with a scalloped hem. */
+function drawDressHD(ctx: Ctx, style: string, c: string, dir: 'down' | 'up' | 'right', walk: number): void {
+  const gown = style === 'gown';
+  const side = dir === 'right';
+  const top = 14.5;
+  const hem = gown ? 22.2 : 21.2;
+  const halfTop = side ? 4.2 : 5;
+  const halfHem = (gown ? 8 : 6.8) - (side ? 1.2 : 0);
+  const cx = 8 + (side ? 0.6 : 0);
+  const sway = side ? walk * 0.6 : 0;
+  ctx.beginPath();
+  ctx.moveTo(cx - halfTop, top);
+  ctx.lineTo(cx + halfTop, top);
+  ctx.quadraticCurveTo(cx + halfTop + 0.5, (top + hem) / 2, cx + halfHem + sway, hem);
+  if (gown) for (let i = 0; i < 4; i++) ctx.quadraticCurveTo(cx + halfHem - (i + 0.5) * (halfHem / 2) + sway, hem + 0.9, cx + halfHem - (i + 1) * (halfHem / 2) + sway, hem);
+  else ctx.lineTo(cx - halfHem + sway, hem);
+  ctx.quadraticCurveTo(cx - halfTop - 0.5, (top + hem) / 2, cx - halfTop, top);
+  ctx.closePath();
+  ctx.fillStyle = lin(ctx, cx - halfHem, top, cx + halfHem, hem, [[0, shade(c, 1.2)], [0.5, c], [1, shade(c, 0.7)]]);
+  ctx.fill();
+  // soft folds
+  for (const fx of side ? [-1.5, 1.5] : [-2.5, 0, 2.5]) stroke(ctx, [[cx + fx * 0.6, top + 1.5], [cx + fx + sway, hem - 0.5]], 'rgba(0,0,0,0.08)', 0.8);
+  if (style === 'dress_belt' || gown) {
+    fillRR(ctx, cx - halfTop, top - 0.3, halfTop * 2, 1.1, 0.5, '#ffffff');
+    if (dir === 'down') {
+      ellipse(ctx, 8, 10.6, 2.4, 1.1, '#ffffff');
+    }
+  }
+  if (style === 'dress_flowers') {
+    const pts: [number, number][] = side ? [[6.5, 17], [9.5, 19.5], [6, 20.5], [9, 16.5]] : [[4.5, 17], [9.5, 18.5], [6.5, 20.3], [11, 20], [8, 16.3], [3.5, 19.5]];
+    pts.forEach(([x, y], i) => {
+      ellipse(ctx, x + sway, y, 0.8, 0.8, i % 2 ? '#ffffff' : '#f5e04a');
+      ellipse(ctx, x + sway, y, 0.3, 0.3, i % 2 ? '#f5e04a' : '#ffffff');
+    });
+  }
+  if (gown) {
+    ellipse(ctx, cx - 1.5 + sway * 0.5, (top + hem) / 2, 1.2, 2.5, 'rgba(255,255,255,0.25)');
+    for (const fx of [-1, 1]) ellipse(ctx, cx + fx * (halfHem - 1) + sway, hem - 0.6, 0.6, 0.6, 'rgba(255,255,255,0.6)');
+  }
+}
+
 export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: number): Px {
   const p = hd(16, 24);
   const ctx = p.ctx;
@@ -645,9 +716,21 @@ export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: 
   const shirtC = ghost ? '#f4f4f4' : l.shirt.color;
   const shirtD = shade(shirtC, 0.7);
   const shirtL = shade(shirtC, 1.25);
+  const dress = DRESS_STYLES.includes(l.shirt.style);
 
   // legs
-  if (!ghost) {
+  if (dress) {
+    // only the shoes show under the skirt
+    if (dir === 'right') {
+      const f = 6.5 + walk * 1.5;
+      const b = 6.5 - walk * 1.5;
+      fillRR(ctx, b - 0.2, 21, 3.6, 2.4, 1, shade(shoeC, 0.8));
+      fillRR(ctx, f - 0.2, 21, 4.2, 2.4, 1, shoeC);
+    } else {
+      fillRR(ctx, 3.6, 21 + Math.max(0, walk) * 0.8, 3.8, 2.4, 1, shoeC);
+      fillRR(ctx, 8.6, 21 + Math.max(0, -walk) * 0.8, 3.8, 2.4, 1, shoeC);
+    }
+  } else if (!ghost) {
     if (dir === 'right') {
       const f = 6.5 + walk * 1.5;
       const b = 6.5 - walk * 1.5;
@@ -663,7 +746,7 @@ export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: 
       fillRR(ctx, 3.6, 16 + lh - 1, 3.8, 2.4, 1, shoeC);
       fillRR(ctx, 8.6, 16 + rh - 1, 3.8, 2.4, 1, shoeC);
     }
-    if (l.pants.style === 'skirt') {
+    if (l.pants.style === 'skirt' && !dress) {
       ctx.beginPath();
       ctx.moveTo(3.5, 15);
       ctx.lineTo(12.5, 15);
@@ -715,6 +798,7 @@ export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: 
     fillRR(ctx, 3.3, by + 3, 9.4, 1.2, 0.5, '#ffffff');
     ellipse(ctx, 8, by + 1.5, 1, 1, '#ffffff');
   }
+  if (dress) drawDressHD(ctx, l.shirt.style, shirtC, dir, walk);
   // arms
   const sleeve = shade(shirtC, 0.9);
   if (dir === 'right') fillRR(ctx, 7, by + 1, 2.6, 5.5, 1.2, sleeve);
