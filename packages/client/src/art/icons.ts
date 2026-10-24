@@ -179,6 +179,19 @@ const clothingIcon = (d: ItemDef): Px => {
   const D = shade(C, 0.75);
   switch (c.slot) {
     case 'shirt':
+      if (c.style.startsWith('dress') || c.style === 'gown') {
+        // a-line dress on a hanger
+        const gown = c.style === 'gown';
+        p.rect(5, 2, 6, 4, C).rect(2, 2, 3, 3, C).rect(11, 2, 3, 3, C);
+        for (let y = 6; y < 14; y++) {
+          const half = 3 + Math.round(((y - 6) / 7) * (gown ? 4 : 3));
+          p.rect(8 - half, y, half * 2, 1, y === 13 ? D : C);
+        }
+        if (c.style === 'dress_belt' || gown) p.rect(5, 6, 6, 1, '#ffffff');
+        if (c.style === 'dress_flowers') p.px(6, 9, '#ffffff').px(10, 11, '#f5e04a').px(8, 12, '#ffffff').px(5, 12, '#f5e04a');
+        if (gown) p.px(8, 8, shade(C, 1.3)).px(8, 10, shade(C, 1.3)).px(3, 12, '#ffffff').px(12, 12, '#ffffff');
+        break;
+      }
       p.rect(4, 3, 8, 10, C).rect(1, 3, 3, 5, C).rect(12, 3, 3, 5, C).rect(6, 2, 4, 1, D).rect(4, 12, 8, 1, D);
       if (c.style === 'stripes') for (let y = 5; y < 12; y += 2) p.rect(4, y, 8, 1, '#ffffff');
       if (c.style === 'overalls') p.rect(4, 3, 8, 10, '#f0e4c8').rect(6, 3, 4, 10, C).rect(5, 3, 1, 3, C).rect(10, 3, 1, 3, C);

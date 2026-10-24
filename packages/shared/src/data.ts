@@ -160,6 +160,17 @@ cloth('shirt_pink', 'shirt', 'plain', '#e87ab8', 60);
 cloth('shirt_purple', 'shirt', 'plain', '#8a4fd1', 60);
 cloth('shirt_stripes', 'shirt', 'stripes', '#3b6fd9', 90);
 cloth('shirt_overalls', 'shirt', 'overalls', '#3b5fa6', 120);
+// Dresses (worn in the shirt slot; they hide the pants)
+cloth('dress_pink', 'shirt', 'dress', '#e87ab8', 90);
+cloth('dress_blue', 'shirt', 'dress', '#5aa0e8', 90);
+cloth('dress_purple', 'shirt', 'dress', '#8a4fd1', 90);
+cloth('dress_mint', 'shirt', 'dress', '#5ac8a8', 90);
+cloth('dress_red_belt', 'shirt', 'dress_belt', '#d9453b', 110);
+cloth('dress_green_belt', 'shirt', 'dress_belt', '#3ba35b', 110);
+cloth('dress_yellow_flowers', 'shirt', 'dress_flowers', '#e8c23a', 120);
+cloth('dress_white_flowers', 'shirt', 'dress_flowers', '#f4f2ec', 120);
+cloth('dress_midsommar', 'shirt', 'dress_flowers', '#9ad0f0', 100, 'midsommar');
+cloth('dress_lucia', 'shirt', 'dress_belt', '#ffffff', 100, 'jul');
 cloth('pants_blue', 'pants', 'plain', '#2f4c8a', 50);
 cloth('pants_brown', 'pants', 'plain', '#7a5230', 50);
 cloth('pants_green', 'pants', 'plain', '#3f7a3a', 50);
@@ -188,6 +199,8 @@ starCloth('hat_party', 'hat', 'party', '#e87ab8', 5);
 starCloth('shirt_gold', 'shirt', 'plain', '#f2c230', 10);
 starCloth('hat_crown', 'hat', 'crown', '#f2d35a', 20);
 starCloth('shirt_star', 'shirt', 'star', '#3b3f8a', 30);
+starCloth('gown_gold', 'shirt', 'gown', '#f2c230', 15);
+starCloth('gown_blue', 'shirt', 'gown', '#3b6fd9', 15);
 // Cave treasure clothes (not for sale)
 add(I('hat_viking', 'clothing', { clothing: { slot: 'hat', style: 'viking', color: '#9d9a92' }, stack: 1 }));
 add(I('shirt_knight', 'clothing', { clothing: { slot: 'shirt', style: 'plain', color: '#b8bcc4' }, stack: 1 }));
