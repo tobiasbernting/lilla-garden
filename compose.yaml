@@ -1,0 +1,13 @@
+services:
+  db:
+    image: docker.io/library/postgres:17
+    environment:
+      POSTGRES_USER: lilla_garden
+      POSTGRES_PASSWORD: lilla_garden
+      POSTGRES_DB: lilla_garden
+    ports:
+      - "5435:5432"
+    volumes:
+      - lilla_garden_pg:/var/lib/postgresql/data
+volumes:
+  lilla_garden_pg:
