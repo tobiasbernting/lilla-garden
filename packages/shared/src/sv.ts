@@ -298,6 +298,8 @@ export const QUEST_TEXTS: Record<string, string[]> = {
   fish: ['Jag är sugen på fisk! Fånga {n} {item} åt mig.', 'En {item} till middag vore gott. Kan du fånga {n}?'],
   rod: ['Hjälp mig med ved till brasan, så får du mitt extra fiskespö! Jag behöver {n} {item}.'],
   dish: ['Jag har hört att du lagar god mat. Kan jag få {n} {item}?', 'Mmm, {item}! Jag vill ha {n}.'],
+  kid: ['Jag vill ha {n} {item} till min picknick!', 'Kan du ge mig {n} {item}? Snälla!', 'Snövit skulle bli så glad för {n} {item}.'],
+  flowers: ['Jag gör en blomsterkrans! Kan du ge mig {n} {item}?'],
 };
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
@@ -434,10 +436,11 @@ export const HELP: HelpTopic[] = [
   {
     id: 'villagers',
     emoji: '🧓',
-    title: 'Tant Greta och Fiskar-Sven',
-    intro: 'Byborna har nya önskningar varje dag.',
+    title: 'Byborna',
+    intro: 'Tant Greta, Fiskar-Sven och Lilla Elsa har nya önskningar varje dag.',
     steps: [
-      { icon: 'emoji:💬', text: 'Tant Greta står vid stigen öster om huset. Fiskar-Sven står vid dammen. Använd dem för att prata.' },
+      { icon: 'emoji:💬', text: 'Greta står vid stigen öster om huset, Sven vid dammen och Elsa leker vid skogskanten. Använd dem för att prata.' },
+      { icon: 'emoji:❗', text: 'Ett ❗ över en bybo betyder att du har något de vill ha. Ett ? betyder att de har en önskning.' },
       { icon: 'carrot', text: 'De berättar vad de vill ha. Samla sakerna och tryck Lämna.' },
       { icon: 'emoji:⭐', text: 'Du får kr och stjärnor. Stjärnorna syns uppe i hörnet.' },
       { icon: 'emoji:🚶', text: 'Byborna går runt på gården under dagen. Greta hälsar på Sven vid dammen mitt på dagen.' },

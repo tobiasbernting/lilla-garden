@@ -81,8 +81,28 @@ body {
   color: #d8f5c8;
   font-size: calc(3.5 * var(--u));
 }
-.label.bubble {
+.label.bubble.emote {
   font-size: calc(7 * var(--u));
+}
+.label.bubble.marker {
+  font-size: calc(6 * var(--u));
+  color: var(--gold);
+  background: #fff;
+  animation: bob 1s infinite alternate ease-in-out;
+}
+@keyframes bob {
+  from {
+    margin-top: 0;
+  }
+  to {
+    margin-top: calc(-1.5 * var(--u));
+  }
+}
+.label.bubble {
+  font-size: calc(5 * var(--u));
+  max-width: calc(90 * var(--u));
+  white-space: normal;
+  text-align: center;
   background: #fff;
   color: var(--ink);
   border: var(--u) solid var(--ink);
@@ -311,10 +331,10 @@ body:not(.touch) .act-btn {
 .toasts {
   position: absolute;
   left: 50%;
-  top: calc(16 * var(--u));
+  bottom: calc(28 * var(--u));
   transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: var(--u);
   align-items: center;
   pointer-events: none !important;

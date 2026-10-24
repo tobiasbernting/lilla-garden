@@ -993,10 +993,20 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'greta', kind: 'material', items: ['wood', 'stone', 'fiber'], count: [6, 12], stars: 1 },
   { npc: 'greta', kind: 'dish', items: ['bread', 'pancakes', 'carrot_cake', 'strawberry_jam'], count: [1, 2], stars: 3 },
   { npc: 'sven', kind: 'fish', items: ['fish_roach', 'fish_perch', 'fish_pike'], count: [1, 3], stars: 2 },
+  { npc: 'elsa', kind: 'kid', items: ['strawberry', 'carrot', 'egg', 'bread', 'hay'], count: [1, 3], stars: 1 },
+  { npc: 'elsa', kind: 'flowers', items: ['fiber'], count: [3, 6], stars: 1 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
 ];
 
 const FIXED_QUESTS: Quest[] = [
+  {
+    id: 'elsa_flowerbox',
+    npc: 'elsa',
+    want: { item: 'stone', count: 5 },
+    reward: { coins: 20, stars: 2, item: { item: 'flowerbox', count: 1 } },
+    text: 'Pappa sa att jag får en blomlåda om jag hittar 5 fina stenar. Hjälper du mig?',
+    fixed: true,
+  },
   {
     id: 'sven_rod',
     npc: 'sven',
