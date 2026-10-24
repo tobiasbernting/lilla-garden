@@ -3,6 +3,8 @@ import Phaser from 'phaser';
 import {
   WALL_KINDS,
   ANIMALS,
+  heldItem,
+  ITEMS,
   CROPS,
   DAY_LENGTH_MS,
   DUNGEON_H,
@@ -62,6 +64,9 @@ interface Actor {
   y: number;
   /** Shown while swimming in the bath house pool. */
   ripple?: Phaser.GameObjects.Image;
+  /** The item in the player's hand. */
+  held?: Phaser.GameObjects.Image;
+  heldKey?: string;
 }
 
 export interface InputSource {
@@ -425,6 +430,7 @@ export class GameScene extends Phaser.Scene {
     a.sprite.destroy();
     a.shadow.destroy();
     a.ripple?.destroy();
+    a.held?.destroy();
     a.label.remove();
     a.bubble?.remove();
     this.players.delete(id);
@@ -711,7 +717,7 @@ export class GameScene extends Phaser.Scene {
     // --- own movement (predicted) ---
     let dx = 0;
     let dy = 0;
-    if (!this.uiOpen) {
+    if (!this.uiOpen && !me.sleeping) {
       const k = this.keys;
       if (k.A!.isDown || k.LEFT!.isDown) dx -= 1;
       if (k.D!.isDown || k.RIGHT!.isDown) dx += 1;
@@ -770,7 +776,9 @@ export class GameScene extends Phaser.Scene {
         }
       }
       this.placeActor(actor, p.facing, p.moving, true, p.riding !== undefined);
-      this.updateSwim(actor, this.bath && inPool(world, actor));
+      const swimming = this.bath && inPool(world, actor);
+      this.updateSwim(actor, swimming);
+      this.updateHeld(actor, p, swimming);
       this.updateBubble(actor, p);
     }
     for (const [id, actor] of this.animals) {
@@ -851,6 +859,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Swimming: only the upper body shows above the water, with a ripple ring around it. */
+  /** Draws the selected item in the player's hand (tools, weapons, food… everything). */
+  private updateHeld(actor: Actor, p: PlayerState, swimming: boolean): void {
+    const stack = heldItem(p);
+    const key = stack && !swimming && !p.sleeping ? `icon-${stack.item}` : null;
+    if (!key || !this.textures.exists(key)) {
+      actor.held?.setVisible(false);
+      return;
+    }
+    if (!actor.held) actor.held = this.add.image(0, 0, key).setScale(0.55 * S);
+    if (actor.heldKey !== key) {
+      actor.held.setTexture(key);
+      actor.heldKey = key;
+    }
+    const lift = p.riding !== undefined ? 7 : 0;
+    const f = p.facing;
+    const bob = p.moving ? Math.round(Math.sin(this.time.now / 90)) : 0;
+    const tool = ITEMS[stack!.item]?.category === 'tool';
+    if (f === 'right' || f === 'left') {
+      const s = f === 'right' ? 1 : -1;
+      actor.held.setPosition(actor.x + s * 6, actor.y - 5 - lift + bob).setFlipX(f === 'left').setAngle(tool ? s * -25 : 0).setDepth(actor.y + 5);
+    } else if (f === 'down') {
+      actor.held.setPosition(actor.x + 5, actor.y - 3 - lift + bob).setFlipX(false).setAngle(tool ? 15 : 0).setDepth(actor.y + 5);
+    } else {
+      actor.held.setPosition(actor.x - 5, actor.y - 5 - lift + bob).setFlipX(true).setAngle(tool ? -15 : 0).setDepth(actor.y + 3);
+    }
+    actor.held.setVisible(true);
+  }
+
   private updateSwim(actor: Actor, swimming: boolean): void {
     if (swimming) {
       actor.sprite.setCrop(0, 0, CHAR_W * R, 15 * R);
@@ -962,17 +998,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBubble(actor: Actor, p: PlayerState): void {
-    const active = p.emote && p.emote.until > serverNow();
-    if (active && !actor.bubble) {
-      actor.bubble = this.makeLabel(EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id, 'bubble emote');
-    } else if (!active && actor.bubble) {
+    const glyph = p.sleeping ? EMOTE_GLYPH.sova! : p.emote && p.emote.until > serverNow() ? (EMOTE_GLYPH[p.emote.id] ?? p.emote.id) : null;
+    if (glyph && !actor.bubble) {
+      actor.bubble = this.makeLabel(glyph, 'bubble emote');
+    } else if (!glyph && actor.bubble) {
       actor.bubble.remove();
       actor.bubble = undefined;
     }
-    if (actor.bubble) {
+    if (actor.bubble && glyph) {
       const cam = this.cameras.main;
       const zoom = this.scale.zoom * cam.zoom;
-      actor.bubble.textContent = EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id;
+      actor.bubble.textContent = glyph;
       this.placeLabel(actor.bubble, (actor.x - cam.worldView.x) * zoom, (actor.y - 34 - cam.worldView.y) * zoom);
     }
   }
@@ -1002,6 +1038,14 @@ export class GameScene extends Phaser.Scene {
       // golden morning light and a warm sunset that fades into the blue night
       if (f < 0.12) this.night.fill(0xffc070, 0.16 * (1 - f / 0.12));
       else if (f > 0.5 && f < 0.7) this.night.fill(0xffa040, 0.22 * Math.sin(((f - 0.5) / 0.2) * Math.PI));
+    }
+    const me = myPlayer();
+    if (me?.sleeping) {
+      // eyes closed: everything fades to black except a little glow around the bed
+      this.night.fill(0x05040a, 0.92);
+      const cam = this.cameras.main;
+      this.night.erase(this.glow, me.x - cam.worldView.x - 32, me.y - cam.worldView.y - 32);
+      return;
     }
     if (this.inside) {
       const cam = this.cameras.main;

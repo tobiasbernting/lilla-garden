@@ -1626,3 +1626,50 @@ describe('lasso och rovdjur', () => {
     expect(Object.values(area.animals).every((x) => ANIMALS[x.species]?.wild?.split('|').includes(area.biome!))).toBe(true);
   });
 });
+
+describe('sova', () => {
+  it('crawling into bed, the night passes once everyone online sleeps, and any action wakes you', () => {
+    const { world, p } = setup();
+    const bed = Object.values(world.objects).find((o) => o.kind === 'bed')!;
+    standAt(world, p, bed.x, bed.y + 2);
+    p.facing = 'up';
+    const day0 = world.day;
+    const ch = performAction(world, p.id, bed.x, bed.y + 1, ctx());
+    expect(p.sleeping).toBe(true);
+    expect(toasts(ch).some((t) => t.includes('God natt'))).toBe(true);
+    // moving in your sleep is ignored
+    const x0 = p.x;
+    applyMove(world, p.id, p.x + 40, p.y, 'right', true);
+    expect(p.x).toBe(x0);
+    // a second player who is still up keeps the night from passing
+    const other = createPlayer(world, 'Bo', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    setOnline(world, other.id, true);
+    tick(world, 50, ctx());
+    expect(world.day).toBe(day0);
+    expect(p.sleeping).toBe(true);
+    // ...until they also go to bed
+    other.sleeping = true;
+    tick(world, 50, ctx());
+    expect(world.day).toBe(day0); // the lights go out first
+    const morning = tick(world, 50, { ...ctx(), now: 1_000_000 + 3000 });
+    expect(world.day).toBe(day0 + 1);
+    expect(p.sleeping).toBeUndefined();
+    expect(other.sleeping).toBeUndefined();
+    expect(toasts(morning).some((t) => t.includes('God morgon'))).toBe(true);
+    expect(world.timeMs).toBeLessThan(5000);
+    // waking up by hand
+    performAction(world, p.id, bed.x, bed.y + 1, ctx());
+    expect(p.sleeping).toBe(true);
+    select(p, 'hoe');
+    const wake = performAction(world, p.id, bed.x, bed.y + 1, ctx());
+    // holding a sword must not stop you from opening things
+    addItem(p.inventory, 'sword', 1);
+    select(p, 'sword');
+    expect(performAction(world, p.id, bed.x, bed.y + 1, ctx()).some((c) => c.t === 'player')).toBe(true);
+    expect(p.sleeping).toBe(true);
+    delete p.sleeping;
+    expect(p.sleeping).toBeUndefined();
+    expect(toasts(wake).some((t) => t.includes('vaknade'))).toBe(true);
+    expect(world.day).toBe(day0 + 1);
+  });
+});

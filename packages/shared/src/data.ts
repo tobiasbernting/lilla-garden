@@ -296,7 +296,7 @@ built('bench');
 built('table');
 built('flowerbox');
 built('well', { interact: 'water' });
-built('bed', { w: 1, h: 2 });
+built('bed', { w: 1, h: 2, interact: 'sleep' });
 built('rug', { w: 2, h: 2, solid: false, flat: true });
 built('chair');
 built('sofa', { w: 2, h: 1 });

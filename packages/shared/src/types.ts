@@ -110,7 +110,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -219,6 +219,8 @@ export interface PlayerState {
   swimming?: boolean;
   /** Next time (wall clock) a lost heart grows back outside the cave. */
   healAt?: number;
+  /** In bed: the night passes once every online player sleeps. */
+  sleeping?: boolean;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -340,6 +342,8 @@ export interface WorldState {
   day: number;
   /** Milliseconds into the current day. */
   timeMs: number;
+  /** Everyone is in bed: the new day starts at this wall-clock time. */
+  nightAt?: number;
   terrain: Terrain[]; // MAP_W * MAP_H
   crops: Record<string, CropState>; // key "x,y"
   objects: Record<number, WorldObject>;
