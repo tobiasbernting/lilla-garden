@@ -7,8 +7,14 @@ import {
   addAnimal,
   addItem,
   addObject,
+  CAVE_EXIT_TILE,
+  MAX_HEARTS,
   applyMove,
+  areaOf,
   bump,
+  dungeonStart,
+  generateDungeon,
+  spawnMob,
   npcAt,
   completeQuest,
   cook,
@@ -700,5 +706,156 @@ describe('gårdsbok and routines', () => {
     expect(greta.moving).toBe(false);
     expect(greta.facing).toBe('right');
     expect(npcAt(world, Math.floor(greta.x / 16), Math.floor(greta.y / 16))?.id).toBe('greta');
+  });
+});
+
+describe('grottan', () => {
+  const weapons = (p: PlayerState) => {
+    addItem(p.inventory, 'sword', 1);
+    addItem(p.inventory, 'bow', 1);
+    addItem(p.inventory, 'shield', 1);
+  };
+
+  it('generates a cave with rooms, an exit, monsters and a boss', () => {
+    const d = generateDungeon(42);
+    expect(d.area).toBe('dungeon');
+    const kinds = Object.values(d.objects).map((o) => o.kind);
+    expect(kinds).toContain('cave_exit');
+    expect(kinds).toContain('cave_wall');
+    expect(kinds).toContain('cave_torch');
+    const mobs = Object.values(d.animals);
+    expect(mobs.filter((a) => a.species === 'boss').length).toBe(1);
+    expect(mobs.length).toBeGreaterThan(3);
+    const start = dungeonStart(d);
+    expect(isSolidForPlayer(d, start.x, start.y)).toBe(false);
+    // the start tile and the boss room are connected floor (walk a flood fill)
+    const seen = new Set<string>([key(start.x, start.y)]);
+    const stack: [number, number][] = [[start.x, start.y]];
+    while (stack.length) {
+      const [x, y] = stack.pop()!;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const k = key(x + dx, y + dy);
+        if (seen.has(k) || d.terrain[(y + dy) * 64 + x + dx] !== 'floor_stone' || objectAt(d, x + dx, y + dy)?.kind === 'cave_wall') continue;
+        seen.add(k);
+        stack.push([x + dx, y + dy]);
+      }
+    }
+    const br = d.dungeonInfo!.bossRoom;
+    expect(seen.has(key(br.x + 1, br.y + 1))).toBe(true);
+  });
+
+  it('needs a weapon to enter; entering and leaving moves between areas', () => {
+    const { world, p } = setup();
+    const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
+    standAt(world, p, cave.x, cave.y + 2);
+    expect(toasts(performAction(world, p.id, cave.x, cave.y + 1, ctx()))).toContain('Ta med ett svärd eller en pilbåge in i grottan');
+    weapons(p);
+    const ch = performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    expect(ch.some((c) => c.t === 'dungeon' && c.world)).toBe(true);
+    expect(() => JSON.stringify(ch)).not.toThrow();
+    expect(p.area).toBe('dungeon');
+    const d = world.dungeon!;
+    expect(d.players[p.id]).toBe(p);
+    expect(areaOf(world, p)).toBe(d);
+    // walk to the exit tile and use it
+    const exit = Object.values(d.objects).find((o) => o.kind === 'cave_exit')!;
+    p.x = exit.x * 16 + 8;
+    p.y = (exit.y + 1) * 16 + 8;
+    p.facing = 'up';
+    performAction(d, p.id, exit.x, exit.y, ctx());
+    expect(p.area).toBe('farm');
+    expect(Math.floor(p.x / 16)).toBe(CAVE_EXIT_TILE.x);
+    expect(d.players[p.id]).toBeUndefined();
+  });
+
+  it('sword and bow hurt monsters, monsters hurt players, shield blocks, hearts out = carried home', () => {
+    const { world, p } = setup();
+    weapons(p);
+    const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
+    standAt(world, p, cave.x, cave.y + 2);
+    performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    const d = world.dungeon!;
+    const slime = spawnMob(d, 'slime', Math.floor(p.x / 16) + 1, Math.floor(p.y / 16));
+    p.facing = 'right';
+    select(p, 'sword');
+    performAction(d, p.id, Math.floor(slime.x / 16), Math.floor(slime.y / 16), ctx());
+    expect(d.animals[slime.id]).toBeUndefined(); // 2 hp, sword does 2
+    expect(p.stats.mobs).toBe(1);
+    // make sure the three tiles to the right are open floor (layouts differ per seed)
+    for (let dx = 1; dx <= 3; dx++) {
+      const x = Math.floor(p.x / 16) + dx;
+      const y = Math.floor(p.y / 16);
+      d.terrain[y * 64 + x] = 'floor_stone';
+      const o = objectAt(d, x, y);
+      if (o) {
+        delete d.objects[o.id];
+        delete d.occupancy[key(x, y)];
+      }
+    }
+    const troll = spawnMob(d, 'troll', Math.floor(p.x / 16) + 3, Math.floor(p.y / 16));
+    select(p, 'bow');
+    const ch = performAction(world.dungeon!, p.id, Math.floor(p.x / 16) + 1, Math.floor(p.y / 16), ctx());
+    expect(ch.some((c) => c.t === 'fx' && c.kind === 'arrow')).toBe(true);
+    expect(troll.hp).toBe(3);
+    // the troll walks up and hits
+    const c = ctx();
+    let t = c.now;
+    for (let i = 0; i < 60 && p.hearts === MAX_HEARTS; i++) {
+      t += 50;
+      tick(world, 50, { ...c, now: t });
+    }
+    expect(p.hearts).toBe(MAX_HEARTS - 1);
+    // shield up: no more damage
+    select(p, 'shield');
+    for (let i = 0; i < 60; i++) {
+      t += 50;
+      tick(world, 50, { ...c, now: t });
+    }
+    expect(p.hearts).toBe(MAX_HEARTS - 1);
+    // hands down: eventually carried out, nothing lost
+    select(p, 'hoe');
+    const gold = countItem(p.inventory, 'gold');
+    for (let i = 0; i < 400 && p.area === 'dungeon'; i++) {
+      t += 50;
+      tick(world, 50, { ...c, now: t });
+    }
+    expect(p.area).toBe('farm');
+    expect(p.hearts).toBe(MAX_HEARTS);
+    expect(countItem(p.inventory, 'gold')).toBe(gold);
+  });
+
+  it('beating the boss spawns the treasure, opening it gives loot and clears the cave', () => {
+    const { world, p } = setup();
+    weapons(p);
+    const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
+    standAt(world, p, cave.x, cave.y + 2);
+    performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    const d = world.dungeon!;
+    const boss = Object.values(d.animals).find((a) => a.species === 'boss')!;
+    p.x = boss.x - 16;
+    p.y = boss.y;
+    p.facing = 'right';
+    select(p, 'sword');
+    const bt = { x: Math.floor(boss.x / 16), y: Math.floor(boss.y / 16) };
+    let ch: Change[] = [];
+    for (let i = 0; i < 5; i++) ch = performAction(d, p.id, bt.x, bt.y, ctx());
+    expect(d.animals[boss.id]).toBeUndefined();
+    expect(toasts(ch)).toContain('Stora Trollet är besegrat! Skattkistan väntar.');
+    expect(p.achievements).toContain('boss_1');
+    const chest = Object.values(d.objects).find((o) => o.kind === 'treasure')!;
+    p.x = chest.x * 16 + 8;
+    p.y = (chest.y + 1) * 16 + 8;
+    const stars = p.stars;
+    const open = performAction(d, p.id, chest.x, chest.y, ctx());
+    expect(toasts(open).some((x) => x.startsWith('Skatten:'))).toBe(true);
+    expect(p.stars).toBe(stars + 5);
+    expect(countItem(p.inventory, 'gold')).toBeGreaterThanOrEqual(20);
+    expect(d.dungeonInfo!.cleared).toBe(true);
+    // leaving a cleared, empty cave removes it; the next visit is a new one
+    const exit = Object.values(d.objects).find((o) => o.kind === 'cave_exit')!;
+    p.x = exit.x * 16 + 8;
+    p.y = (exit.y + 1) * 16 + 8;
+    performAction(d, p.id, exit.x, exit.y, ctx());
+    expect(world.dungeon).toBeUndefined();
   });
 });

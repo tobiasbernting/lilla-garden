@@ -746,3 +746,50 @@ input[type='text'] {
   height: 100%;
   background: var(--accent);
 }
+
+/* ---- run button & minimap ---- */
+.run-btn {
+  position: absolute;
+  right: calc(36 * var(--u));
+  bottom: calc(26 * var(--u));
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+  border-radius: 50%;
+  background: #4f86d6;
+  border: calc(1.5 * var(--u)) solid var(--ink);
+  box-shadow: 0 calc(1.5 * var(--u)) 0 var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(8 * var(--u));
+}
+.run-btn:active {
+  transform: translateY(calc(1.5 * var(--u)));
+  box-shadow: none;
+}
+body:not(.touch) .run-btn {
+  display: none;
+}
+.minimap {
+  position: absolute;
+  left: calc(2 * var(--u));
+  top: calc(16 * var(--u));
+  background: rgba(43, 36, 25, 0.85);
+  border: var(--u) solid var(--ink);
+  border-radius: calc(2 * var(--u));
+  padding: var(--u);
+  pointer-events: none !important;
+}
+.minimap canvas {
+  display: block;
+  width: calc(64 * var(--u));
+  height: auto;
+  image-rendering: pixelated;
+}
+.chip.hearts {
+  font-size: calc(4.5 * var(--u));
+  letter-spacing: calc(-0.5 * var(--u));
+}
+.label.animal.mob {
+  color: #ffb0a0;
+}

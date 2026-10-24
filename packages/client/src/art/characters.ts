@@ -194,6 +194,10 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
       case 'santa':
         p.rect(hx - 1, hy - 2, 10, 3, C).rect(hx, hy - 4, 8, 2, C).rect(hx + 1, hy - 6, 5, 2, C).rect(hx + 3, hy - 7, 3, 1, C).rect(hx - 1, hy + 1, 10, 1, '#ffffff').rect(hx + 6, hy - 7, 2, 2, '#ffffff');
         break;
+      case 'viking':
+        p.rect(hx - 1, hy - 3, 10, 5, C).rect(hx, hy - 4, 8, 1, C).rect(hx - 1, hy + 1, 10, 1, Cd).rect(hx + 3, hy - 4, 2, 5, '#f2d35a');
+        p.rect(hx - 3, hy - 5, 2, 4, '#f4ead8').px(hx - 2, hy - 6, '#f4ead8').rect(hx + 9, hy - 5, 2, 4, '#f4ead8').px(hx + 9, hy - 6, '#f4ead8');
+        break;
       case 'party':
         p.rect(hx + 1, hy - 2, 6, 2, C).rect(hx + 2, hy - 5, 4, 3, C).rect(hx + 3, hy - 8, 2, 3, C).px(hx + 3, hy - 9, '#f5e04a').px(hx + 4, hy - 9, '#f5e04a');
         p.px(hx + 2, hy - 4, '#ffffff').px(hx + 5, hy - 2, '#ffffff').px(hx + 4, hy - 6, '#5aa0e8');

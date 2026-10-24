@@ -69,7 +69,7 @@ export interface ItemDef {
   /** For animals: species that moves in. */
   species?: string;
   /** For tools. */
-  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod';
+  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow';
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -101,7 +101,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -120,6 +120,8 @@ export interface AnimalDef {
   speed: number;
   /** Pets follow their owner instead of wandering near a house. */
   pet?: boolean;
+  /** Dungeon monsters: hit points and whether it is the boss. */
+  mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
 }
 
 export interface RecipeDef {
@@ -178,6 +180,12 @@ export interface PlayerState {
   fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
   /** Lifetime counters for the Gårdsbok (harvest, chop, …). */
   stats: Record<string, number>;
+  /** Which map the player is on. */
+  area: 'farm' | 'dungeon';
+  /** Hearts left (dungeon); restored when leaving. */
+  hearts: number;
+  /** Invulnerable until (wall clock) after being hit. */
+  hurtUntil?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -266,6 +274,9 @@ export interface AnimalState {
   homeId: number; // object id of its house
   /** Pets: the player they follow. */
   owner?: string;
+  /** Mobs: remaining hit points and next time it may attack. */
+  hp?: number;
+  attackAt?: number;
   /** Wander target. */
   tx?: number;
   ty?: number;
@@ -302,6 +313,12 @@ export interface WorldState {
   questsDay: number;
   /** Villager positions (not persisted; rebuilt from routines). */
   npcs: Record<string, NpcState>;
+  /** 'dungeon' for the generated cave world; undefined for the farm. */
+  area?: 'dungeon';
+  /** The current cave instance (farm world only, not persisted). */
+  dungeon?: WorldState;
+  /** Dungeon: seed, size, whether the boss is beaten. */
+  dungeonInfo?: { seed: number; w: number; h: number; cleared: boolean; level: number; start: { x: number; y: number }; bossRoom: { x: number; y: number; w: number; h: number } };
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;

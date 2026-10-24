@@ -7,3 +7,4 @@ export * from './inventory.ts';
 export * from './map.ts';
 export * from './protocol.ts';
 export * from './sim.ts';
+export * from './dungeon.ts';

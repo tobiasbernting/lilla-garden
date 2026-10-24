@@ -1,6 +1,7 @@
 // Client-side mirror of the world plus a tiny event bus.
 import {
   objectDef,
+  rebuildOccupancy,
   key as tileKey,
   type AnimalSnap,
   type NpcSnap,
@@ -27,6 +28,8 @@ export interface Events {
   connection: 'connecting' | 'open' | 'closed';
   season: Season;
   day: number;
+  /** The local player moved between the farm and the cave. */
+  area: 'farm' | 'dungeon';
 }
 
 class Bus {
@@ -52,6 +55,7 @@ export const bus = new Bus();
 
 export const client = {
   world: null as WorldState | null,
+  dungeon: null as WorldState | null,
   me: '',
   season: 'none' as Season,
   /** server clock = Date.now() - offset */
@@ -65,6 +69,9 @@ export const client = {
 export const serverNow = (): number => Date.now() - client.serverOffset;
 
 export const myPlayer = () => (client.world ? client.world.players[client.me] : undefined);
+export const myArea = (): 'farm' | 'dungeon' => (myPlayer()?.area === 'dungeon' && client.dungeon ? 'dungeon' : 'farm');
+/** The world the local player is in. */
+export const activeWorld = (): WorldState | null => (myArea() === 'dungeon' ? client.dungeon : client.world);
 
 function putObject(world: WorldState, obj: WorldObject): void {
   const old = world.objects[obj.id];
@@ -80,7 +87,21 @@ function dropObject(world: WorldState, obj: WorldObject): void {
 }
 
 export function applyChange(c: Change): void {
-  const world = client.world;
+  const farm = client.world;
+  if (!farm) return;
+  if (c.t === 'dungeon') {
+    client.dungeon = c.world;
+    if (client.dungeon) {
+      rebuildOccupancy(client.dungeon);
+      // the player records inside the cave are copies; use the farm's records
+      for (const id of Object.keys(client.dungeon.players)) if (farm.players[id]) client.dungeon.players[id] = farm.players[id]!;
+    }
+    bus.emit('change', c);
+    if (myPlayer()?.area === 'dungeon' && client.dungeon) bus.emit('area', 'dungeon');
+    return;
+  }
+  const inCave = 'area' in c && c.area === 'dungeon';
+  const world = inCave ? client.dungeon : farm;
   if (!world) return;
   switch (c.t) {
     case 'terrain':
@@ -114,10 +135,13 @@ export function applyChange(c: Change): void {
         break;
       }
       const old = world.players[c.id];
-      if (c.id === client.me && old) {
+      const areaChanged = old && old.area !== c.player.area;
+      if (c.id === client.me && old && !areaChanged) {
         // keep predicted position
-        world.players[c.id] = { ...c.player, x: old.x, y: old.y, facing: old.facing, moving: old.moving };
-      } else world.players[c.id] = c.player;
+        Object.assign(old, { ...c.player, x: old.x, y: old.y, facing: old.facing, moving: old.moving });
+      } else if (old) Object.assign(old, c.player);
+      else world.players[c.id] = c.player;
+      if (c.id === client.me && areaChanged) bus.emit('area', c.player.area);
       break;
     }
     case 'quests':

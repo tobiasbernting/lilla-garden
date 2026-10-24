@@ -115,7 +115,12 @@ export function createServer(game: Game, opts: { clientDist: string | null; seas
   wss.on('connection', (ws: WebSocket) => {
     const link: Link = {
       send: (msg: ServerMsg) => {
-        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+        if (ws.readyState !== ws.OPEN) return;
+        try {
+          ws.send(JSON.stringify(msg));
+        } catch (e) {
+          console.error('could not send', msg.t, e);
+        }
       },
       close: () => ws.close(),
     };

@@ -26,6 +26,9 @@ add(I('scythe', 'tool', { tool: 'scythe' }));
 add(I('hammer', 'tool', { tool: 'hammer' }));
 add(I('brush', 'tool', { tool: 'brush' }));
 add(I('rod', 'tool', { tool: 'rod' }));
+add(I('sword', 'tool', { tool: 'sword' }));
+add(I('shield', 'tool', { tool: 'shield' }));
+add(I('bow', 'tool', { tool: 'bow' }));
 
 // Seeds + crops
 const crop = (id: string, buySeed: number, sellCrop: number) => {
@@ -45,6 +48,10 @@ add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('fiber', 'material', { sell: 1 }));
 add(I('hay', 'feed', { sell: 1, buy: 4, tab: 'feed' }));
+// Cave loot
+add(I('gold', 'material', { sell: 10 }));
+add(I('gem', 'material', { sell: 150 }));
+add(I('heartberry', 'crop', { sell: 20 }));
 
 // Animal products
 add(I('egg', 'animal_product', { sell: 15 }));
@@ -166,6 +173,9 @@ starCloth('hat_party', 'hat', 'party', '#e87ab8', 5);
 starCloth('shirt_gold', 'shirt', 'plain', '#f2c230', 10);
 starCloth('hat_crown', 'hat', 'crown', '#f2d35a', 20);
 starCloth('shirt_star', 'shirt', 'star', '#3b3f8a', 30);
+// Cave treasure clothes (not for sale)
+add(I('hat_viking', 'clothing', { clothing: { slot: 'hat', style: 'viking', color: '#9d9a92' }, stack: 1 }));
+add(I('shirt_knight', 'clothing', { clothing: { slot: 'shirt', style: 'plain', color: '#b8bcc4' }, stack: 1 }));
 
 export const item = (id: string): ItemDef => {
   const d = ITEMS[id];
@@ -240,6 +250,13 @@ built('painting', { solid: false, flat: true });
 built('stove', { light: true, interact: 'cook' });
 built('clock', { solid: false, flat: true });
 built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
+// Cave
+addO(O('cave', { w: 2, h: 2, interact: 'cave', breakWith: undefined }));
+addO(O('cave_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
+addO(O('cave_wall', { breakWith: undefined }));
+addO(O('cave_torch', { solid: false, breakWith: undefined, light: true }));
+addO(O('cave_rock', { breakWith: 'pick', drops: [{ item: 'stone', min: 1, max: 2 }] }));
+addO(O('treasure', { interact: 'treasure', breakWith: undefined }));
 built('coop', { w: 2, h: 2, houses: { species: 'hen', capacity: 4 } });
 built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
@@ -278,6 +295,11 @@ export const ANIMALS: Record<string, AnimalDef> = {
   // Pets follow their owner and need no house
   dog: { species: 'dog', house: '', growDays: 0, speed: 70, pet: true },
   cat: { species: 'cat', house: '', growDays: 0, speed: 60, pet: true },
+  // Cave monsters (gentle): slime, bat, troll and the boss troll
+  slime: { species: 'slime', house: '', growDays: 0, speed: 22, mob: { hp: 2, drops: [{ item: 'gold', min: 1, max: 2, chance: 0.8 }, { item: 'heartberry', min: 1, max: 1, chance: 0.25 }] } },
+  bat: { species: 'bat', house: '', growDays: 0, speed: 44, mob: { hp: 1, drops: [{ item: 'gold', min: 1, max: 1, chance: 0.6 }] } },
+  troll: { species: 'troll', house: '', growDays: 0, speed: 26, mob: { hp: 4, drops: [{ item: 'gold', min: 2, max: 4, chance: 1 }, { item: 'heartberry', min: 1, max: 1, chance: 0.4 }] } },
+  boss: { species: 'boss', house: '', growDays: 0, speed: 20, mob: { hp: 10, boss: true, drops: [{ item: 'gold', min: 8, max: 12, chance: 1 }] } },
 };
 
 // ---------- Recipes ----------
@@ -318,6 +340,18 @@ export const RECIPES: RecipeDef[] = [
   R('rug', 1, ['fiber', 8]),
   R('lamp', 1, ['wood', 2], ['fiber', 2]),
   R('plant', 1, ['fiber', 3], ['stone', 1]),
+  R('sword', 1, ['wood', 5], ['stone', 4]),
+  R('shield', 1, ['wood', 6], ['stone', 2]),
+  R('bow', 1, ['wood', 4], ['fiber', 5]),
+];
+
+/** What the treasure chest may hold besides gold and stars. */
+export const TREASURE: { item: string; count: number; weight: number }[] = [
+  { item: 'gem', count: 1, weight: 30 },
+  { item: 'hat_viking', count: 1, weight: 15 },
+  { item: 'shirt_knight', count: 1, weight: 15 },
+  { item: 'pumpkin_seed', count: 5, weight: 20 },
+  { item: 'strawberry_seed', count: 5, weight: 20 },
 ];
 
 /** Recipes cooked at the stove (same shape as crafting recipes). */
@@ -430,6 +464,10 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('quests_15', 'quests', 15, 3, 'maypole'),
   A('coins_500', 'earned', 500, 1, 'animal_hen'),
   A('coins_3000', 'earned', 3000, 3, 'animal_cow'),
+  A('mobs_10', 'mobs', 10, 1, 'sword'),
+  A('mobs_50', 'mobs', 50, 2, 'bow'),
+  A('boss_1', 'boss', 1, 3, 'gem'),
+  A('boss_5', 'boss', 5, 5, 'hat_viking'),
 ];
 
 /** Fish and how likely they bite (weights). */

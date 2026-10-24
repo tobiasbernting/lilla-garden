@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { ensureInterior, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureCave, ensureInterior, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -87,7 +87,11 @@ export class PgStore implements Store {
     for (const c of await this.db.select().from(s.crops)) world.crops[c.k] = c.data;
     for (const a of await this.db.select().from(s.animals)) world.animals[a.id] = a.data;
     for (const p of await this.db.select().from(s.players)) {
-      world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, stats: p.data.stats ?? {}, achievements: p.data.achievements ?? [], online: false, moving: false };
+      world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, stats: p.data.stats ?? {}, achievements: p.data.achievements ?? [], area: 'farm', hearts: MAX_HEARTS, online: false, moving: false };
+      if (p.data.area === 'dungeon') {
+        world.players[p.id]!.x = CAVE_EXIT_TILE.x * TILE + TILE / 2;
+        world.players[p.id]!.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;
+      }
       delete world.players[p.id]!.emote;
       delete world.players[p.id]!.fishing;
     }
@@ -96,6 +100,7 @@ export class PgStore implements Store {
     const before = Object.keys(world.objects).length;
     if (ensureInterior(world)) console.log('added the farmhouse interior to the saved world');
     ensureVillagers(world);
+    if (ensureCave(world)) console.log('added the cave to the saved world');
     // Objects removed by the repairs above must also leave the database
     for (const id of loadedObjectIds) if (!world.objects[id]) this.gone.objects.add(id);
     if (Object.keys(world.objects).length !== before || this.gone.objects.size > 0 || before === 0) {

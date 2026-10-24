@@ -22,6 +22,7 @@ export interface TerrainTiles {
   /** frame index per terrain (+variant) */
   index: (t: Terrain, x: number, y: number, snow: boolean) => number;
   waterFrames: [number, number];
+  rock: number;
   count: number;
 }
 
@@ -100,11 +101,17 @@ export function drawTerrainTiles(): TerrainTiles {
   fs.rect(0, 0, 16, 1, '#8e8b83').rect(0, 8, 16, 1, '#8e8b83').rect(0, 0, 1, 16, '#8e8b83').rect(8, 0, 1, 8, '#8e8b83').rect(4, 8, 1, 8, '#8e8b83').rect(12, 8, 1, 8, '#8e8b83');
   const floorStoneI = add(fs);
 
+  // cave rock (solid darkness with a faint texture)
+  const rockP = new Px(16, 16).rect(0, 0, 16, 16, '#1d1c22');
+  speck(rockP, 900, 4, '#26252c', 2);
+  const rockI = add(rockP);
+
   const sheet = new Px(16 * tiles.length, 16);
   tiles.forEach((t, i) => sheet.blit(t, i * 16, 0));
   return {
     canvas: sheet.canvas,
     count: tiles.length,
+    rock: rockI,
     waterFrames: [water[0]!, water[1]!],
     index: (t, x, y, snowy) => {
       const h = hash2(x, y);
@@ -243,11 +250,32 @@ const pumpkin = (p: Px, x: number, y: number, w: number, h: number, face = false
   return p;
 };
 
-const fence = (gate = false): Px => {
+/** Fence piece for a neighbour mask: bit 1 = up, 2 = right, 4 = down, 8 = left. */
+const fence = (mask: number): Px => {
   const p = new Px(16, 16);
-  p.rect(0, 6, 16, 2, WOOD).rect(0, 11, 16, 2, WOOD);
-  p.rect(2, 3, 3, 12, WOOD_L).rect(11, 3, 3, 12, WOOD_L).rect(2, 3, 3, 1, '#e0b47a').rect(11, 3, 3, 1, '#e0b47a');
-  if (gate) p.line(5, 13, 10, 7, WOOD_D).line(5, 12, 10, 6, WOOD_D);
+  const up = mask & 1;
+  const right = mask & 2;
+  const down = mask & 4;
+  const left = mask & 8;
+  // rails towards connected sides (two rails), lonely posts get short stubs
+  const lonely = mask === 0;
+  if (left || lonely) p.rect(0, 6, 8, 2, WOOD).rect(0, 11, 8, 2, WOOD);
+  if (right || lonely) p.rect(8, 6, 8, 2, WOOD).rect(8, 11, 8, 2, WOOD);
+  if (up) p.rect(5, 0, 2, 9, WOOD).rect(9, 0, 2, 9, WOOD);
+  if (down) p.rect(5, 8, 2, 8, WOOD).rect(9, 8, 2, 8, WOOD);
+  // post
+  p.rect(6, 2, 4, 13, WOOD_L).rect(6, 2, 4, 1, '#e0b47a').rect(9, 3, 1, 12, WOOD);
+  return p.outline(OUTLINE);
+};
+const gate = (vertical: boolean): Px => {
+  const p = new Px(16, 16);
+  if (vertical) {
+    p.rect(5, 0, 2, 16, WOOD).rect(9, 0, 2, 16, WOOD).rect(4, 1, 8, 3, WOOD_L).rect(4, 12, 8, 3, WOOD_L).line(5, 4, 10, 11, WOOD_D);
+  } else {
+    p.rect(0, 6, 16, 2, WOOD).rect(0, 11, 16, 2, WOOD);
+    p.rect(1, 3, 3, 12, WOOD_L).rect(12, 3, 3, 12, WOOD_L).rect(1, 3, 3, 1, '#e0b47a').rect(12, 3, 3, 1, '#e0b47a');
+    p.line(4, 13, 11, 7, WOOD_D).line(4, 12, 11, 6, WOOD_D);
+  }
   return p.outline(OUTLINE);
 };
 
@@ -481,8 +509,8 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('bush', [bush()]);
   set('wild_pumpkin', [pumpkin(new Px(16, 16), 2, 5, 12, 10).outline(OUTLINE)]);
   set('wild_flower_mid', [flower(0, true), flower(1, true), flower(2, true)]);
-  set('fence', [fence()]);
-  set('gate', [fence(true)]);
+  set('fence', Array.from({ length: 16 }, (_, m) => fence(m)));
+  set('gate', [gate(false), gate(true)]);
   set('wall_wood', [wall(false)], 0, -8);
   set('wall_stone', [wall(true)], 0, -8);
   set('door', [door()], 0, -8);
@@ -526,8 +554,37 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('stove', [stove()], 0, -6);
   set('clock', [clock()], 0, -6);
   set('door_out', [doorOut()]);
+  // Cave
+  set('cave', [caveMouth()], 0, -8);
+  set('cave_exit', [caveExit()]);
+  set('cave_wall', [caveWall(false), caveWall(true)], 0, -8);
+  set('cave_torch', [torch(0), torch(1)], 0, 0, true);
+  set('cave_rock', [rock(true)]);
+  set('treasure', [treasure()]);
   return art;
 }
+
+const caveMouth = (): Px => {
+  const p = new Px(32, 40).ellipse(0, 4, 32, 36, STONE_D).ellipse(2, 6, 28, 32, STONE).ellipse(8, 14, 16, 26, '#1b1a17').rect(6, 30, 20, 10, '#1b1a17');
+  p.rect(10, 2, 4, 3, STONE_L).rect(20, 6, 3, 2, STONE_L).rect(4, 20, 2, 3, STONE_L);
+  return p.outline(OUTLINE);
+};
+const caveExit = (): Px => new Px(16, 16).rect(2, 0, 12, 16, '#3a3a3a').rect(3, 2, 10, 2, STONE).rect(3, 6, 10, 2, STONE).rect(3, 10, 10, 2, STONE).rect(3, 14, 10, 2, STONE).rect(6, 0, 4, 1, '#8fd0f0');
+const caveWall = (lit: boolean): Px => {
+  const p = new Px(16, 24).rect(0, 0, 16, 24, '#4a4640');
+  for (let y = 0; y < 24; y += 6) {
+    p.rect(0, y, 16, 1, '#2f2c28');
+    for (let x = (y / 6) % 2 === 0 ? 0 : 5; x < 16; x += 9) p.rect(x, y, 1, 6, '#2f2c28');
+  }
+  p.rect(2, 2, 3, 2, '#5c5850').rect(9, 9, 4, 2, '#5c5850').rect(5, 15, 3, 3, '#5c5850');
+  if (lit) p.rect(7, 10, 2, 8, WOOD_D).rect(6, 7, 4, 3, '#f5a623').rect(7, 5, 2, 2, '#ffd45a').px(8, 4, '#fff2a0');
+  return p;
+};
+const treasure = (): Px => {
+  const p = new Px(16, 16).rect(1, 5, 14, 10, '#8a5a2a').rect(1, 5, 14, 4, '#b07a44').rect(1, 9, 14, 1, '#6f4a26').rect(6, 8, 4, 3, '#f2d35a').rect(2, 6, 12, 1, '#f2d35a').rect(2, 12, 12, 1, '#f2d35a');
+  p.rect(3, 3, 10, 2, '#f2d35a').px(5, 2, '#fff2a0').px(10, 2, '#fff2a0');
+  return p.outline(OUTLINE);
+};
 
 const bed = (): Px => {
   const p = new Px(16, 36).rect(1, 4, 14, 30, WOOD).rect(1, 4, 14, 2, WOOD_L).rect(2, 8, 12, 24, '#f4f0e6').rect(2, 8, 12, 6, '#ffffff').rect(2, 16, 12, 16, '#d9453b').rect(2, 16, 12, 1, '#ef7a6a');
@@ -642,7 +699,11 @@ export function drawFx(): Record<string, Px[]> {
   const shadow = new Px(12, 6).ellipse(0, 0, 12, 6, '#00000055');
   const cursor = new Px(16, 16).box(0, 0, 16, 16, '#ffffff').box(1, 1, 14, 14, '#2b2419');
   const bubble = new Px(16, 14).rect(1, 0, 14, 11, '#ffffff').rect(0, 1, 16, 9, '#ffffff').rect(6, 11, 3, 1, '#ffffff').rect(7, 12, 1, 1, '#ffffff').outline(OUTLINE);
+  const hit = new Px(10, 10).tpl(0, 0, ['....##....', '.#..##..#.', '..######..', '.########.', '##########', '##########', '.########.', '..######..', '.#..##..#.', '....##....'], { '#': '#ff5a3a' }).rect(4, 4, 2, 2, '#fff2a0');
+  const arrow = new Px(12, 3).rect(0, 1, 10, 1, WOOD_L).rect(9, 0, 3, 3, '#d8d8d8').px(11, 1, '#ffffff').rect(0, 0, 2, 3, '#e04a2a');
   return {
+    hit: [hit],
+    arrow: [arrow],
     heart: [heart],
     sparkle: [sparkle(0), sparkle(1)],
     water: [water],
