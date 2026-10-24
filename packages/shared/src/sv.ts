@@ -164,6 +164,11 @@ export const OBJECT_NAMES: Record<string, string> = {
   shell: 'Snäcka',
   cactus: 'Kaktus',
   signpost: 'Vägskylt',
+  house_small: 'Hus',
+  market: 'Marknadsstånd',
+  sellstall: 'Uppköpare',
+  lantern: 'Lykta',
+  town_well: 'Bybrunnen',
   cave: 'Grottan',
   cave_exit: 'Ut ur grottan',
   cave_wall: 'Bergvägg',
@@ -353,6 +358,9 @@ export const QUEST_TEXTS: Record<string, string[]> = {
   dish: ['Jag har hört att du lagar god mat. Kan jag få {n} {item}?', 'Mmm, {item}! Jag vill ha {n}.'],
   kid: ['Jag vill ha {n} {item} till min picknick!', 'Kan du ge mig {n} {item}? Snälla!', 'Snövit skulle bli så glad för {n} {item}.'],
   flowers: ['Jag gör en blomsterkrans! Kan du ge mig {n} {item}?'],
+  bake: ['Till dagens bak behöver jag {n} {item}.', 'Kunderna vill ha mer! Hämta {n} {item} åt mig.'],
+  smith: ['Smedjan behöver {n} {item}. Kan du hjälpa till?', 'Jag ska smida något fint. {n} {item}, tack!'],
+  garden: ['Till trädgården vill jag ha {n} {item}.', 'Kan du hitta {n} {item} åt mig? Det blir så fint.'],
 };
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
@@ -527,6 +535,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'emoji:❄️', text: 'Norrut blir det kallare (isvidder med isbär), söderut varmare (öken med kaktusar). I öster finns berg med malm, i väster stranden och havet.' },
       { icon: 'mushroom', text: 'Varje område har egna saker: svamp i skogen, honung på ängen, snäckor på stranden, ädelstenar i bergen.' },
       { icon: 'emoji:🗺️', text: 'Kartknappen visar alla områden du har upptäckt. Tryck på ett område för att åka dit direkt, eller på Hem.' },
+      { icon: 'house_small', text: 'Öster om gården ligger Byn med Bagar-Bo, Smed-Stina och Fru Lind. På marknaden kan du köpa och sälja precis som hemma.' },
       { icon: 'emoji:🏃', text: 'Världen är oändlig. Hur långt vågar du gå?' },
     ],
   },

@@ -1,11 +1,12 @@
 // The world beyond the farm: an endless grid of 64x64 areas, each generated from its coordinates.
 // Walking off an edge of one area puts you on the opposite edge of the next.
+import { NPCS } from './data.ts';
 import { addObject, emptyWorld, inBounds, objectAt, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import type { Terrain, WorldState } from './types.ts';
 import { MAP_H, MAP_W, key } from './types.ts';
 
-export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken';
+export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken' | 'by';
 
 export const BIOME_NAMES: Record<Biome | 'farm' | 'dungeon', string> = {
   farm: 'Hemma',
@@ -16,6 +17,7 @@ export const BIOME_NAMES: Record<Biome | 'farm' | 'dungeon', string> = {
   berg: 'Bergen',
   strand: 'Stranden',
   oken: 'Öknen',
+  by: 'Byn',
 };
 export const BIOME_EMOJI: Record<Biome | 'farm' | 'dungeon', string> = {
   farm: '🏡',
@@ -26,6 +28,7 @@ export const BIOME_EMOJI: Record<Biome | 'farm' | 'dungeon', string> = {
   berg: '⛰️',
   strand: '🏖️',
   oken: '🌵',
+  by: '🏘️',
 };
 
 export const areaKey = (ax: number, ay: number): string => `a:${ax},${ay}`;
@@ -45,6 +48,8 @@ const noise = (ax: number, ay: number, salt: number): number => hash(ax, ay, sal
 
 /** Which biome an area has. North is colder, south warmer, mountains in the east, sea in the west. */
 export function biomeAt(ax: number, ay: number): Biome {
+  if (ax === 1 && ay === 0) return 'by'; // Byn, right next door
+  if (Math.abs(ax) + Math.abs(ay) >= 4 && noise(ax, ay, 9) < 0.07) return 'by';
   const cold = -ay + (noise(ax, ay, 1) - 0.5) * 2; // ay < 0 is north
   const dry = ay + (noise(ax, ay, 2) - 0.5) * 2;
   if (cold >= 2.5) return 'is';
@@ -95,6 +100,7 @@ const STYLES: Record<Biome, BiomeStyle> = {
   is: { ground: 'snow', trees: 0.5, innerTrees: 0.05, treeKinds: ['tree_pine'], rocks: 0.03, rockKinds: ['rock', 'rock_small'], tufts: 0, flowers: 0, bushes: 0, special: [{ kind: 'iceberry', p: 0.015 }, { kind: 'snowman_wild', p: 0.002 }], water: 'frozen' },
   berg: { ground: 'gravel', trees: 0.3, innerTrees: 0.03, treeKinds: ['tree_pine'], rocks: 0.14, rockKinds: ['rock', 'rock', 'rock_small', 'ore'], tufts: 0.02, flowers: 0.01, bushes: 0.01, special: [], water: 'none' },
   strand: { ground: 'sand', trees: 0.3, innerTrees: 0.02, treeKinds: ['palm'], rocks: 0.02, rockKinds: ['rock_small'], tufts: 0.03, flowers: 0, bushes: 0, special: [{ kind: 'shell', p: 0.02 }], water: 'sea' },
+  by: { ground: 'grass', trees: 0.6, innerTrees: 0.0, treeKinds: ['tree', 'tree_apple'], rocks: 0, rockKinds: [], tufts: 0.04, flowers: 0.06, bushes: 0, special: [], water: 'none' },
   oken: { ground: 'sand', trees: 0.15, innerTrees: 0.01, treeKinds: ['palm'], rocks: 0.05, rockKinds: ['rock', 'rock_small'], tufts: 0.01, flowers: 0, bushes: 0, special: [{ kind: 'cactus', p: 0.02 }], water: 'none' },
 };
 
@@ -158,6 +164,7 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
         }
       }
     }
+  if (biome === 'by') buildVillage(world, rnd);
   // A signpost at every arrival tile pointing home-ish (decoration)
   for (const side of ['n', 's', 'e', 'w'] as const) {
     const a = arrivalTile(side);
@@ -182,4 +189,69 @@ export function ensureFarmExits(world: WorldState): void {
       const edge = Math.min(x, y, MAP_W - 1 - x, MAP_H - 1 - y);
       if (edge <= 3 && world.terrain[tileIndex(x, y)] === 'grass') world.terrain[tileIndex(x, y)] = 'path_dirt';
     }
+}
+
+/** A village square with houses, a well, a market and a buyer, lanterns and flowers. */
+function buildVillage(world: WorldState, rnd: () => number): void {
+  const T = world.terrain;
+  const cx = MAP_W / 2;
+  const cy = MAP_H / 2;
+  const clear = (x: number, y: number) => {
+    const o = objectAt(world, x, y);
+    if (o) {
+      delete world.objects[o.id];
+      delete world.occupancy[key(x, y)];
+    }
+  };
+  // plaza
+  for (let y = cy - 7; y <= cy + 7; y++)
+    for (let x = cx - 9; x <= cx + 9; x++) {
+      clear(x, y);
+      T[tileIndex(x, y)] = 'path_stone';
+    }
+  // roads to the four edges
+  for (let y = 0; y < MAP_H; y++) for (let x = cx - 1; x <= cx; x++) if (!(x >= cx - 9 && y >= cy - 7 && y <= cy + 7)) { clear(x, y); T[tileIndex(x, y)] = 'path_dirt'; }
+  for (let x = 0; x < MAP_W; x++) for (let y = cy - 1; y <= cy; y++) if (!(y >= cy - 7 && x >= cx - 9 && x <= cx + 9)) { clear(x, y); T[tileIndex(x, y)] = 'path_dirt'; }
+  // houses around the plaza (3x3 footprints) with varied roofs
+  const houses: [number, number][] = [
+    [cx - 9, cy - 11],
+    [cx - 4, cy - 11],
+    [cx + 2, cy - 11],
+    [cx + 7, cy - 11],
+    [cx - 13, cy - 4],
+    [cx - 13, cy + 2],
+    [cx + 11, cy - 4],
+    [cx + 11, cy + 2],
+    [cx - 9, cy + 9],
+    [cx + 7, cy + 9],
+  ];
+  houses.forEach(([x, y], i) => {
+    for (let dy = -1; dy <= 3; dy++) for (let dx = -1; dx <= 3; dx++) clear(x + dx, y + dy);
+    addObject(world, 'house_small', x, y, { variant: i % 4 });
+  });
+  addObject(world, 'town_well', cx, cy - 1);
+  addObject(world, 'market', cx - 6, cy - 5);
+  addObject(world, 'sellstall', cx + 4, cy - 5);
+  for (const [x, y] of [
+    [cx - 9, cy - 7],
+    [cx + 9, cy - 7],
+    [cx - 9, cy + 7],
+    [cx + 9, cy + 7],
+  ] as const)
+    addObject(world, 'lantern', x, y);
+  for (const [x, y] of [
+    [cx - 7, cy + 5],
+    [cx + 6, cy + 5],
+    [cx - 2, cy + 7],
+    [cx + 2, cy + 7],
+  ] as const)
+    addObject(world, 'flowerbox', x, y);
+  addObject(world, 'bench', cx - 3, cy + 2);
+  addObject(world, 'bench', cx + 2, cy + 2);
+  // villagers must be able to stand on their spots
+  for (const n of Object.values(NPCS)) {
+    if (n.area !== world.area) continue;
+    for (const w of [n, ...n.routine]) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) clear(w.x + dx, w.y + dy);
+  }
+  void rnd;
 }

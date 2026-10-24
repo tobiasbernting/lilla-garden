@@ -577,6 +577,12 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('shell', [shell(0), shell(1)]);
   set('cactus', [cactus()], 0, -8);
   set('signpost', [signpost()], 0, -8);
+  // Village
+  set('house_small', [0, 1, 2, 3].map((v) => building(48, 52, ['#e8dcc0', '#f0d8a8', '#dce8c8', '#f4e0e0'][v]!, ['#b5413a', '#6f4a26', '#3b5fa6', '#2f7a3a'][v]!, true, { windows: 2, roofH: 20 })), 0, -4);
+  set('market', [stall('#d9453b')], 0, -8);
+  set('sellstall', [stall('#3b6fd9')], 0, -8);
+  set('lantern', [lantern(0), lantern(1)], 0, -8, true);
+  set('town_well', [well()], 0, -8);
   // Cave
   set('cave', [caveMouth()], 0, -8);
   set('cave_exit', [caveExit()]);
@@ -614,6 +620,17 @@ const shell = (v: number): Px => {
 };
 const cactus = (): Px => new Px(16, 24).rect(6, 2, 4, 22, '#4f9a3a').rect(6, 2, 1, 22, '#3f7a2e').rect(1, 8, 3, 2, '#4f9a3a').rect(1, 4, 2, 6, '#4f9a3a').rect(12, 10, 3, 2, '#4f9a3a').rect(13, 6, 2, 6, '#4f9a3a').rect(7, 0, 2, 2, '#e87ab8').outline(OUTLINE);
 const signpost = (): Px => new Px(16, 24).rect(7, 8, 2, 16, WOOD_D).rect(1, 3, 14, 6, WOOD_L).rect(1, 3, 14, 1, '#e0b47a').rect(3, 5, 8, 1, WOOD_D).rect(3, 7, 5, 1, WOOD_D).px(13, 5, OUTLINE).outline(OUTLINE);
+
+const stall = (awning: string): Px => {
+  const p = new Px(32, 40);
+  p.rect(2, 22, 28, 14, WOOD).rect(2, 22, 28, 1, WOOD_L).rect(2, 35, 28, 2, WOOD_D);
+  p.rect(3, 10, 2, 14, WOOD_D).rect(27, 10, 2, 14, WOOD_D);
+  for (let x = 0; x < 32; x += 4) p.rect(x, 6, 4, 6, x % 8 === 0 ? awning : '#ffffff');
+  p.rect(0, 5, 32, 1, shade(awning, 0.7)).rect(0, 12, 32, 1, shade(awning, 0.7));
+  p.rect(6, 16, 5, 5, '#f08a2a').rect(13, 15, 5, 6, '#e03a3a').rect(20, 17, 6, 4, '#f5d94a');
+  return p.outline(OUTLINE);
+};
+const lantern = (f: number): Px => new Px(16, 24).rect(7, 8, 2, 16, '#3a3a3a').rect(4, 2, 8, 7, '#3a3a3a').rect(5, 3, 6, 5, f ? '#ffd45a' : '#f5a623').rect(7, 0, 2, 2, '#3a3a3a').rect(3, 22, 10, 2, '#3a3a3a').outline(OUTLINE);
 
 const caveMouth = (): Px => {
   const p = new Px(32, 40).ellipse(0, 4, 32, 36, STONE_D).ellipse(2, 6, 28, 32, STONE).ellipse(8, 14, 16, 26, '#1b1a17').rect(6, 30, 20, 10, '#1b1a17');

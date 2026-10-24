@@ -138,10 +138,15 @@ export class Game {
       if (!Object.values(area.players).some((p) => p.online)) continue;
       for (const a of Object.values(area.animals)) animals.push({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving, area: k });
     }
-    const npcs: NpcSnap[] = Object.keys(NPCS).map((id) => {
-      const st = npcState(this.world, id);
-      return { id, x: st.x, y: st.y, facing: st.facing, moving: st.moving };
-    });
+    const npcs: NpcSnap[] = [];
+    for (const n of Object.values(NPCS)) {
+      const k = n.area ?? 'farm';
+      const w = k === 'farm' ? this.world : this.world.areas?.[k];
+      if (!w) continue;
+      if (k !== 'farm' && !Object.values(w.players).some((p) => p.online)) continue;
+      const st = npcState(w, n.id);
+      npcs.push({ id: n.id, x: st.x, y: st.y, facing: st.facing, moving: st.moving, ...(k !== 'farm' ? { area: k } : {}) });
+    }
     this.broadcast({ t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() });
   }
 

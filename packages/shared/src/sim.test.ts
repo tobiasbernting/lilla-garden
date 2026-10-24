@@ -22,6 +22,8 @@ import {
   generateDungeon,
   spawnMob,
   npcAt,
+  npcState,
+  npcsIn,
   completeQuest,
   cook,
   buy,
@@ -929,5 +931,37 @@ describe('världen utanför', () => {
     const drop = ch.find((c) => c.t === 'drop');
     expect(drop && 'area' in drop && drop.area).toBe('a:0,-1');
     expect(countItem(p.inventory, 'iceberry')).toBe(1);
+  });
+});
+
+describe('byn', () => {
+  it('lies east of the farm with houses, a market and villagers with wishes', () => {
+    const v = generateArea(1, 0);
+    expect(v.biome).toBe('by');
+    const kinds = Object.values(v.objects).map((o) => o.kind);
+    expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
+    expect(kinds).toContain('market');
+    expect(kinds).toContain('sellstall');
+    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'stina']);
+    for (const n of npcsIn(v)) for (const w of [n, ...n.routine]) expect(objectAt(v, w.x, w.y)?.kind ?? 'free').toBe('free');
+    const { world, p } = setup();
+    world.timeMs = 1000;
+    tick(world, 50, ctx());
+    expect(world.quests.filter((q) => q.npc === 'bo').length).toBe(2);
+    // village quests can only be handed in while in the village
+    const q = world.quests.find((x) => x.npc === 'bo')!;
+    addItem(p.inventory, q.want.item, q.want.count);
+    expect(completeQuest(world, p.id, q.id)).toEqual([]);
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    const village = areaOf(world, p);
+    const st = npcState(village, 'bo');
+    p.x = st.x;
+    p.y = st.y + 16;
+    expect(completeQuest(world, p.id, q.id).some((c) => c.t === 'player')).toBe(true);
+    // the village keeps its own villagers moving when someone is there
+    tick(world, 50, ctx());
+    expect(village.npcs.bo).toBeDefined();
   });
 });

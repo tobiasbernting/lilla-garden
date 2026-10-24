@@ -72,6 +72,7 @@ export interface NpcSnap {
   y: number;
   facing: Facing;
   moving: boolean;
+  area?: string;
 }
 
 export interface AnimalSnap {

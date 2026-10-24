@@ -191,6 +191,8 @@ export interface PlayerState {
   hearts: number;
   /** Invulnerable until (wall clock) after being hit. */
   hurtUntil?: number;
+  /** Ticks during which client positions are ignored (just moved to another map). */
+  moveLock?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -235,6 +237,8 @@ export interface NpcDef {
   greeting: string[];
   /** Daily walking routine: where to be from `at` (fraction of the day, sorted). */
   routine: { at: number; x: number; y: number }[];
+  /** Map the villager lives on: 'farm' (default) or an area key. */
+  area?: string;
 }
 
 export interface CropState {

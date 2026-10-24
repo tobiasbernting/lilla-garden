@@ -1,6 +1,6 @@
 // WebSocket connection with reconnect.
 import { rebuildOccupancy, type ClientMsg, type ServerMsg } from '@lilla-garden/shared';
-import { applyChange, bus, client } from './state.js';
+import { applyChange, bus, client, worldFor } from './state.js';
 
 export class Net {
   private ws: WebSocket | null = null;
@@ -108,7 +108,11 @@ export class Net {
         }
         for (const n of msg.npcs ?? []) {
           client.snaps.npcs.set(n.id, n);
-          if (client.world) client.world.npcs[n.id] = { x: n.x, y: n.y, facing: n.facing, moving: n.moving, stuckMs: 0 };
+          const w = worldFor(n.area ?? 'farm');
+          if (w) {
+            if (!w.npcs) w.npcs = {};
+            w.npcs[n.id] = { x: n.x, y: n.y, facing: n.facing, moving: n.moving, stuckMs: 0 };
+          }
         }
         bus.emit('state', undefined);
         break;

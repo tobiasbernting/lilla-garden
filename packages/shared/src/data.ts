@@ -237,6 +237,12 @@ addO(O('palm', { breakWith: 'axe', drops: [{ item: 'wood', min: 2, max: 4 }] }))
 addO(O('shell', { solid: false, flat: true, harvest: true, drops: [{ item: 'shell', min: 1, max: 1 }] }));
 addO(O('cactus', { harvest: true, drops: [{ item: 'cactus_fruit', min: 1, max: 2 }] }));
 addO(O('signpost', { breakWith: undefined }));
+// Village
+addO(O('house_small', { w: 3, h: 3, breakWith: undefined }));
+addO(O('market', { w: 2, h: 2, interact: 'catalogue', breakWith: undefined }));
+addO(O('sellstall', { w: 2, h: 2, interact: 'sell', breakWith: undefined }));
+addO(O('lantern', { solid: false, breakWith: undefined, light: true }));
+addO(O('town_well', { interact: 'water', breakWith: undefined }));
 
 // Built things (break -> same item back)
 const built = (kind: string, extra: Partial<ObjectDef> = {}) =>
@@ -434,6 +440,56 @@ export const NPCS: Record<string, NpcDef> = {
   },
 };
 
+/** The village east of the farm. */
+export const VILLAGE_KEY = 'a:1,0';
+NPCS.bo = {
+  id: 'bo',
+  name: 'Bagar-Bo',
+  area: VILLAGE_KEY,
+  x: 27,
+  y: 30,
+  appearance: { skin: '#f1c9a5', hair: '#2b2119', hairStyle: 'short' },
+  outfit: { shirt: 'shirt_yellow', pants: 'pants_brown', shoes: 'shoes_boots', hat: 'hat_cap_red' },
+  greeting: ['Välkommen till bageriet! Mjöl behövs alltid.', 'Nybakat bröd är det bästa som finns.', 'Har du vete? Jag bakar gärna.'],
+  routine: [
+    { at: 0, x: 27, y: 30 },
+    { at: 0.3, x: 32, y: 34 },
+    { at: 0.5, x: 36, y: 30 },
+    { at: 0.7, x: 27, y: 30 },
+  ],
+};
+NPCS.stina = {
+  id: 'stina',
+  name: 'Smed-Stina',
+  area: VILLAGE_KEY,
+  x: 37,
+  y: 30,
+  appearance: { skin: '#b97a4e', hair: '#c43a2a', hairStyle: 'ponytail' },
+  outfit: { shirt: 'shirt_overalls', pants: 'pants_blue', shoes: 'shoes_boots' },
+  greeting: ['Hör du hammaren? Det är jag!', 'Sten och malm, det är mina favoriter.', 'Ädelstenar från bergen är underbara.'],
+  routine: [
+    { at: 0, x: 37, y: 30 },
+    { at: 0.4, x: 33, y: 36 },
+    { at: 0.6, x: 37, y: 30 },
+  ],
+};
+NPCS.lind = {
+  id: 'lind',
+  name: 'Fru Lind',
+  area: VILLAGE_KEY,
+  x: 32,
+  y: 37,
+  appearance: { skin: '#f7d7c0', hair: '#f2d16b', hairStyle: 'long' },
+  outfit: { shirt: 'shirt_green', pants: 'pants_skirt_pink', shoes: 'shoes_red', hat: 'hat_straw' },
+  greeting: ['Mina blommor behöver sällskap.', 'Honung från ängen är det godaste jag vet.', 'Har du varit i skogen? Där växer svamp.'],
+  routine: [
+    { at: 0, x: 32, y: 37 },
+    { at: 0.25, x: 29, y: 34 },
+    { at: 0.55, x: 35, y: 34 },
+    { at: 0.75, x: 32, y: 37 },
+  ],
+};
+
 /** Context lines villagers say in their speech bubbles. {name} is the player's name. */
 export const NPC_LINES: Record<string, { morning: string[]; day: string[]; evening: string[]; meet: string[] }> = {
   greta: {
@@ -447,6 +503,24 @@ export const NPC_LINES: Record<string, { morning: string[]; day: string[]; eveni
     day: ['Hallå {name}!', 'Stå still så nappar det.', 'Gäddan är lurig.'],
     evening: ['Kvällen är bäst för fiske.', 'God kväll, {name}!'],
     meet: ['Hej Greta! Vill du ha fisk?', 'Hej Elsa! Inte för nära vattnet.', 'Fint väder för fiske!'],
+  },
+  bo: {
+    morning: ['God morgon! Brödet är nybakat.', 'Morgonstund har guld i mund!'],
+    day: ['Hej {name}! Vill du ha en bulle?', 'Vete, vete, vete…'],
+    evening: ['Nu stänger bageriet.', 'God kväll, {name}!'],
+    meet: ['Hej Stina! Hammaren går varm?', 'Fru Lind, vilka blommor!'],
+  },
+  stina: {
+    morning: ['Smedjan är varm redan!', 'God morgon, {name}!'],
+    day: ['Hej {name}! Har du sten med dig?', 'Klang, klang!'],
+    evening: ['Jag släcker ässjan nu.', 'God kväll!'],
+    meet: ['Hej Bo! Bröd till lunch?', 'Fru Lind, honung till kaffet?'],
+  },
+  lind: {
+    morning: ['God morgon! Blommorna har vaknat.', 'Vilken fin dag!'],
+    day: ['Hej {name}! Luktar du på rosorna?', 'Bina surrar så fint idag.'],
+    evening: ['Blommorna somnar nu.', 'God kväll, {name}.'],
+    meet: ['Hej Bo! Fint väder!', 'Stina, du är alltid så flitig.'],
   },
   elsa: {
     morning: ['God morgon! Jag är redan vaken!', 'Titta, en fjäril!'],
