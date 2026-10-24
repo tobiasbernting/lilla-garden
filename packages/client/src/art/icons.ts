@@ -94,6 +94,24 @@ const produce = (id: string): Px => {
     case 'milk':
       p.rect(5, 4, 6, 10, '#ffffff').rect(5, 4, 6, 1, '#d8d8d8').rect(6, 2, 4, 2, '#d8d8d8').rect(5, 8, 6, 3, '#4f86d6');
       break;
+    case 'pancakes':
+      p.ellipse(1, 9, 14, 5, '#e0a050').ellipse(1, 6, 14, 5, '#e8b060').ellipse(1, 3, 14, 5, '#f0c070').rect(5, 2, 5, 3, '#f2d35a').rect(7, 1, 2, 2, '#e03a3a');
+      break;
+    case 'carrot_cake':
+      p.rect(2, 7, 12, 7, '#c8924a').rect(2, 7, 12, 1, '#e0a860').rect(2, 4, 12, 3, '#f7f0e0').rect(6, 2, 3, 2, '#f08a2a').rect(5, 1, 1, 2, '#3f8a2e');
+      break;
+    case 'pumpkin_pie':
+      p.ellipse(1, 6, 14, 8, '#c8924a').ellipse(2, 5, 12, 6, '#e8933a').rect(2, 7, 12, 1, '#c87a2a').ellipse(6, 3, 4, 3, '#ffffff');
+      break;
+    case 'strawberry_jam':
+      p.rect(4, 4, 8, 11, '#e03a3a').rect(4, 4, 8, 1, '#ff7a7a').rect(3, 2, 10, 3, '#e6c15a').rect(6, 8, 4, 3, '#f7f0e0');
+      break;
+    case 'fish_soup':
+      p.ellipse(1, 6, 14, 9, '#e0e0e0').ellipse(2, 5, 12, 5, '#e8a050').rect(5, 6, 3, 2, '#7aa060').rect(9, 5, 2, 2, '#f08a2a').rect(1, 9, 14, 1, '#b0b0b0');
+      break;
+    case 'bread':
+      p.ellipse(1, 4, 14, 9, '#c8924a').ellipse(2, 3, 12, 6, '#e0b070').rect(5, 5, 2, 1, '#b07a3a').rect(9, 5, 2, 1, '#b07a3a');
+      break;
     case 'wool':
       p.ellipse(2, 3, 12, 10, '#f7f3ee').ellipse(1, 6, 5, 5, '#f7f3ee').ellipse(10, 6, 5, 5, '#f7f3ee').px(7, 8, '#d8d4ce');
       break;

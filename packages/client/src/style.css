@@ -158,6 +158,12 @@ body {
   cursor: pointer;
   box-shadow: 0 var(--u) 0 var(--ink);
 }
+.round.small {
+  width: calc(10 * var(--u));
+  height: calc(10 * var(--u));
+  font-size: calc(5 * var(--u));
+  align-self: center;
+}
 .round:active {
   transform: translateY(var(--u));
   box-shadow: none;

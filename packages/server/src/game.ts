@@ -6,6 +6,7 @@ import {
   applyMove,
   buy,
   completeQuest,
+  cook,
   craft,
   createPlayer,
   dropItem,
@@ -264,6 +265,9 @@ export class Game {
         break;
       case 'craft':
         changes = craft(w, pid, msg.recipe);
+        break;
+      case 'cook':
+        changes = cook(w, pid, msg.recipe);
         break;
       case 'buy':
         changes = buy(w, pid, msg.item, msg.qty, this.ctx());

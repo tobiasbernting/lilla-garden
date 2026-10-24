@@ -9,6 +9,7 @@ import { h } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { Picker } from './ui/picker.js';
+import { initSound, isMuted, setMuted } from './sound.ts';
 
 const ui = document.getElementById('ui')!;
 const stage = document.getElementById('stage')!;
@@ -35,6 +36,7 @@ window.addEventListener('resize', applyZoom);
 // ---- UI ----
 const labels = h('div', { id: 'labels' });
 ui.append(labels);
+initSound();
 const menus = new Menus(ui);
 const hud = new Hud(
   ui,
@@ -123,6 +125,8 @@ void picker.show();
 (window as unknown as { lillaGarden: unknown }).lillaGarden = {
   client,
   net,
+  mute: (m = true) => setMuted(m),
+  muted: () => isMuted(),
   switchPlayer: () => {
     net.disconnect();
     rememberPlayer(null);
