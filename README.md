@@ -4,6 +4,17 @@ Ett litet bondgårdsspel på svenska för hela familjen. Odla, ta hand om djur, 
 
 See [DESIGN.md](DESIGN.md) for the agreed design.
 
+## What you can do
+
+- Odla sju grödor, vattna, skörda, sälj i säljlådan eller laga mat på spisen.
+- Hugg trä, knacka sten och snickra staket, stigar, väggar, kistor, möbler och djurhus.
+- Skaffa höns, kaniner, får och kor (de behöver hus) samt hund och katt som följer med dig.
+- Gå in i huset och möblera det. Lampor och spisen lyser på kvällen.
+- Prata med Tant Greta och Fiskar-Sven – nya önskningar varje dag ger kr och stjärnor.
+- Fiska i dammen med fiskespöet du får av Sven.
+- Byt kläder i garderoben. Halloween, jul, påsk och midsommar följer kalendern.
+- Allt tillsammans med upp till åtta spelare på samma gård. Inget dör, inget går sönder.
+
 ## Develop
 
 ```bash
