@@ -1237,3 +1237,87 @@ describe('vilda djur', () => {
     expect(p.stats.areas).toBe(1);
   });
 });
+
+describe('hästar', () => {
+  const stable = () => {
+    const { world, p } = setup();
+    for (let y = 28; y < 38; y++) for (let x = 28; x < 40; x++) clearTile(world, x, y);
+    const stall = addObject(world, 'stall', 30, 28)!;
+    const horse = addAnimal(world, 'horse', stall.id, 'Blixten');
+    horse.owner = p.id;
+    horse.petted = true;
+    horse.x = 34 * TILE + 8;
+    horse.y = 34 * TILE + 8;
+    standAt(world, p, 33, 34);
+    return { world, p, stall, horse };
+  };
+
+  it('needs a stall and belongs to the buyer', () => {
+    const { world, p } = setup();
+    p.coins = 2000;
+    expect(toasts(buy(world, p.id, 'animal_horse', 1, ctx()))[0]).toContain('Stall');
+    for (let y = 28; y < 34; y++) for (let x = 28; x < 36; x++) clearTile(world, x, y);
+    addObject(world, 'stall', 30, 28);
+    buy(world, p.id, 'animal_horse', 1, ctx());
+    expect(p.coins).toBe(1500);
+    newDay(world, ctx());
+    const horse = Object.values(world.animals).find((a) => a.species === 'horse')!;
+    expect(horse.owner).toBe(p.id);
+  });
+
+  it('mounts, rides faster, and dismounts with the next action', () => {
+    const { world, p, horse } = stable();
+    expect(toasts(performAction(world, p.id, 34, 34, ctx())).some((t) => t.includes('hoppar upp'))).toBe(true);
+    expect(p.riding).toBe(horse.id);
+    expect(p.stats.ride).toBe(1);
+    expect(p.achievements).toContain('ride_1');
+    // the horse sticks to the rider
+    const before = { x: p.x, y: p.y };
+    stepPlayer(world, p, 1, 0, 1000, 1.8);
+    expect(p.x - before.x).toBeCloseTo(64 * 1.8, 0);
+    stepPlayer(world, p, 1, 0, 1000);
+    expect(p.x - before.x).toBeCloseTo(64 * 2.8, 0);
+    tick(world, 50, ctx());
+    expect(Math.hypot(horse.x - p.x, horse.y - p.y)).toBeLessThan(3);
+    // any action dismounts; tools do nothing while riding
+    addItem(p.inventory, 'hoe', 1);
+    select(p, 'hoe');
+    const ftx = Math.floor(p.x / TILE) + 1;
+    const ch = performAction(world, p.id, ftx, 34, ctx());
+    expect(toasts(ch).some((t) => t.includes('hoppar av'))).toBe(true);
+    expect(p.riding).toBeUndefined();
+    expect(world.terrain[tileIndex(ftx, 34)]).toBe('grass');
+    expect(Math.hypot(horse.x - p.x, horse.y - p.y)).toBeLessThan(2 * TILE);
+  });
+
+  it('only the owner may ride, foals and busy horses are refused', () => {
+    const { world, p, horse } = stable();
+    const other = createPlayer(world, 'Kompis', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    setOnline(world, other.id, true);
+    standAt(world, other, 35, 34);
+    other.facing = 'left';
+    expect(toasts(performAction(world, other.id, 34, 34, ctx()))[0]).toContain('tillhör Test');
+    expect(other.riding).toBeUndefined();
+    horse.age = 0;
+    expect(toasts(performAction(world, p.id, 34, 34, ctx()))[0]).toContain('för liten');
+    horse.age = 10;
+    performAction(world, p.id, 34, 34, ctx());
+    expect(p.riding).toBe(horse.id);
+    tick(world, 50, ctx());
+    standAt(world, other, 34, 34);
+    other.facing = 'left';
+    expect(toasts(performAction(world, other.id, 33, 34, ctx()))[0]).toContain('rider redan');
+  });
+
+  it('gets off the horse when leaving the farm', () => {
+    const { world, p, horse } = stable();
+    performAction(world, p.id, 34, 34, ctx());
+    expect(p.riding).toBe(horse.id);
+    standAt(world, p, 32, 0);
+    travel(world, p.id, 'n');
+    expect(p.area).not.toBe('farm');
+    expect(p.riding).toBeUndefined();
+    expect(horse.y).toBeLessThan(3 * TILE);
+    expect(Object.values(areaOf(world, p).animals).some((a) => a.species === 'horse')).toBe(false);
+  });
+});

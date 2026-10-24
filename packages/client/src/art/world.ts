@@ -554,6 +554,20 @@ const building = (w: number, h: number, wallC: string, roofC: string, door = tru
   return p.outline(OUTLINE);
 };
 
+const horseStable = (): Px => {
+  // a wooden stable: brown plank walls, dark roof, a wide half-door with a horse looking out
+  const p = building(48, 44, '#a8743c', '#4e3520', false, { windows: 1, roofH: 18 });
+  const dw = 14;
+  const dx = 24 - dw / 2;
+  p.rect(dx, 24, dw, 19, WOOD_D).rect(dx + 1, 25, dw - 2, 18, '#5a3d20');
+  p.rect(dx + 1, 34, dw - 2, 9, WOOD).rect(dx + 1, 34, dw - 2, 1, WOOD_D); // lower half-door
+  // horse head peeking out of the top half
+  p.rect(dx + 4, 26, 6, 7, '#9a5a2c').rect(dx + 5, 25, 2, 2, '#3a2414').rect(dx + 8, 25, 1, 2, '#3a2414').px(dx + 8, 28, OUTLINE).rect(dx + 6, 29, 1, 3, '#f4ead8');
+  // horseshoe above the door
+  p.rect(21, 20, 6, 1, '#c0c0c0').rect(20, 21, 1, 2, '#c0c0c0').rect(26, 21, 1, 2, '#c0c0c0');
+  return p;
+};
+
 const house = (colour = 0): Px => {
   const p = new Px(80, 84);
   const wallC = PAINT_COLORS[colour] || '#e8dcc0';
@@ -715,6 +729,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('hutch', [building(16, 20, '#c58f55', '#7a5230', true, { roofH: 7 })], 0, -4);
   set('sheepfold', [building(32, 36, '#c9c6bd', '#6f6c66', true, { windows: 2, roofH: 14 })], 0, -4);
   set('barn', [building(48, 44, '#b5413a', '#6f4a26', true, { windows: 2, roofH: 18 })], 0, -12);
+  set('stall', [horseStable()], 0, -12);
   set('house', PAINT_COLORS.map((_, i) => house(i)), 0, -20);
   set('mailbox', [mailbox()], 0, -8);
   set('sellbox', [sellbox()]);

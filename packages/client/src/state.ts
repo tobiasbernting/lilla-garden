@@ -7,6 +7,7 @@ import {
   type NpcSnap,
   type Change,
   type PlayerSnap,
+  type PlayerState,
   type Season,
   type WorldObject,
   type WorldState,
@@ -147,6 +148,10 @@ export function applyChange(c: Change): void {
       }
       const old = world.players[c.id];
       const areaChanged = old && old.area !== c.player.area;
+      if (old) {
+        // the server sends the whole player: optional fields it dropped (riding, fishing, emote…) go away here too
+        for (const k of Object.keys(old) as (keyof PlayerState)[]) if (!(k in c.player)) delete old[k];
+      }
       if (c.id === client.me && old && !areaChanged) {
         // keep predicted position
         Object.assign(old, { ...c.player, x: old.x, y: old.y, facing: old.facing, moving: old.moving });
