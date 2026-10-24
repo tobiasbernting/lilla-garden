@@ -107,6 +107,26 @@ export function ensureInterior(world: WorldState): boolean {
   return true;
 }
 
+/** Places the cave mouth in the rocky east and keeps the tiles in front of it free. Idempotent. */
+export function ensureCave(world: WorldState): boolean {
+  const x = 57;
+  const y = 12;
+  const exists = Object.values(world.objects).some((o) => o.kind === 'cave');
+  for (let dy = -1; dy <= 3; dy++)
+    for (let dx = -1; dx <= 2; dx++) {
+      const tx = x + dx;
+      const ty = y + dy;
+      if (!inBounds(tx, ty)) continue;
+      const o = objectAt(world, tx, ty);
+      if (o && o.kind !== 'cave') removeObject(world, o.id);
+      if (world.terrain[tileIndex(tx, ty)] === 'water') world.terrain[tileIndex(tx, ty)] = 'grass';
+      if (dy >= 2) world.terrain[tileIndex(tx, ty)] = 'path_dirt';
+    }
+  if (exists) return false;
+  addObject(world, 'cave', x, y);
+  return true;
+}
+
 /** Clears the tiles the villagers stand on (and one around) so they are reachable. Idempotent. */
 export function ensureVillagers(world: WorldState): void {
   for (const n of Object.values(NPCS)) {
@@ -209,6 +229,7 @@ export function generateWorld(seed = 1337): WorldState {
 
   ensureInterior(world);
   ensureVillagers(world);
+  ensureCave(world);
 
   // Grass tufts, flowers, bushes everywhere
   for (let y = 2; y < MAP_H - 2; y++)

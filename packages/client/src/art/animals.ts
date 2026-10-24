@@ -9,6 +9,10 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   cow: { w: 24, h: 18 },
   dog: { w: 16, h: 14 },
   cat: { w: 14, h: 12 },
+  slime: { w: 14, h: 12 },
+  bat: { w: 16, h: 10 },
+  troll: { w: 18, h: 22 },
+  boss: { w: 28, h: 32 },
 };
 
 function hen(p: Px, f: number): void {
@@ -58,7 +62,41 @@ function cat(p: Px, f: number): void {
   for (let x = 3; x < 9; x += 2) p.rect(x, 5, 1, 2, d);
 }
 
-const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, dog, cat };
+function slime(p: Px, f: number): void {
+  const c = '#6ad04a';
+  p.ellipse(1, 2 + f, 12, 10 - f, c).ellipse(3, 3 + f, 8, 4, '#9af07a');
+  p.rect(4, 6 + f, 2, 2, OUTLINE).rect(8, 6 + f, 2, 2, OUTLINE).rect(6, 9 + f, 2, 1, shade(c, 0.6));
+}
+function bat(p: Px, f: number): void {
+  const c = '#5a4a7a';
+  p.ellipse(5, 2, 6, 7, c).rect(5, 0, 2, 2, c).rect(9, 0, 2, 2, c);
+  if (f === 0) p.rect(0, 3, 5, 3, c).rect(11, 3, 5, 3, c).px(0, 2, c).px(15, 2, c);
+  else p.rect(1, 5, 4, 3, c).rect(11, 5, 4, 3, c).px(1, 8, c).px(14, 8, c);
+  p.px(6, 4, '#ffe14a').px(9, 4, '#ffe14a');
+}
+function troll(p: Px, f: number): void {
+  const c = '#7a9a4a';
+  const d = shade(c, 0.75);
+  p.ellipse(3, 0, 12, 10, c).rect(4, 9, 10, 8, c).rect(4, 9, 10, 1, d);
+  p.rect(5, 3, 2, 2, OUTLINE).rect(10, 3, 2, 2, OUTLINE).rect(7, 7, 4, 1, d).px(7, 6, '#ffffff').px(10, 6, '#ffffff');
+  p.rect(2, 10, 2, 6, c).rect(14, 10, 2, 6, c);
+  p.rect(5, 17, 3, 5 - f, d).rect(10, 17 + f, 3, 5 - f, d);
+  p.rect(15, 4, 3, 9, '#8a5a2a').rect(14, 2, 4, 3, '#6f4a26'); // club
+  p.rect(6, 0, 6, 2, '#3a2a1a');
+}
+function boss(p: Px, f: number): void {
+  const c = '#6a8a3a';
+  const d = shade(c, 0.75);
+  p.ellipse(5, 0, 18, 14, c).rect(5, 13, 18, 12, c).rect(5, 13, 18, 1, d);
+  p.rect(9, 4, 3, 3, OUTLINE).rect(16, 4, 3, 3, OUTLINE).px(10, 5, '#ff4a4a').px(17, 5, '#ff4a4a');
+  p.rect(10, 9, 8, 2, d).rect(11, 9, 2, 2, '#ffffff').rect(15, 9, 2, 2, '#ffffff');
+  p.rect(1, 14, 4, 9, c).rect(23, 14, 4, 9, c);
+  p.rect(7, 25, 5, 7 - f, d).rect(16, 25 + f, 5, 7 - f, d);
+  p.rect(24, 2, 4, 14, '#8a5a2a').rect(22, 0, 6, 4, '#6f4a26');
+  p.rect(8, 0, 12, 2, '#3a2a1a').rect(10, 2, 2, 1, '#f2d35a').rect(16, 2, 2, 1, '#f2d35a'); // crown bits
+}
+
+const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, dog, cat, slime, bat, troll, boss };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
 const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], dog: [12, 1], cat: [11, 0] };

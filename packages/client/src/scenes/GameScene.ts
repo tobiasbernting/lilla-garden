@@ -4,6 +4,8 @@ import {
   ANIMALS,
   CROPS,
   DAY_LENGTH_MS,
+  DUNGEON_H,
+  DUNGEON_W,
   INTERIOR,
   NPC_LINES,
   countItem,
@@ -31,7 +33,7 @@ import { dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
 import { net } from '../net.js';
-import { bus, client, myPlayer, serverNow } from '../state.js';
+import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '../state.js';
 
 export const VIEW_W = 320;
 export const VIEW_H = 180;
@@ -61,6 +63,9 @@ export class GameScene extends Phaser.Scene {
   private crops = new Map<string, Phaser.GameObjects.Image>();
   private drops = new Map<number, Phaser.GameObjects.Image>();
   private players = new Map<string, Actor>();
+  /** The world this scene renders (farm or cave). */
+  private world!: import('@lilla-garden/shared').WorldState;
+  private area: 'farm' | 'dungeon' = 'farm';
   private npcs = new Map<string, Actor>();
   private inside = false;
   private roomMask!: Phaser.GameObjects.Image;
@@ -81,13 +86,27 @@ export class GameScene extends Phaser.Scene {
   joystick: InputSource = { dx: 0, dy: 0 };
   uiOpen = false;
   touch = false;
+  /** Touch run button held. */
+  runHeld = false;
 
   constructor() {
     super('game');
   }
 
   create(): void {
-    const world = client.world!;
+    // A restart keeps class fields: drop everything that belonged to the previous scene
+    this.objects.clear();
+    this.crops.clear();
+    this.drops.clear();
+    this.players.clear();
+    this.animals.clear();
+    this.npcs.clear();
+    this.talk.clear();
+    this.snow = null;
+    this.hoverTile = null;
+    this.area = myArea();
+    this.world = activeWorld()!;
+    const world = this.world;
     registerTextures(this.textures);
     this.labels = document.getElementById('labels')!;
     this.labels.innerHTML = '';
@@ -105,8 +124,8 @@ export class GameScene extends Phaser.Scene {
     for (const [k, c] of Object.entries(world.crops)) this.putCrop(k, c.stage, c.crop);
     for (const d of Object.values(world.drops)) this.putDrop(d);
     for (const a of Object.values(world.animals)) this.putAnimal(a);
-    for (const p of Object.values(world.players)) if (p.online) this.putPlayer(p);
-    for (const npc of Object.values(NPCS)) {
+    for (const p of Object.values(world.players)) if (p.online && (p.area === 'dungeon') === (this.area === 'dungeon')) this.putPlayer(p);
+    for (const npc of this.area === 'farm' ? Object.values(NPCS) : []) {
       const texture = characterTexture(this.textures, npc.appearance, npc.outfit);
       const snap = client.snaps.npcs.get(npc.id);
       const x = snap?.x ?? npc.x * TILE + TILE / 2;
@@ -133,13 +152,14 @@ export class GameScene extends Phaser.Scene {
     this.applySeason();
 
     // --- camera ---
-    this.cameras.main.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE);
+    if (this.area === 'dungeon') this.cameras.main.setBounds(0, 0, DUNGEON_W * TILE, DUNGEON_H * TILE);
+    else this.cameras.main.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE);
     this.cameras.main.setRoundPixels(true);
     void art;
 
     // --- input ---
     const kb = this.input.keyboard!;
-    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,E,SPACE') as Record<string, Phaser.Input.Keyboard.Key>;
+    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,E,SPACE,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
     kb.on('keydown-E', () => this.actFacing());
     kb.on('keydown-SPACE', () => this.actFacing());
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -155,7 +175,10 @@ export class GameScene extends Phaser.Scene {
 
     // --- events ---
     this.unsub.push(bus.on('change', (c) => this.onChange(c)));
-    this.unsub.push(bus.on('fx', (c) => this.spawnFx(c.x, c.y, c.kind)));
+    this.unsub.push(bus.on('fx', (c) => {
+      if ((c.area === 'dungeon') !== (this.area === 'dungeon')) return;
+      this.spawnFx(c.x, c.y, c.kind, c.from);
+    }));
     this.unsub.push(bus.on('season', () => this.applySeason()));
     this.unsub.push(bus.on('state', () => this.onState()));
     this.events.once('shutdown', () => {
@@ -171,20 +194,24 @@ export class GameScene extends Phaser.Scene {
   // ------------------------------------------------------------------ terrain
 
   private rebuildTerrain(): void {
-    const world = client.world!;
+    const world = this.world;
     const art = getArt();
     const snowy = client.season === 'jul';
     this.waterTiles = [];
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
         const t = world.terrain[y * MAP_W + x]!;
+        if (this.area === 'dungeon') {
+          this.layer.putTileAt(t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false), x, y);
+          continue;
+        }
         this.layer.putTileAt(art.terrain.index(t, x, y, snowy), x, y);
         if (t === 'water') this.waterTiles.push([x, y]);
       }
   }
 
   private setTerrain(x: number, y: number): void {
-    const world = client.world!;
+    const world = this.world;
     const art = getArt();
     const t = world.terrain[y * MAP_W + x]!;
     this.layer.putTileAt(art.terrain.index(t, x, y, client.season === 'jul'), x, y);
@@ -198,7 +225,7 @@ export class GameScene extends Phaser.Scene {
     const idx = art.terrain.waterFrames[this.waterFrame]!;
     for (const [x, y] of this.waterTiles) this.layer.putTileAt(idx, x, y);
     this.animTick++;
-    const world = client.world!;
+    const world = this.world;
     for (const [id, img] of this.objects) {
       const o = world.objects[id];
       if (!o) continue;
@@ -209,12 +236,36 @@ export class GameScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ sprites
 
-  private putObject(o: WorldObject): void {
+  /** Neighbour mask for fences: 1 up, 2 right, 4 down, 8 left. */
+  private fenceMask(x: number, y: number): number {
+    const isFence = (tx: number, ty: number) => {
+      const id = this.world.occupancy[`${tx},${ty}`];
+      const k = id === undefined ? undefined : this.world.objects[id]?.kind;
+      return k === 'fence' || k === 'gate';
+    };
+    return (isFence(x, y - 1) ? 1 : 0) | (isFence(x + 1, y) ? 2 : 0) | (isFence(x, y + 1) ? 4 : 0) | (isFence(x - 1, y) ? 8 : 0);
+  }
+
+  private refreshFenceNeighbours(x: number, y: number): void {
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+      const id = this.world.occupancy[`${x + dx},${y + dy}`];
+      const o = id === undefined ? undefined : this.world.objects[id];
+      if (o && (o.kind === 'fence' || o.kind === 'gate')) this.putObject(o, false);
+    }
+  }
+
+  private putObject(o: WorldObject, refresh = true): void {
     const art = getArt().objects[o.kind];
     const def = objectDef(o.kind);
     this.objects.get(o.id)?.destroy();
     if (!art) return;
-    const variant = (o.variant ?? 0) % art.frames.length;
+    let variant = (o.variant ?? 0) % art.frames.length;
+    if (o.kind === 'fence') variant = this.fenceMask(o.x, o.y);
+    else if (o.kind === 'gate') {
+      const m = this.fenceMask(o.x, o.y);
+      variant = m & 5 && !(m & 10) ? 1 : 0;
+    }
+    if (refresh && (o.kind === 'fence' || o.kind === 'gate')) this.refreshFenceNeighbours(o.x, o.y);
     const img = this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0);
     img.setDepth(def.flat ? 1 : (o.y + def.h) * TILE);
     this.objects.set(o.id, img);
@@ -288,7 +339,9 @@ export class GameScene extends Phaser.Scene {
       actor.texture = texture;
       actor.sprite.setTexture(texture, 0);
     }
-    actor.label.textContent = `${a.name}${a.hasProduct ? ' ✨' : ''}${a.hearts > 0 ? ' ' + '♥'.repeat(a.hearts) : ''}`;
+    const mob = ANIMALS[a.species]?.mob;
+    actor.label.textContent = mob ? `${a.name} ${'♥'.repeat(Math.max(0, a.hp ?? mob.hp))}` : `${a.name}${a.hasProduct ? ' ✨' : ''}${a.hearts > 0 ? ' ' + '♥'.repeat(a.hearts) : ''}`;
+    if (mob) actor.label.classList.add('mob');
   }
 
   private removeAnimal(id: number): void {
@@ -318,7 +371,10 @@ export class GameScene extends Phaser.Scene {
   // ------------------------------------------------------------------ change handling
 
   private onChange(c: Change): void {
-    const world = client.world!;
+    const world = this.world;
+    if (c.t === 'dungeon') return;
+    const forCave = 'area' in c && c.area === 'dungeon';
+    if ((c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop') && forCave !== (this.area === 'dungeon')) return;
     switch (c.t) {
       case 'terrain':
         this.setTerrain(c.x, c.y);
@@ -333,8 +389,10 @@ export class GameScene extends Phaser.Scene {
       case 'object':
         if (c.obj) this.putObject(c.obj);
         else {
-          this.objects.get(c.id)?.destroy();
+          const gone = this.objects.get(c.id);
+          gone?.destroy();
           this.objects.delete(c.id);
+          if (gone) this.refreshFenceNeighbours(Math.round(gone.x / TILE), Math.round(gone.y / TILE));
         }
         break;
       case 'animal':
@@ -350,8 +408,8 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'player': {
         const p = c.player ?? world.players[c.id];
-        if (!c.player || !p || !p.online) this.removePlayer(c.id);
-        else this.putPlayer(p);
+        if (!c.player || !p || !p.online || (p.area === 'dungeon') !== (this.area === 'dungeon')) this.removePlayer(c.id);
+        else this.putPlayer(world.players[c.id] ?? p);
         break;
       }
     }
@@ -360,17 +418,22 @@ export class GameScene extends Phaser.Scene {
   private onState(): void {
     const world = client.world!;
     for (const [id, snap] of client.snaps.players) {
+      const here = (snap.area === 'dungeon') === (this.area === 'dungeon');
       const p = world.players[id];
-      if (p && !this.players.has(id)) this.putPlayer(p);
-      void snap;
+      if (p && here && !this.players.has(id)) this.putPlayer(p);
+      if (!here && this.players.has(id)) this.removePlayer(id);
     }
     for (const id of [...this.players.keys()]) if (!client.snaps.players.has(id)) this.removePlayer(id);
+    for (const [id, snap] of client.snaps.animals) {
+      const here = (snap.area === 'dungeon') === (this.area === 'dungeon');
+      if (!here && this.animals.has(id)) this.removeAnimal(id);
+    }
   }
 
   private applySeason(): void {
     this.rebuildTerrain();
-    for (const a of Object.values(client.world!.animals)) this.putAnimal(a);
-    if (client.season === 'jul' && !this.snow) {
+    for (const a of Object.values(this.world.animals)) this.putAnimal(a);
+    if (client.season === 'jul' && this.area === 'farm' && !this.snow) {
       this.snow = this.add.particles(0, 0, 'fx-snow-0', {
         x: { min: 0, max: VIEW_W },
         y: -4,
@@ -433,13 +496,23 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: a.sprite, scaleX: 1.15, scaleY: 0.9, duration: 70, yoyo: true });
   }
 
-  private spawnFx(x: number, y: number, kind: string): void {
+  private spawnFx(x: number, y: number, kind: string, from?: { x: number; y: number }): void {
+    if (kind === 'arrow' && from) {
+      const ang = Math.atan2(y - from.y, x - from.x);
+      const img = this.add.image(from.x, from.y - 6, 'fx-arrow-0').setRotation(ang).setDepth(8000);
+      this.tweens.add({ targets: img, x, y: y - 6, duration: Math.min(260, Math.hypot(x - from.x, y - from.y) * 2.5), onComplete: () => img.destroy() });
+      return;
+    }
     const frames = getArt().fx[kind]?.length ?? 1;
     const n = kind === 'water' ? 3 : kind === 'chop' ? 4 : kind === 'sparkle' ? 3 : 1;
     for (let i = 0; i < n; i++) {
       const ox = n > 1 ? (Math.random() - 0.5) * 12 : 0;
       const img = this.add.image(x + ox, y - 4, `fx-${kind}-${i % frames}`).setDepth(8000);
-      if (kind === 'poof') {
+      if (kind === 'hit') {
+        img.setScale(0.6);
+        this.tweens.add({ targets: img, scale: 1.6, alpha: 0, duration: 220, onComplete: () => img.destroy() });
+        this.cameras.main.shake(80, 0.004);
+      } else if (kind === 'poof') {
         img.setAlpha(0.9);
         this.tweens.add({ targets: img, scale: 1.8, alpha: 0, duration: 350, onComplete: () => img.destroy() });
       } else if (kind === 'water' || kind === 'chop') {
@@ -462,9 +535,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(_time: number, delta: number): void {
-    const world = client.world;
+    const world = this.world;
     const me = myPlayer();
     if (!world || !me) return;
+    if (myArea() !== this.area) return; // a restart is on its way
     const dt = Math.min(delta, 100);
 
     // --- own movement (predicted) ---
@@ -481,7 +555,8 @@ export class GameScene extends Phaser.Scene {
         dy = this.joystick.dy;
       }
     }
-    stepPlayer(world, me, dx, dy, dt);
+    const running = !this.uiOpen && (this.keys.SHIFT!.isDown || this.runHeld);
+    stepPlayer(world, me, dx, dy, dt * (running ? 1.7 : 1));
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
@@ -533,7 +608,7 @@ export class GameScene extends Phaser.Scene {
 
     // --- camera ---
     const cam = this.cameras.main;
-    const insideNow = inInterior(tileOf(me.x), tileOf(me.y));
+    const insideNow = this.area === 'farm' && inInterior(tileOf(me.x), tileOf(me.y));
     if (insideNow !== this.inside) {
       this.inside = insideNow;
       if (insideNow) bus.emit('toast', T.enteredHouse);
@@ -571,7 +646,7 @@ export class GameScene extends Phaser.Scene {
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
       const onOwner = a?.owner && Math.hypot(a.x - me.x, a.y - me.y) < 14; // pet sitting at its owner's feet
-      const near = a && !onOwner && Math.hypot(a.x - me.x, a.y - me.y) < 40;
+      const near = a && !onOwner && Math.hypot(a.x - me.x, a.y - me.y) < (ANIMALS[a.species]?.mob ? 140 : 40);
       actor.label.style.display = near ? '' : 'none';
       if (near) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 18 - sy) * zoom);
     }
@@ -706,7 +781,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawNight(): void {
-    const amount = nightAmount(client.timeMs);
+    const amount = this.area === 'dungeon' ? 0.82 : nightAmount(client.timeMs);
     this.night.clear();
     if (this.inside) {
       const cam = this.cameras.main;
@@ -715,15 +790,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (amount <= 0.01) return;
-    const color = client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
+    const color = this.area === 'dungeon' ? 0x05060c : client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
     this.night.fill(color, amount);
     const cam = this.cameras.main;
-    const world = client.world!;
+    const world = this.world;
     // torches and lit windows push the dark away
     for (const o of Object.values(world.objects)) {
       let r = 0;
       const def = objectDef(o.kind);
       if (def.light || o.kind === 'torch') r = 1;
+      else if (o.kind === 'cave_wall' && o.variant === 1) r = 1.2;
+      else if (o.kind === 'treasure') r = 1;
       else if (o.kind === 'house') r = 1.6;
       else if (o.kind === 'pumpkin_lantern' || o.kind === 'xmas_tree' || o.kind === 'lights') r = 0.8;
       if (!r) continue;

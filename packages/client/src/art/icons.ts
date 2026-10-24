@@ -32,6 +32,15 @@ const tool = (kind: string): Px => {
     case 'hammer':
       p.rect(7, 6, 2, 9, WOOD).rect(8, 6, 1, 9, WOOD_D).rect(4, 2, 8, 5, STEEL_D).rect(4, 2, 8, 2, STEEL).rect(4, 2, 8, 1, '#e0e3e8');
       break;
+    case 'sword':
+      p.line(3, 13, 11, 5, STEEL).line(4, 13, 12, 5, '#e0e3e8').line(3, 12, 11, 4, STEEL_D).rect(2, 11, 2, 2, WOOD_D).rect(1, 13, 3, 2, WOOD).rect(4, 9, 2, 2, '#f2d35a').rect(2, 9, 2, 1, '#f2d35a').rect(5, 11, 1, 2, '#f2d35a');
+      break;
+    case 'shield':
+      p.rect(3, 2, 10, 8, '#3b6fd9').rect(4, 10, 8, 2, '#3b6fd9').rect(5, 12, 6, 1, '#3b6fd9').rect(7, 13, 2, 1, '#3b6fd9').rect(7, 2, 2, 11, '#f2d35a').rect(3, 6, 10, 1, '#f2d35a').rect(3, 2, 10, 1, '#8fb8ee');
+      break;
+    case 'bow':
+      p.line(4, 1, 11, 7, WOOD).line(11, 7, 4, 14, WOOD).line(4, 1, 4, 14, '#d8d8d8').rect(5, 7, 7, 1, WOOD_L).rect(12, 6, 2, 3, '#e04a2a');
+      break;
     case 'rod':
       p.line(2, 14, 12, 2, WOOD).line(3, 14, 13, 2, WOOD_D).line(12, 2, 14, 9, '#d8d8d8').rect(13, 9, 2, 2, '#d8d8d8').rect(12, 11, 2, 2, '#e04a2a');
       break;
@@ -111,6 +120,15 @@ const produce = (id: string): Px => {
       break;
     case 'bread':
       p.ellipse(1, 4, 14, 9, '#c8924a').ellipse(2, 3, 12, 6, '#e0b070').rect(5, 5, 2, 1, '#b07a3a').rect(9, 5, 2, 1, '#b07a3a');
+      break;
+    case 'gold':
+      p.circle(8, 8, 6, '#d9b53a').circle(8, 8, 5, '#f2d35a').rect(6, 5, 4, 1, '#fff2a0').rect(7, 6, 2, 5, '#d9b53a').rect(6, 10, 4, 1, '#d9b53a');
+      break;
+    case 'gem':
+      p.tpl(2, 2, ['..######....', '.########...', '############', '.##########.', '..########..', '...######...', '....####....', '.....##.....'], { '#': '#4ad0ff' }).rect(5, 3, 3, 1, '#ffffff').rect(4, 4, 2, 2, '#d0f4ff');
+      break;
+    case 'heartberry':
+      p.tpl(2, 3, ['.##..##.', '########', '########', '.######.', '..####..', '...##...'], { '#': '#e03a5a' }).px(4, 4, '#ff9ab0').rect(7, 1, 2, 2, '#3f8a2e');
       break;
     case 'wool':
       p.ellipse(2, 3, 12, 10, '#f7f3ee').ellipse(1, 6, 5, 5, '#f7f3ee').ellipse(10, 6, 5, 5, '#f7f3ee').px(7, 8, '#d8d4ce');

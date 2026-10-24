@@ -13,20 +13,22 @@ import type {
   WorldState,
 } from './types.ts';
 
-/** A change to the world that the server broadcasts after applying. */
+/** A change to the world that the server broadcasts after applying. `area` marks dungeon changes. */
 export type Change =
-  | { t: 'terrain'; x: number; y: number; terrain: Terrain }
-  | { t: 'crop'; k: string; crop: CropState | null }
-  | { t: 'object'; id: number; obj: WorldObject | null }
-  | { t: 'animal'; id: number; animal: AnimalState | null }
-  | { t: 'drop'; id: number; drop: DropState | null }
+  | { t: 'terrain'; x: number; y: number; terrain: Terrain; area?: 'dungeon' }
+  | { t: 'crop'; k: string; crop: CropState | null; area?: 'dungeon' }
+  | { t: 'object'; id: number; obj: WorldObject | null; area?: 'dungeon' }
+  | { t: 'animal'; id: number; animal: AnimalState | null; area?: 'dungeon' }
+  | { t: 'drop'; id: number; drop: DropState | null; area?: 'dungeon' }
   /** Full player record (inventory, coins, outfit…). Sent to everyone; inventory only matters to the owner. */
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
   | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook'; id?: number; npc?: string }
   | { t: 'quests'; quests: Quest[] }
-  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' };
+  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow'; area?: 'dungeon'; from?: { x: number; y: number } }
+  /** Sent to one player when they enter the cave (full instance) or when it is torn down (null). */
+  | { t: 'dungeon'; to: string; world: WorldState | null };
 
 /** A slot in the player's own inventory (chest undefined) or in a chest object. */
 export interface SlotRef {
@@ -59,6 +61,7 @@ export interface PlayerSnap {
   moving: boolean;
   held: string | null;
   emote?: { id: string; until: number };
+  area?: 'dungeon';
 }
 
 export interface NpcSnap {
@@ -75,6 +78,7 @@ export interface AnimalSnap {
   y: number;
   facing: Facing;
   moving: boolean;
+  area?: 'dungeon';
 }
 
 export type ServerMsg =

@@ -1,5 +1,6 @@
 // HUD: top chips, hotbar, toasts, touch controls.
-import { HOTBAR_SIZE, T, WATERING_CAN_CHARGES, fmt, itemName, type ItemStack } from '@lilla-garden/shared';
+import { HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type ItemStack } from '@lilla-garden/shared';
+import { Minimap } from './minimap.ts';
 import { getArt } from '../art/textures.js';
 import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
@@ -30,6 +31,7 @@ export class Hud {
   private toasts: HTMLElement;
   private joy: HTMLElement;
   private joyKnob: HTMLElement;
+  minimap!: Minimap;
 
   constructor(
     private ui: HTMLElement,
@@ -45,8 +47,19 @@ export class Hud {
     this.joy = h('div', { class: 'joy' }, this.joyKnob);
     const zone = h('div', { class: 'joy-zone' }, this.joy);
     const act = h('div', { class: 'act-btn' }, '✋');
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn());
-    this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act);
+    const run = h('div', { class: 'run-btn' }, '🏃');
+    const setRun = (v: boolean) => {
+      const s = this.scene();
+      if (s) s.runHeld = v;
+    };
+    run.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      setRun(true);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) run.addEventListener(ev, () => setRun(false));
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn());
+    this.minimap = new Minimap();
+    this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act, run, this.minimap.el);
     ui.append(this.root);
     this.setupJoystick(zone);
     act.addEventListener('pointerdown', (e) => {
@@ -126,6 +139,7 @@ export class Hud {
     this.top.append(h('div', { class: 'chip' }, `${clock} ${fmt(T.day, { day: client.day })}`));
     if (me) this.top.append(h('div', { class: 'chip' }, h('span', { class: 'coins' }, `${me.coins} ${T.coins}`)));
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
+    if (me && me.area === 'dungeon') this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
     if (client.season !== 'none') {
       const glyph = { halloween: '🎃', jul: '🎄', pask: '🐣', midsommar: '🌸', none: '' }[client.season];
       this.top.append(h('div', { class: 'chip' }, glyph));

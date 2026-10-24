@@ -5,6 +5,7 @@ import {
   NPCS,
   TICK_HZ,
   applyMove,
+  areaOf,
   buy,
   completeQuest,
   cook,
@@ -14,6 +15,7 @@ import {
   emote,
   equip,
   isSeason,
+  leaveCave,
   mulberry32,
   nameAnimal,
   newDay,
@@ -24,6 +26,7 @@ import {
   sell,
   setOnline,
   swapSlots,
+  tagDungeon,
   tick,
   type AnimalSnap,
   type NpcSnap,
@@ -123,9 +126,11 @@ export class Game {
       if (!p.online) continue;
       const snap: PlayerSnap = { id: p.id, x: p.x, y: p.y, facing: p.facing, moving: p.moving, held: p.inventory[p.selected]?.item ?? null };
       if (p.emote) snap.emote = p.emote;
+      if (p.area === 'dungeon') snap.area = 'dungeon';
       players.push(snap);
     }
     const animals: AnimalSnap[] = Object.values(this.world.animals).map((a) => ({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving }));
+    if (this.world.dungeon) for (const a of Object.values(this.world.dungeon.animals)) animals.push({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving, area: 'dungeon' });
     const npcs: NpcSnap[] = Object.keys(NPCS).map((id) => {
       const st = npcState(this.world, id);
       return { id, x: st.x, y: st.y, facing: st.facing, moving: st.moving };
@@ -222,6 +227,8 @@ export class Game {
       if (c.link !== link) continue;
       this.clients.delete(c);
       if (c.playerId && ![...this.clients].some((o) => o.playerId === c.playerId)) {
+        const p = this.world.players[c.playerId];
+        if (p?.area === 'dungeon') this.pending.push(...leaveCave(this.world, c.playerId, false));
         this.pending.push(...setOnline(this.world, c.playerId, false));
         this.dispatchPending();
       }
@@ -255,7 +262,10 @@ export class Game {
     }
     const pid = client.playerId;
     if (!pid) return;
-    const w = this.world;
+    const me = this.world.players[pid];
+    if (!me) return;
+    const w = areaOf(this.world, me);
+    const inCave = w.area === 'dungeon';
     let changes: Change[] = [];
     switch (msg.t) {
       case 'move':
@@ -263,6 +273,7 @@ export class Game {
         return;
       case 'act':
         changes = performAction(w, pid, Math.floor(msg.tx), Math.floor(msg.ty), this.ctx());
+        if (inCave) tagDungeon(changes);
         break;
       case 'select':
         changes = selectSlot(w, pid, msg.slot);

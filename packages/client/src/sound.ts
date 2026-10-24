@@ -70,6 +70,11 @@ export const SFX = {
   },
   poof: () => noise(0.15, 0.04),
   toast: () => tone(520, 0.05, 'triangle', 0.03),
+  hit: () => {
+    noise(0.06, 0.1);
+    tone(120, 0.12, 'square', 0.07, -60);
+  },
+  arrow: () => tone(900, 0.08, 'sine', 0.04, 500),
   open: () => tone(440, 0.06, 'triangle', 0.04, 120),
   newDay: () => {
     [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.06), i * 110));
@@ -85,7 +90,7 @@ export function initSound(): void {
   const unlock = () => ensure();
   window.addEventListener('pointerdown', unlock, { passive: true });
   window.addEventListener('keydown', unlock);
-  bus.on('fx', (c) => SFX[c.kind]?.());
+  bus.on('fx', (c) => (SFX as Record<string, () => void>)[c.kind]?.());
   bus.on('day', () => SFX.newDay());
   bus.on('open', () => SFX.open());
 }

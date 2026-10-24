@@ -66,6 +66,7 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'f' || e.key === 'F') menus.toggle('emotes');
   else if (e.key === 'h' || e.key === 'H' || e.key === '?') menus.toggle('help');
   else if (e.key === 'b' || e.key === 'B') menus.toggle('book');
+  else if (e.key === 'm' || e.key === 'M') hud.minimap.toggle();
   else if (/^[1-8]$/.test(e.key)) hud.select(Number(e.key) - 1);
 });
 
@@ -113,6 +114,14 @@ bus.on('welcome', () => {
       hud.toast(T.helpHint);
     }, 600);
   }
+});
+
+bus.on('area', () => {
+  if (!game) return;
+  scene = game.scene.getScene('game') as GameScene;
+  scene.touch = isTouch;
+  scene.scene.restart();
+  hud.render();
 });
 
 const picker = new Picker(ui, (id) => {
