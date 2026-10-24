@@ -1,4 +1,4 @@
-import type { AnimalDef, CropDef, ItemDef, NpcDef, ObjectDef, RecipeDef } from './types.ts';
+import type { Achievement, AnimalDef, CropDef, ItemDef, NpcDef, ObjectDef, RecipeDef } from './types.ts';
 
 // ---------- Items ----------
 
@@ -334,6 +334,12 @@ export const NPCS: Record<string, NpcDef> = {
     appearance: { skin: '#f1c9a5', hair: '#d9d9d9', hairStyle: 'curly' },
     outfit: { shirt: 'shirt_purple', pants: 'pants_skirt_blue', shoes: 'shoes_red' },
     greeting: ['Hej lilla vän! Vad roligt att du kom.', 'Så fint ni har det på gården!', 'Jag bakar gärna om jag får ingredienser.'],
+    routine: [
+      { at: 0, x: 20, y: 13 }, // morning by the path
+      { at: 0.25, x: 26, y: 22 }, // a stroll past the fields
+      { at: 0.45, x: 35, y: 33 }, // visiting Sven by the pond
+      { at: 0.65, x: 20, y: 13 }, // back for the evening
+    ],
   },
   sven: {
     id: 'sven',
@@ -343,8 +349,43 @@ export const NPCS: Record<string, NpcDef> = {
     appearance: { skin: '#dba97d', hair: '#8a4a1e', hairStyle: 'short' },
     outfit: { shirt: 'shirt_stripes', pants: 'pants_brown', shoes: 'shoes_rubber', hat: 'hat_straw' },
     greeting: ['Hallå där! Fiskarna nappar bra idag.', 'Vet du att det finns en guldfisk i dammen?', 'Stå stilla vid vattnet och vänta på napp.'],
+    routine: [
+      { at: 0, x: 37, y: 36 }, // north-west shore
+      { at: 0.3, x: 45, y: 33 }, // around the north side
+      { at: 0.4, x: 53, y: 37 }, // east shore
+      { at: 0.55, x: 53, y: 45 },
+      { at: 0.65, x: 44, y: 47 }, // south shore
+      { at: 0.8, x: 35, y: 42 },
+      { at: 0.9, x: 37, y: 36 },
+    ],
   },
 };
+
+// ---------- Gårdsbok (achievements) ----------
+
+const A = (id: string, stat: string, goal: number, stars: number, icon: string): Achievement => ({ id, stat, goal, stars, icon });
+export const ACHIEVEMENTS: Achievement[] = [
+  A('harvest_1', 'harvest', 1, 1, 'carrot'),
+  A('harvest_25', 'harvest', 25, 2, 'strawberry'),
+  A('harvest_100', 'harvest', 100, 3, 'pumpkin'),
+  A('chop_10', 'chop', 10, 1, 'axe'),
+  A('chop_50', 'chop', 50, 2, 'wood'),
+  A('mine_10', 'mine', 10, 1, 'pick'),
+  A('mine_50', 'mine', 50, 2, 'stone'),
+  A('build_10', 'build', 10, 1, 'fence'),
+  A('build_50', 'build', 50, 3, 'coop'),
+  A('fed_5', 'fed', 5, 1, 'hay'),
+  A('fed_30', 'fed', 30, 2, 'animal_cow'),
+  A('product_10', 'product', 10, 2, 'egg'),
+  A('fish_1', 'fish', 1, 1, 'rod'),
+  A('fish_20', 'fish', 20, 2, 'fish_pike'),
+  A('fish_gold', 'fish_gold', 1, 3, 'fish_gold'),
+  A('cook_5', 'cook', 5, 2, 'pancakes'),
+  A('quests_3', 'quests', 3, 1, 'egg_basket'),
+  A('quests_15', 'quests', 15, 3, 'maypole'),
+  A('coins_500', 'earned', 500, 1, 'animal_hen'),
+  A('coins_3000', 'earned', 3000, 3, 'animal_cow'),
+];
 
 /** Fish and how likely they bite (weights). */
 export const FISH: { item: string; weight: number }[] = [

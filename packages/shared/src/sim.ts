@@ -1,11 +1,11 @@
 // Authoritative world simulation. Pure functions over WorldState; no I/O.
 // The server runs this; the client reuses movement for prediction.
 
-import { ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, item, objectDef } from './data.ts';
+import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, item, objectDef } from './data.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
-import { DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
+import { ACHIEVEMENT_TEXT, DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
 import type { Change, SlotRef } from './protocol.ts';
 import type {
   AnimalState,
@@ -16,6 +16,7 @@ import type {
   Facing,
   Inventory,
   ItemStack,
+  NpcState,
   PlayerState,
   Quest,
   Season,
@@ -59,12 +60,35 @@ export const tileOf = (px: number): number => Math.floor(px / TILE);
 // Collision & movement
 // ---------------------------------------------------------------------------
 
-export const npcAt = (tx: number, ty: number) => Object.values(NPCS).find((n) => n.x === tx && n.y === ty);
+/** Current villager state, created from the routine on first use. */
+export function npcState(world: WorldState, id: string): NpcState {
+  let st = world.npcs[id];
+  if (!st) {
+    const def = NPCS[id]!;
+    const wp = routineTarget(def, world.timeMs);
+    st = { x: wp.x * TILE + TILE / 2, y: wp.y * TILE + TILE / 2, facing: 'down', moving: false, stuckMs: 0 };
+    world.npcs[id] = st;
+  }
+  return st;
+}
+
+export const routineTarget = (def: { routine: { at: number; x: number; y: number }[]; x: number; y: number }, timeMs: number) => {
+  const f = timeMs / DAY_LENGTH_MS;
+  let best = { x: def.x, y: def.y };
+  for (const w of def.routine) if (f >= w.at) best = w;
+  return best;
+};
+
+export const npcAt = (world: WorldState, tx: number, ty: number) =>
+  Object.values(NPCS).find((n) => {
+    const st = npcState(world, n.id);
+    return tileOf(st.x) === tx && tileOf(st.y) === ty;
+  });
 
 export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
   if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
-  if (npcAt(tx, ty)) return true;
+  if (npcAt(world, tx, ty)) return true;
   if (portalAt(tx, ty)) return false;
   const obj = objectAt(world, tx, ty);
   return !!obj && objectDef(obj.kind).solid;
@@ -85,7 +109,7 @@ export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boo
   const t = world.terrain[tileIndex(tx, ty)];
   if (t === 'water' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields
   if (world.crops[key(tx, ty)]) return true;
-  if (npcAt(tx, ty) || portalAt(tx, ty)) return true;
+  if (npcAt(world, tx, ty) || portalAt(tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
   if (!obj) return false;
   const def = objectDef(obj.kind);
@@ -205,6 +229,8 @@ export function createPlayer(world: WorldState, name: string, appearance: Appear
     orders: [],
     questsDone: [],
     stars: 0,
+    stats: {},
+    achievements: [],
   };
   world.players[id] = p;
   return p;
@@ -237,6 +263,23 @@ export function spawnDrop(world: WorldState, id: string, count: number, x: numbe
   if (ignore) d.ignore = { player: ignore, ticks: 60 };
   world.drops[d.id] = d;
   return d;
+}
+
+// ---------------------------------------------------------------------------
+// Gårdsbok: stats and achievements
+// ---------------------------------------------------------------------------
+
+/** Adds to a lifetime counter and unlocks any achievement it completes. */
+export function bump(p: PlayerState, stat: string, n: number, out: Change[]): void {
+  if (!p.stats) p.stats = {};
+  if (!p.achievements) p.achievements = [];
+  p.stats[stat] = (p.stats[stat] ?? 0) + n;
+  for (const a of ACHIEVEMENTS) {
+    if (a.stat !== stat || p.achievements.includes(a.id) || (p.stats[stat] ?? 0) < a.goal) continue;
+    p.achievements.push(a.id);
+    p.stars += a.stars;
+    out.push(toast(p.id, fmt(T.achievement, { title: ACHIEVEMENT_TEXT[a.id]?.title ?? a.id, stars: a.stars })), fx(tileOf(p.x), tileOf(p.y), 'sparkle'), fx(tileOf(p.x), tileOf(p.y), 'coin'));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +318,7 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   const tool = heldDef?.tool;
 
   // 0. Villager / fishing
-  const npc = npcAt(tx, ty);
+  const npc = npcAt(world, tx, ty);
   if (npc) {
     out.push({ t: 'open', to: p.id, ui: 'npc', npc: npc.id });
     return out;
@@ -353,6 +396,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     }
     removeItem(p.inventory, 'hay', 1);
     a.fed = true;
+    bump(p, 'fed', 1, out);
     out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.fed, { name })), playerChange(p), { t: 'animal', id: a.id, animal: a });
     return;
   }
@@ -371,6 +415,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     if (product) {
       a.hasProduct = false;
       giveItems(world, p, product, 1, out);
+      bump(p, 'product', 1, out);
       out.push(fx(atx, aty, 'sparkle'), toast(p.id, fmt(T.collected, { item: itemName(product), name })), playerChange(p), {
         t: 'animal',
         id: a.id,
@@ -431,6 +476,8 @@ function breakObject(world: WorldState, p: PlayerState, obj: WorldObject, ctx: S
   // Chest contents spill out
   if (obj.items) for (const s of obj.items) if (s) giveItems(world, p, s.item, s.count, out);
   for (const d of def.drops ?? []) giveItems(world, p, d.item, randInt(ctx.rnd, d.min, d.max), out);
+  if (obj.kind.startsWith('tree')) bump(p, 'chop', 1, out);
+  if (def.breakWith === 'pick') bump(p, 'mine', 1, out);
   if (obj.kind === 'tree' || obj.kind === 'tree_pine' || obj.kind === 'tree_apple') {
     const stump = addObject(world, 'stump', obj.x, obj.y);
     if (stump) out.push({ t: 'object', id: stump.id, obj: stump });
@@ -468,6 +515,7 @@ function actOnCrop(
   if (!def) return;
   const tool = held ? item(held.item).tool : undefined;
   if (cropMature(crop)) {
+    bump(p, 'harvest', 1, out);
     giveItems(world, p, def.produce, randInt(ctx.rnd, def.yield[0], def.yield[1]), out);
     giveItems(world, p, def.seed, randInt(ctx.rnd, def.seedsBack[0], def.seedsBack[1]), out);
     if (def.regrowTo !== undefined) {
@@ -573,6 +621,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
       takeFromSlot(p.inventory, p.selected, 1);
       if (back) giveItems(world, p, back, 1, out);
       setTerrain(floor);
+      bump(p, 'build', 1, out);
       out.push(playerChange(p));
       return;
     }
@@ -590,6 +639,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
       return;
     }
     takeFromSlot(p.inventory, p.selected, 1);
+    bump(p, 'build', 1, out);
     out.push({ t: 'object', id: obj.id, obj }, fx(tx, ty, 'poof'), playerChange(p));
     return;
   }
@@ -656,6 +706,7 @@ export function cook(world: WorldState, playerId: string, recipeId: string): Cha
   const out: Change[] = [];
   for (const i of r.in) removeItem(p.inventory, i.item, i.count);
   giveItems(world, p, r.out.item, r.out.count, out);
+  bump(p, 'cook', 1, out);
   out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'), toast(p.id, fmt(T.cooked, { item: itemName(r.out.item) })), playerChange(p));
   return out;
 }
@@ -722,7 +773,10 @@ export function sell(world: WorldState, playerId: string, slot: number, qty: num
   const taken = takeFromSlot(p.inventory, slot, Math.max(1, Math.floor(qty)));
   if (!taken) return [];
   p.coins += d.sell * taken.count;
-  return [fx(tileOf(p.x), tileOf(p.y), 'coin'), playerChange(p)];
+  const out: Change[] = [fx(tileOf(p.x), tileOf(p.y), 'coin')];
+  bump(p, 'earned', d.sell * taken.count, out);
+  out.push(playerChange(p));
+  return out;
 }
 
 export function equip(world: WorldState, playerId: string, slot: ClothingSlot, id: string | null): Change[] {
@@ -832,8 +886,77 @@ function fishingAct(world: WorldState, p: PlayerState, ctx: SimCtx, out: Change[
     }
   }
   giveItems(world, p, caught, 1, out);
+  bump(p, 'fish', 1, out);
+  if (caught === 'fish_gold') bump(p, 'fish_gold', 1, out);
   out.push(fx(f.x, f.y, 'sparkle'), toast(p.id, fmt(T.fishingCaught, { fish: itemName(caught) })), playerChange(p));
 }
+
+const NPC_SPEED = 28;
+
+/** Villagers walk their daily routine, pausing to chat when a player stands close. */
+export function tickNpcs(world: WorldState, dtMs: number): void {
+  for (const def of Object.values(NPCS)) {
+    const st = npcState(world, def.id);
+    const wp = routineTarget(def, world.timeMs);
+    const tx = wp.x * TILE + TILE / 2;
+    const ty = wp.y * TILE + TILE / 2;
+    const dx = tx - st.x;
+    const dy = ty - st.y;
+    const dist = Math.hypot(dx, dy);
+    // Someone nearby? Stop and face them.
+    let near: PlayerState | null = null;
+    let nearD = 2.5 * TILE;
+    for (const p of Object.values(world.players)) {
+      if (!p.online) continue;
+      const d = Math.hypot(p.x - st.x, p.y - st.y);
+      if (d < nearD) {
+        nearD = d;
+        near = p;
+      }
+    }
+    if (near) {
+      const ex = near.x - st.x;
+      const ey = near.y - st.y;
+      st.facing = Math.abs(ex) > Math.abs(ey) ? (ex > 0 ? 'right' : 'left') : ey > 0 ? 'down' : 'up';
+      st.moving = false;
+      continue;
+    }
+    if (dist < 2) {
+      st.moving = false;
+      st.stuckMs = 0;
+      continue;
+    }
+    const step = Math.min(dist, (NPC_SPEED * dtMs) / 1000);
+    const nx = st.x + (dx / dist) * step;
+    const ny = st.y + (dy / dist) * step;
+    const r = resolveMove((x, y) => isSolidForNpc(world, x, y), st.x, st.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+    const moved = Math.hypot(r.x - st.x, r.y - st.y);
+    st.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    if (moved < step * 0.5) {
+      st.stuckMs += dtMs;
+      if (st.stuckMs > 2500) {
+        // Something is in the way (a rock, a fence): hop over to the next spot
+        st.x = tx;
+        st.y = ty;
+        st.stuckMs = 0;
+      }
+      st.moving = false;
+      continue;
+    }
+    st.x = r.x;
+    st.y = r.y;
+    st.moving = true;
+  }
+}
+
+const isSolidForNpc = (world: WorldState, tx: number, ty: number): boolean => {
+  if (!inBounds(tx, ty)) return true;
+  const t = world.terrain[tileIndex(tx, ty)];
+  if (t === 'water' || t === 'soil' || t === 'soil_wet') return true;
+  if (world.crops[key(tx, ty)] || portalAt(tx, ty)) return true;
+  const obj = objectAt(world, tx, ty);
+  return !!obj && objectDef(obj.kind).solid;
+};
 
 function tickFishing(world: WorldState, ctx: SimCtx, out: Change[]): void {
   for (const p of Object.values(world.players)) {
@@ -925,13 +1048,16 @@ export function completeQuest(world: WorldState, playerId: string, questId: stri
   const q = world.quests.find((x) => x.id === questId);
   if (!p || !q || p.questsDone.includes(q.id)) return [];
   const npc = NPCS[q.npc];
-  if (!npc || Math.abs(tileOf(p.x) - npc.x) > REACH + 1 || Math.abs(tileOf(p.y) - npc.y) > REACH + 1) return [];
+  if (!npc) return [];
+  const st = npcState(world, npc.id);
+  if (Math.abs(tileOf(p.x) - tileOf(st.x)) > REACH + 1 || Math.abs(tileOf(p.y) - tileOf(st.y)) > REACH + 1) return [];
   if (countItem(p.inventory, q.want.item) < q.want.count) return [toast(p.id, T.questNoItems)];
   const out: Change[] = [];
   removeItem(p.inventory, q.want.item, q.want.count);
   p.questsDone.push(q.id);
   p.coins += q.reward.coins;
   p.stars += q.reward.stars;
+  if (q.reward.coins) bump(p, 'earned', q.reward.coins, out);
   const parts: string[] = [];
   if (q.reward.coins) parts.push(`${q.reward.coins} ${T.coins}`);
   if (q.reward.item) {
@@ -939,7 +1065,8 @@ export function completeQuest(world: WorldState, playerId: string, questId: stri
     parts.push(itemName(q.reward.item.item));
   }
   parts.push(`${q.reward.stars} ⭐`);
-  out.push(fx(npc.x, npc.y, 'heart'), fx(tileOf(p.x), tileOf(p.y), 'coin'), toast(p.id, fmt(T.questDone, { reward: parts.join(' + ') })), playerChange(p));
+  bump(p, 'quests', 1, out);
+  out.push(fx(tileOf(st.x), tileOf(st.y), 'heart'), fx(tileOf(p.x), tileOf(p.y), 'coin'), toast(p.id, fmt(T.questDone, { reward: parts.join(' + ') })), playerChange(p));
   return out;
 }
 
@@ -958,6 +1085,7 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
     out.push({ t: 'quests', quests: world.quests });
   }
   tickAnimals(world, dtMs, ctx);
+  tickNpcs(world, dtMs);
   tickDrops(world, out);
   tickFishing(world, ctx, out);
   for (const p of Object.values(world.players)) if (p.emote && p.emote.until < ctx.now) delete p.emote;
@@ -987,9 +1115,9 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
   const dy = owner.y - a.y;
   const dist = Math.hypot(dx, dy);
   if (dist > PET_TELEPORT) {
-    // Lost (fence, house door…): pop up next to the owner
-    a.x = owner.x - 10;
-    a.y = owner.y + 2;
+    // Lost (fence, house door…): pop up at the owner's feet (never inside a tree or wall)
+    a.x = owner.x;
+    a.y = owner.y + 3;
     a.moving = false;
     return true;
   }
@@ -1108,7 +1236,7 @@ const nearHouse = (x: number, y: number): boolean => x >= 5 && x <= 18 && y >= 3
 const freeGrass = (world: WorldState, x: number, y: number): boolean =>
   inBounds(x, y) &&
   !inInterior(x, y) &&
-  !npcAt(x, y) &&
+  !npcAt(world, x, y) &&
   world.terrain[tileIndex(x, y)] === 'grass' &&
   !objectAt(world, x, y) &&
   !world.crops[key(x, y)] &&

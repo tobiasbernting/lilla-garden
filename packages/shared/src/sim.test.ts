@@ -8,6 +8,8 @@ import {
   addItem,
   addObject,
   applyMove,
+  bump,
+  npcAt,
   completeQuest,
   cook,
   buy,
@@ -556,6 +558,7 @@ describe('house, villagers, fishing', () => {
     const greta = world.quests.filter((q) => q.npc === 'greta');
     expect(greta.length).toBe(2);
     const q = greta[0]!;
+    world.timeMs = 1000; // morning: Greta by the path
     standAt(world, p, 20, 14);
     const open = performAction(world, p.id, 20, 13, ctx());
     expect(open.some((c) => c.t === 'open' && c.ui === 'npc' && c.npc === 'greta')).toBe(true);
@@ -570,6 +573,7 @@ describe('house, villagers, fishing', () => {
     // Sven's fixed quest gives the fishing rod
     addItem(p.inventory, 'wood', 5);
     standAt(world, p, 37, 37);
+    tick(world, 50, ctx());
     completeQuest(world, p.id, 'sven_rod');
     expect(countItem(p.inventory, 'rod')).toBe(1);
     newDay(world, ctx());
@@ -597,7 +601,7 @@ describe('house, villagers, fishing', () => {
     expect(p.fishing?.bite).toBe(true);
     expect(p.emote?.id).toBe('napp');
     const ch = performAction(world, p.id, wx, wy, bite);
-    expect(toasts(ch)[0]).toContain('Du fick en');
+    expect(toasts(ch).some((t) => t.includes('Du fick en'))).toBe(true);
     expect(p.inventory.some((s) => s?.item.startsWith('fish_'))).toBe(true);
     expect(p.fishing).toBeUndefined();
     // moving cancels
@@ -638,5 +642,49 @@ describe('cooking and pets', () => {
     standAt(world, p, 57, 58);
     tick(world, 50, ctx());
     expect(Math.hypot(dog.x - p.x, dog.y - p.y)).toBeLessThan(16);
+    expect(Math.floor(dog.x / 16)).toBe(57);
+  });
+});
+
+describe('gårdsbok and routines', () => {
+  it('unlocks achievements with stars as counters grow', () => {
+    const { world, p } = setup();
+    const out: Change[] = [];
+    bump(p, 'harvest', 1, out);
+    expect(p.achievements).toEqual(['harvest_1']);
+    expect(p.stars).toBe(1);
+    expect(toasts(out)[0]).toContain('Första skörden');
+    bump(p, 'harvest', 30, out);
+    expect(p.achievements).toEqual(['harvest_1', 'harvest_25']);
+    bump(p, 'harvest', 1, out);
+    expect(p.achievements.length).toBe(2);
+    // selling counts coins earned
+    addItem(p.inventory, 'pumpkin', 10);
+    const slot = p.inventory.findIndex((s) => s?.item === 'pumpkin');
+    sell(world, p.id, slot, 10);
+    expect(p.stats.earned).toBe(600);
+    expect(p.achievements).toContain('coins_500');
+    void world;
+  });
+
+  it('villagers walk their routine and stop to chat', () => {
+    const { world, p } = setup();
+    const c = ctx();
+    world.timeMs = 1000;
+    standAt(world, p, 2, 2); // far away
+    tick(world, 50, c);
+    const greta = world.npcs.greta!;
+    expect(Math.floor(greta.x / 16)).toBe(20);
+    world.timeMs = 0.3 * DAY_LENGTH_MS; // stroll time
+    for (let i = 0; i < 20 * 15; i++) tick(world, 50, c);
+    expect(greta.x / 16).toBeGreaterThan(22);
+    expect(greta.y / 16).toBeGreaterThan(16);
+    // a player standing close stops her
+    p.x = greta.x + 20;
+    p.y = greta.y;
+    tick(world, 50, c);
+    expect(greta.moving).toBe(false);
+    expect(greta.facing).toBe('right');
+    expect(npcAt(world, Math.floor(greta.x / 16), Math.floor(greta.y / 16))?.id).toBe('greta');
   });
 });

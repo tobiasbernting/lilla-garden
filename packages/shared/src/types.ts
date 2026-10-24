@@ -174,6 +174,29 @@ export interface PlayerState {
   stars: number;
   /** Fishing in progress. */
   fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
+  /** Lifetime counters for the Gårdsbok (harvest, chop, …). */
+  stats: Record<string, number>;
+  /** Unlocked achievement ids. */
+  achievements: string[];
+}
+
+export interface Achievement {
+  id: string;
+  /** Which stat it counts. */
+  stat: string;
+  goal: number;
+  stars: number;
+  /** Item id for the icon. */
+  icon: string;
+}
+
+export interface NpcState {
+  x: number;
+  y: number;
+  facing: Facing;
+  moving: boolean;
+  /** Ms spent blocked on the way to the current target. */
+  stuckMs: number;
 }
 
 export interface Quest {
@@ -195,6 +218,8 @@ export interface NpcDef {
   appearance: Appearance;
   outfit: Outfit;
   greeting: string[];
+  /** Daily walking routine: where to be from `at` (fraction of the day, sorted). */
+  routine: { at: number; x: number; y: number }[];
 }
 
 export interface CropState {
@@ -273,6 +298,8 @@ export interface WorldState {
   quests: Quest[];
   /** Day the quests were generated for. */
   questsDay: number;
+  /** Villager positions (not persisted; rebuilt from routines). */
+  npcs: Record<string, NpcState>;
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;

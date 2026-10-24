@@ -70,6 +70,7 @@ export class Net {
         client.day = msg.world.day;
         client.snaps.players.clear();
         client.snaps.animals.clear();
+        client.snaps.npcs.clear();
         bus.emit('connection', 'open');
         bus.emit('welcome', undefined);
         bus.emit('me', undefined);
@@ -104,6 +105,10 @@ export class Net {
             rec.facing = a.facing;
             rec.moving = a.moving;
           }
+        }
+        for (const n of msg.npcs ?? []) {
+          client.snaps.npcs.set(n.id, n);
+          if (client.world) client.world.npcs[n.id] = { x: n.x, y: n.y, facing: n.facing, moving: n.moving, stuckMs: 0 };
         }
         bus.emit('state', undefined);
         break;

@@ -695,3 +695,34 @@ input[type='text'] {
   border-right-color: var(--ink);
   border-width: var(--u) calc(2 * var(--u)) var(--u) 0;
 }
+
+/* ---- gårdsbok ---- */
+.row .badge {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(8 * var(--u));
+}
+.row .badge img {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  image-rendering: pixelated;
+}
+.row.done {
+  background: #fff6c8;
+}
+.row .bar {
+  height: calc(2 * var(--u));
+  background: #c9bda5;
+  border-radius: var(--u);
+  margin-top: var(--u);
+  overflow: hidden;
+  max-width: calc(80 * var(--u));
+}
+.row .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}

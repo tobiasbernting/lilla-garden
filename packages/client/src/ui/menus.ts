@@ -1,5 +1,7 @@
 // All in-game menus as HTML overlays: ryggsäck, kista, katalog, sälj, snickra, garderob, emotes, namn.
 import {
+  ACHIEVEMENTS,
+  ACHIEVEMENT_TEXT,
   ANIMALS,
   CHEST_SIZE,
   COOKING,
@@ -29,7 +31,7 @@ import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season'] as const;
@@ -116,6 +118,7 @@ export class Menus {
       nameAnimal: '🐾',
       help: `❓ ${T.help}`,
       cook: `🍳 ${T.cook}`,
+      book: `📖 ${T.book}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
@@ -157,6 +160,9 @@ export class Menus {
         break;
       case 'npc':
         this.renderNpc(body);
+        break;
+      case 'book':
+        this.renderBook(body);
         break;
     }
     this.modal.append(panel);
@@ -361,6 +367,30 @@ export class Menus {
       grid.append(b);
     }
     body.append(grid);
+  }
+
+  // ---- gårdsbok ----
+
+  private renderBook(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const done = ACHIEVEMENTS.filter((a) => me.achievements?.includes(a.id)).length;
+    body.append(h('p', { class: 'help-intro' }, `⭐ ${me.stars} ${T.stars} · ${done} av ${ACHIEVEMENTS.length} bragder`));
+    const rows = h('div', { class: 'rows' });
+    for (const a of ACHIEVEMENTS) {
+      const have = Math.min(a.goal, me.stats?.[a.stat] ?? 0);
+      const unlocked = me.achievements?.includes(a.id);
+      const txt = ACHIEVEMENT_TEXT[a.id] ?? { title: a.id, text: '' };
+      rows.append(
+        h(
+          'div',
+          { class: `row${unlocked ? ' done' : ''}` },
+          h('span', { class: 'badge' }, unlocked ? '🏅' : icon(getArt().iconUrl[a.icon] ?? '')),
+          h('span', { class: 'name' }, txt.title, h('br'), h('span', { class: 'need' }, txt.text), h('div', { class: 'bar' }, h('i', { style: { width: `${(have / a.goal) * 100}%` } }))),
+          h('span', { class: 'price' }, unlocked ? `+${a.stars} ⭐` : fmt(T.progress, { have, goal: a.goal })),
+        ),
+      );
+    }
+    body.append(rows);
   }
 
   // ---- villager dialogue ----
