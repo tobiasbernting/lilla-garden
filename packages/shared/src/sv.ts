@@ -180,6 +180,11 @@ export const T = {
   collected: 'Fick {item} av {name}',
   alreadyFed: '{name} är mätt',
   needHay: 'Håll hö för att mata',
+  troughFilled: 'Lade hö i mathon ({count} hö)',
+  troughHas: 'Mathon har {count} hö',
+  troughEmpty: 'Mathon är tom – lägg i hö',
+  notNow: 'Inget händer här',
+  renamed: '{name} heter nu {newName}!',
   cantPlaceHere: 'Går inte att bygga här',
   cantBreak: 'Fel verktyg',
   needTool: 'Behöver {tool}',
@@ -200,6 +205,12 @@ export const T = {
   paskTwist: 'Hönsen värper påskägg!',
   midsommarTwist: 'Blommor överallt!',
 };
+
+/** Names animals get until a player renames them. */
+export const DEFAULT_ANIMAL_NAMES = [
+  'Pelle', 'Lisa', 'Molly', 'Stina', 'Kalle', 'Maja', 'Ludde', 'Nisse', 'Bella', 'Sigge',
+  'Tindra', 'Alfons', 'Majken', 'Doris', 'Gösta', 'Selma', 'Rufus', 'Svea', 'Pricken', 'Tulla',
+];
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
 export const objectName = (kind: string): string => OBJECT_NAMES[kind] ?? ITEM_NAMES[kind] ?? kind;

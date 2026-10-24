@@ -6,3 +6,4 @@ export * from './rng.js';
 export * from './inventory.js';
 export * from './map.js';
 export * from './protocol.js';
+export * from './sim.js';
