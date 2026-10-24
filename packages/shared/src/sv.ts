@@ -125,6 +125,16 @@ export const ITEM_NAMES: Record<string, string> = {
   shirt_purple: 'Lila tröja',
   shirt_stripes: 'Randig tröja',
   shirt_overalls: 'Snickarbyxor',
+  dress_pink: 'Klänning, rosa',
+  dress_blue: 'Klänning, blå',
+  dress_purple: 'Klänning, lila',
+  dress_mint: 'Klänning, mint',
+  dress_red_belt: 'Klänning med skärp, röd',
+  dress_green_belt: 'Klänning med skärp, grön',
+  dress_yellow_flowers: 'Blomklänning, gul',
+  dress_white_flowers: 'Blomklänning, vit',
+  dress_midsommar: 'Midsommarklänning',
+  dress_lucia: 'Luciaklänning',
   pants_blue: 'Blå byxor',
   pants_brown: 'Bruna byxor',
   pants_green: 'Gröna byxor',
@@ -150,6 +160,8 @@ export const ITEM_NAMES: Record<string, string> = {
   shirt_gold: 'Guldtröja',
   hat_crown: 'Krona',
   shirt_star: 'Stjärntröja',
+  gown_gold: 'Balklänning, guld',
+  gown_blue: 'Balklänning, blå',
 };
 
 export const OBJECT_NAMES: Record<string, string> = {

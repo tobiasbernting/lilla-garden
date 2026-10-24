@@ -48,6 +48,40 @@ export function lookOf(appearance: Appearance, outfit: Outfit): Look {
 export const lookKey = (l: Look): string =>
   [l.skin, l.hair, l.hairStyle, l.shirt.style, l.shirt.color, l.pants.style, l.pants.color, l.shoes.style, l.shoes.color, l.hat?.style ?? '-', l.hat?.color ?? '-'].join('|');
 
+export const DRESS_STYLES = ['dress', 'dress_belt', 'dress_flowers', 'gown'];
+export const isDress = (style: string): boolean => DRESS_STYLES.includes(style);
+
+/** A-line skirt from the waist (row 15) to the hem (row 21), wider for a gown. */
+function drawDressPixel(p: Px, style: string, c: string, dir: Dir, frame: number): void {
+  const d = shade(c, 0.78);
+  const lt = shade(c, 1.15);
+  const gown = style === 'gown';
+  const hem = gown ? 22 : 21;
+  const side = dir === 'right';
+  for (let y = 15; y <= hem; y++) {
+    const t = (y - 15) / (hem - 15);
+    const half = gown ? 5 + Math.round(t * 3) : 5 + Math.round(t * 2); // 5..7 (gown 5..8)
+    const sway = frame === 1 ? 1 : frame === 2 ? -1 : 0;
+    const x0 = side ? 8 - half + 1 + (y > 18 ? sway : 0) : 8 - half;
+    const w = side ? half * 2 - 1 : half * 2;
+    p.rect(x0, y, w, 1, y === hem ? d : c);
+    if (!side && y < hem) p.px(x0 + w - 1, y, d); // shaded edge
+    if (!side && y < hem && y > 15) p.px(x0, y, lt);
+  }
+  if (style === 'dress_belt' || gown) {
+    p.rect(side ? 5 : 3, 15, side ? 7 : 10, 1, '#ffffff');
+    if (!side && dir === 'down') p.rect(6, 10, 4, 1, '#ffffff').px(5, 11, '#ffffff').px(10, 11, '#ffffff');
+  }
+  if (style === 'dress_flowers') {
+    const pts: [number, number][] = side ? [[6, 17], [9, 19], [5, 20], [10, 16]] : [[4, 17], [9, 18], [6, 20], [11, 20], [8, 16], [3, 19]];
+    pts.forEach(([x, y], i) => p.px(x, y, i % 2 ? '#ffffff' : '#f5e04a'));
+  }
+  if (gown) {
+    for (let y = 16; y < hem; y += 2) p.px(side ? 7 : 8, y, lt);
+    if (!side) p.px(2, hem - 1, lt).px(13, hem - 1, lt);
+  }
+}
+
 /** Draws one 16x24 frame. */
 export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
   const p = new Px(CHAR_W, CHAR_H);
@@ -60,7 +94,20 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
   const pantsD = shade(pantsC, 0.75);
   const shoeC = l.shoes.color;
   const shoeL = shade(shoeC, 1.3);
-  if (dir === 'right') {
+  const dress = isDress(l.shirt.style);
+  if (dress) {
+    // legs are hidden under the skirt: only the shoes show, stepping with the walk cycle
+    if (dir === 'right') {
+      const frontX = frame === 1 ? 8 : frame === 2 ? 5 : 6;
+      const backX = frame === 1 ? 5 : frame === 2 ? 8 : 8;
+      p.rect(backX, 22, 3, 2, shade(shoeC, 0.8));
+      p.rect(frontX, 22, 4, 2, shoeC).px(frontX + 3, 22, shoeL);
+    } else {
+      const ly = 22 + legOff[0]! * 0;
+      p.rect(4, ly + Math.max(0, legOff[0]!), 3, 2, shoeC).rect(9, ly + Math.max(0, legOff[1]!), 3, 2, shoeC);
+      p.px(4, ly + Math.max(0, legOff[0]!), shoeL).px(9, ly + Math.max(0, legOff[1]!), shoeL);
+    }
+  } else if (dir === 'right') {
     // side view: legs overlap, show two with walk offset
     const back = 6 + legOff[1]! * 0; // keep simple: alternate which leg is forward
     const frontX = frame === 1 ? 8 : frame === 2 ? 5 : 6;
@@ -80,7 +127,7 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     p.px(4, ly + lLen, shoeL).px(9, ly + rLen, shoeL);
     if (l.shoes.style === 'boots') p.rect(4, ly + lLen - 1, 3, 1, shade(shoeC, 0.9)).rect(9, ly + rLen - 1, 3, 1, shade(shoeC, 0.9));
   }
-  if (l.pants.style === 'skirt') {
+  if (l.pants.style === 'skirt' && !dress) {
     const sk = shade(pantsC, 1.1);
     p.rect(3, 15, 10, 1, sk).rect(2, 16, 12, 3, sk).rect(2, 18, 12, 1, pantsD);
   }
@@ -119,6 +166,8 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     for (let x = 2; x < 14; x += 3) p.rect(x, 20, 2, 1, '#f4f4f4');
     if (dir !== 'up') p.rect(5, 12, 2, 2, OUTLINE).rect(9, 12, 2, 2, OUTLINE);
   }
+
+  if (dress) drawDressPixel(p, l.shirt.style, shirtC, dir, frame);
 
   // --- head (rows 2..10) ---
   const hx = 4;
