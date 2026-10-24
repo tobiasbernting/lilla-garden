@@ -119,6 +119,9 @@ export function applyChange(c: Change): void {
       } else world.players[c.id] = c.player;
       break;
     }
+    case 'quests':
+      world.quests = c.quests;
+      break;
     case 'day':
       world.day = c.day;
       client.day = c.day;

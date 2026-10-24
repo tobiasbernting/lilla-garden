@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { ensureInterior, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -67,6 +67,8 @@ export class PgStore implements Store {
       day: row.day,
       timeMs: row.timeMs,
       nextId: row.nextId,
+      quests: [],
+      questsDay: 0,
       seasonOverride: (row.seasonOverride as WorldState['seasonOverride']) ?? null,
       terrain: row.terrain,
       drops: row.drops ?? {},
@@ -76,14 +78,29 @@ export class PgStore implements Store {
       animals: {},
       players: {},
     };
-    for (const o of await this.db.select().from(s.objects)) world.objects[o.id] = o.data;
+    const loadedObjectIds: number[] = [];
+    for (const o of await this.db.select().from(s.objects)) {
+      world.objects[o.id] = o.data;
+      loadedObjectIds.push(o.id);
+    }
     for (const c of await this.db.select().from(s.crops)) world.crops[c.k] = c.data;
     for (const a of await this.db.select().from(s.animals)) world.animals[a.id] = a.data;
     for (const p of await this.db.select().from(s.players)) {
-      world.players[p.id] = { ...p.data, online: false, moving: false };
+      world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, online: false, moving: false };
       delete world.players[p.id]!.emote;
+      delete world.players[p.id]!.fishing;
     }
     rebuildOccupancy(world);
+    // Worlds saved by older versions: add the farmhouse interior and room for the villagers
+    const before = Object.keys(world.objects).length;
+    if (ensureInterior(world)) console.log('added the farmhouse interior to the saved world');
+    ensureVillagers(world);
+    // Objects removed by the repairs above must also leave the database
+    for (const id of loadedObjectIds) if (!world.objects[id]) this.gone.objects.add(id);
+    if (Object.keys(world.objects).length !== before || this.gone.objects.size > 0 || before === 0) {
+      this.markAllDirty(world);
+      await this.flush(world);
+    }
     return world;
   }
 

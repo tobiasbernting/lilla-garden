@@ -32,6 +32,9 @@ const tool = (kind: string): Px => {
     case 'hammer':
       p.rect(7, 6, 2, 9, WOOD).rect(8, 6, 1, 9, WOOD_D).rect(4, 2, 8, 5, STEEL_D).rect(4, 2, 8, 2, STEEL).rect(4, 2, 8, 1, '#e0e3e8');
       break;
+    case 'rod':
+      p.line(2, 14, 12, 2, WOOD).line(3, 14, 13, 2, WOOD_D).line(12, 2, 14, 9, '#d8d8d8').rect(13, 9, 2, 2, '#d8d8d8').rect(12, 11, 2, 2, '#e04a2a');
+      break;
     case 'brush':
       p.rect(6, 1, 4, 7, WOOD).rect(9, 1, 1, 7, WOOD_D).rect(3, 8, 10, 4, '#d8363a').rect(3, 12, 10, 3, '#e6c15a');
       for (let x = 3; x < 13; x += 2) p.rect(x, 12, 1, 3, '#cfa84a');
@@ -100,6 +103,14 @@ const produce = (id: string): Px => {
   return p.outline(OUTLINE);
 };
 
+const fish = (id: string): Px => {
+  const col = { fish_roach: '#a8b8c8', fish_perch: '#7aa060', fish_pike: '#6a8a4a', fish_gold: '#f5c23a' }[id] ?? '#8fa0b0';
+  const p = new Px(16, 16).ellipse(2, 5, 10, 6, col).rect(11, 6, 2, 4, col).rect(12, 4, 2, 2, col).rect(12, 10, 2, 2, col).px(4, 7, OUTLINE).rect(5, 9, 4, 1, shade(col, 0.8));
+  if (id === 'fish_perch') p.rect(5, 5, 1, 6, shade(col, 0.7)).rect(8, 5, 1, 6, shade(col, 0.7));
+  if (id === 'fish_gold') p.px(6, 6, '#fff2a0');
+  return p.outline(OUTLINE);
+};
+
 const clothingIcon = (d: ItemDef): Px => {
   const c = d.clothing!;
   const p = new Px(16, 16);
@@ -149,6 +160,9 @@ export function drawIcons(objects: Record<string, ObjectArt>): Record<string, Px
       case 'feed':
       case 'animal_product':
         p = produce(d.id);
+        break;
+      case 'fish':
+        p = fish(d.id);
         break;
       case 'animal': {
         const a = drawAnimal(d.species!, 0, false, false);

@@ -3,6 +3,8 @@ import {
   ANIMALS,
   CHEST_SIZE,
   HELP,
+  NPCS,
+  openQuests,
   HOTBAR_SIZE,
   INVENTORY_SIZE,
   ITEMS,
@@ -25,16 +27,17 @@ import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc';
 
-const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, clothes: T.tabClothes, season: T.tabSeason };
-const TABS = ['seeds', 'animals', 'feed', 'materials', 'clothes', 'season'] as const;
+const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason };
+const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season'] as const;
 
 export class Menus {
   private modal: HTMLElement | null = null;
   private kind: MenuKind | null = null;
   private chestId: number | null = null;
   private animalId: number | null = null;
+  private npcId: string | null = null;
   private picked: SlotRef | null = null;
   private tab: (typeof TABS)[number] = 'seeds';
   private wardrobeTab: ClothingSlot = 'hat';
@@ -51,7 +54,10 @@ export class Menus {
     bus.on('open', (c) => {
       if (c.ui === 'chest') this.open('chest', c.id);
       else if (c.ui === 'nameAnimal') this.open('nameAnimal', c.id);
-      else this.open(c.ui);
+      else if (c.ui === 'npc') {
+        this.npcId = c.npc ?? null;
+        this.open('npc');
+      } else this.open(c.ui);
     });
     bus.on('connection', (s) => {
       if (s !== 'open') this.close();
@@ -107,6 +113,7 @@ export class Menus {
       emotes: '😊',
       nameAnimal: '🐾',
       help: `❓ ${T.help}`,
+      npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
@@ -141,6 +148,9 @@ export class Menus {
         break;
       case 'help':
         this.renderHelp(panel, body);
+        break;
+      case 'npc':
+        this.renderNpc(body);
         break;
     }
     this.modal.append(panel);
@@ -345,6 +355,42 @@ export class Menus {
       grid.append(b);
     }
     body.append(grid);
+  }
+
+  // ---- villager dialogue ----
+
+  private renderNpc(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const npc = this.npcId ? NPCS[this.npcId] : undefined;
+    if (!npc) {
+      this.close();
+      return;
+    }
+    const quests = openQuests(client.world!, me, npc.id);
+    const greeting = npc.greeting[(client.day + npc.name.length) % npc.greeting.length]!;
+    const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length ? greeting : T.questAllDone));
+    body.append(talk);
+    const rows = h('div', { class: 'rows' });
+    for (const q of quests) {
+      const have = countItem(me.inventory, q.want.item);
+      const ok = have >= q.want.count;
+      const reward = [q.reward.coins ? `${q.reward.coins} ${T.coins}` : '', q.reward.item ? itemName(q.reward.item.item) : '', `${q.reward.stars} ⭐`].filter(Boolean).join(' + ');
+      const give = h('button', { disabled: !ok }, T.questGive);
+      onTap(give, () => {
+        net.send({ t: 'quest', id: q.id });
+        setTimeout(() => this.rerender(), 150);
+      });
+      rows.append(
+        h(
+          'div',
+          { class: `row${ok ? '' : ' off'}` },
+          icon(getArt().iconUrl[q.want.item] ?? ''),
+          h('span', { class: 'name' }, q.text, h('br'), h('span', { class: `need ${ok ? 'ok' : 'no'}` }, `${T.questWant}: ${q.want.count} ${itemName(q.want.item)} (du har ${have})`), h('br'), h('span', { class: 'need' }, `${T.questReward}: ${reward}`)),
+          give,
+        ),
+      );
+    }
+    body.append(rows);
   }
 
   // ---- help ----

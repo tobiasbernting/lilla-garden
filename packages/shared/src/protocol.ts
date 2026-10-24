@@ -6,6 +6,7 @@ import type {
   Facing,
   Outfit,
   PlayerState,
+  Quest,
   Season,
   Terrain,
   WorldObject,
@@ -23,7 +24,8 @@ export type Change =
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
-  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal'; id?: number }
+  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc'; id?: number; npc?: string }
+  | { t: 'quests'; quests: Quest[] }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' };
 
 /** A slot in the player's own inventory (chest undefined) or in a chest object. */
@@ -45,6 +47,7 @@ export type ClientMsg =
   | { t: 'emote'; id: string }
   | { t: 'drop'; slot: number; qty: number }
   | { t: 'nameAnimal'; id: number; name: string }
+  | { t: 'quest'; id: string }
   | { t: 'ping' };
 
 export interface PlayerSnap {

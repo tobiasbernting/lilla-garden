@@ -1,4 +1,4 @@
-import type { AnimalDef, CropDef, ItemDef, ObjectDef, RecipeDef } from './types.ts';
+import type { AnimalDef, CropDef, ItemDef, NpcDef, ObjectDef, RecipeDef } from './types.ts';
 
 // ---------- Items ----------
 
@@ -25,6 +25,7 @@ add(I('pick', 'tool', { tool: 'pick' }));
 add(I('scythe', 'tool', { tool: 'scythe' }));
 add(I('hammer', 'tool', { tool: 'hammer' }));
 add(I('brush', 'tool', { tool: 'brush' }));
+add(I('rod', 'tool', { tool: 'rod' }));
 
 // Seeds + crops
 const crop = (id: string, buySeed: number, sellCrop: number) => {
@@ -50,6 +51,12 @@ add(I('egg', 'animal_product', { sell: 15 }));
 add(I('milk', 'animal_product', { sell: 40 }));
 add(I('wool', 'animal_product', { sell: 50 }));
 add(I('egg_pask', 'animal_product', { sell: 25 }));
+
+// Fish
+add(I('fish_roach', 'fish', { sell: 8 }));
+add(I('fish_perch', 'fish', { sell: 14 }));
+add(I('fish_pike', 'fish', { sell: 35 }));
+add(I('fish_gold', 'fish', { sell: 90 }));
 
 // Animals (catalogue)
 add(I('animal_hen', 'animal', { species: 'hen', buy: 150, tab: 'animals', stack: 1 }));
@@ -82,6 +89,17 @@ place('sheepfold', { sell: 30 });
 place('barn', { sell: 50 });
 place('flowerbox', { sell: 5 });
 place('well', { sell: 20 });
+// Furniture (Möbler) – crafted or bought, usable inside the house and outside
+place('bed', { sell: 15, buy: 120, tab: 'furniture' });
+place('rug', { sell: 5, buy: 40, tab: 'furniture' });
+place('chair', { sell: 3, buy: 25, tab: 'furniture' });
+place('sofa', { sell: 10, buy: 90, tab: 'furniture' });
+place('bookshelf', { sell: 8, buy: 70, tab: 'furniture' });
+place('lamp', { sell: 5, buy: 45, tab: 'furniture' });
+place('plant', { sell: 4, buy: 30, tab: 'furniture' });
+place('painting', { sell: 5, buy: 60, tab: 'furniture' });
+place('stove', { sell: 10, buy: 110, tab: 'furniture' });
+place('clock', { sell: 5, buy: 50, tab: 'furniture' });
 // Season decorations
 place('pumpkin_lantern', { buy: 30, tab: 'season', season: 'halloween', sell: 5 });
 place('ghost_flag', { buy: 25, tab: 'season', season: 'halloween', sell: 5 });
@@ -188,12 +206,23 @@ built('door', { solid: false });
 built('chest', { interact: 'chest' });
 built('trough', { interact: 'feed' });
 built('workbench', { interact: 'workbench' });
-built('torch', { solid: false });
+built('torch', { solid: false, light: true });
 built('scarecrow');
 built('bench');
 built('table');
 built('flowerbox');
 built('well', { interact: 'water' });
+built('bed', { w: 1, h: 2 });
+built('rug', { w: 2, h: 2, solid: false, flat: true });
+built('chair');
+built('sofa', { w: 2, h: 1 });
+built('bookshelf');
+built('lamp', { light: true });
+built('plant');
+built('painting', { solid: false, flat: true });
+built('stove', { light: true });
+built('clock', { solid: false, flat: true });
+built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
 built('coop', { w: 2, h: 2, houses: { species: 'hen', capacity: 4 } });
 built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
@@ -263,4 +292,41 @@ export const RECIPES: RecipeDef[] = [
   R('sheepfold', 1, ['wood', 25], ['stone', 6]),
   R('barn', 1, ['wood', 40], ['stone', 15]),
   R('hay', 2, ['fiber', 3]),
+  R('chair', 1, ['wood', 3]),
+  R('bed', 1, ['wood', 10], ['fiber', 6]),
+  R('bookshelf', 1, ['wood', 8]),
+  R('rug', 1, ['fiber', 8]),
+  R('lamp', 1, ['wood', 2], ['fiber', 2]),
+  R('plant', 1, ['fiber', 3], ['stone', 1]),
+];
+
+// ---------- Villagers ----------
+
+export const NPCS: Record<string, NpcDef> = {
+  greta: {
+    id: 'greta',
+    name: 'Tant Greta',
+    x: 20,
+    y: 13,
+    appearance: { skin: '#f1c9a5', hair: '#d9d9d9', hairStyle: 'curly' },
+    outfit: { shirt: 'shirt_purple', pants: 'pants_skirt_blue', shoes: 'shoes_red' },
+    greeting: ['Hej lilla vän! Vad roligt att du kom.', 'Så fint ni har det på gården!', 'Jag bakar gärna om jag får ingredienser.'],
+  },
+  sven: {
+    id: 'sven',
+    name: 'Fiskar-Sven',
+    x: 37,
+    y: 36,
+    appearance: { skin: '#dba97d', hair: '#8a4a1e', hairStyle: 'short' },
+    outfit: { shirt: 'shirt_stripes', pants: 'pants_brown', shoes: 'shoes_rubber', hat: 'hat_straw' },
+    greeting: ['Hallå där! Fiskarna nappar bra idag.', 'Vet du att det finns en guldfisk i dammen?', 'Stå stilla vid vattnet och vänta på napp.'],
+  },
+};
+
+/** Fish and how likely they bite (weights). */
+export const FISH: { item: string; weight: number }[] = [
+  { item: 'fish_roach', weight: 45 },
+  { item: 'fish_perch', weight: 35 },
+  { item: 'fish_pike', weight: 15 },
+  { item: 'fish_gold', weight: 5 },
 ];
