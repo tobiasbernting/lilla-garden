@@ -73,6 +73,8 @@ export interface ItemDef {
   species?: string;
   /** For tools. */
   tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow';
+  /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
+  paint?: number;
   /** Icon reference in the generated atlas. */
   icon: string;
 }

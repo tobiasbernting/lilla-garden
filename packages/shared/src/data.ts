@@ -99,6 +99,7 @@ place('wall_stone', { sell: 3 });
 place('floor_wood', { sell: 1 });
 place('floor_stone', { sell: 1 });
 place('door', { sell: 4 });
+place('window', { sell: 3 });
 place('chest', { sell: 10 });
 place('trough', { sell: 5 });
 place('workbench', { sell: 10 });
@@ -123,6 +124,9 @@ place('plant', { sell: 4, buy: 30, tab: 'furniture' });
 place('painting', { sell: 5, buy: 60, tab: 'furniture' });
 place('stove', { sell: 10, buy: 110, tab: 'furniture' });
 place('clock', { sell: 5, buy: 50, tab: 'furniture' });
+// Paint buckets (Måla): one bucket paints the farmhouse or a whole run of connected walls
+export const PAINT_NAMES = ['red', 'yellow', 'blue', 'green', 'white', 'pink'] as const;
+PAINT_NAMES.forEach((c, i) => add(I(`paint_${c}`, 'material', { paint: i + 1, buy: 25, sell: 5, tab: 'furniture' })));
 // Season decorations
 place('pumpkin_lantern', { buy: 30, tab: 'season', season: 'halloween', sell: 5 });
 place('ghost_flag', { buy: 25, tab: 'season', season: 'halloween', sell: 5 });
@@ -252,6 +256,7 @@ built('gate', { solid: false });
 built('wall_wood');
 built('wall_stone');
 built('door', { solid: false });
+built('window');
 built('chest', { interact: 'chest' });
 built('trough', { interact: 'feed' });
 built('workbench', { interact: 'workbench' });
@@ -344,11 +349,12 @@ export const RECIPES: RecipeDef[] = [
   R('gate', 1, ['wood', 3]),
   R('path_dirt', 4, ['fiber', 1]),
   R('path_stone', 4, ['stone', 2]),
-  R('wall_wood', 2, ['wood', 3]),
+  R('wall_wood', 2, ['wood', 2]),
   R('wall_stone', 2, ['stone', 3]),
   R('floor_wood', 4, ['wood', 2]),
   R('floor_stone', 4, ['stone', 2]),
   R('door', 1, ['wood', 4]),
+  R('window', 1, ['wood', 2], ['stone', 1]),
   R('chest', 1, ['wood', 8]),
   R('workbench', 1, ['wood', 10], ['stone', 2]),
   R('trough', 1, ['wood', 4], ['fiber', 2]),
@@ -372,6 +378,7 @@ export const RECIPES: RecipeDef[] = [
   R('sword', 1, ['wood', 5], ['stone', 4]),
   R('shield', 1, ['wood', 6], ['stone', 2]),
   R('bow', 1, ['wood', 4], ['fiber', 5]),
+  ...PAINT_NAMES.map((c) => R(`paint_${c}`, 1, ['wood', 1], ['fiber', 2])),
 ];
 
 /** What the treasure chest may hold besides gold and stars. */
@@ -550,6 +557,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('mine_50', 'mine', 50, 2, 'stone'),
   A('build_10', 'build', 10, 1, 'fence'),
   A('build_50', 'build', 50, 3, 'coop'),
+  A('walls_20', 'walls', 20, 2, 'wall_wood'),
+  A('paint_1', 'paint', 1, 1, 'paint_red'),
   A('fed_5', 'fed', 5, 1, 'hay'),
   A('fed_30', 'fed', 30, 2, 'animal_cow'),
   A('product_10', 'product', 10, 2, 'egg'),

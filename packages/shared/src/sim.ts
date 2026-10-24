@@ -305,6 +305,32 @@ export function bump(p: PlayerState, stat: string, n: number, out: Change[]): vo
 // Actions on a tile
 // ---------------------------------------------------------------------------
 
+/** Pieces of a self-built house; they link up and are painted together. */
+export const WALL_KINDS = new Set(['wall_wood', 'wall_stone', 'window', 'door']);
+const PAINTABLE = new Set(['house', ...WALL_KINDS]);
+
+/** Paints the farmhouse, or a wall piece and every piece connected to it. */
+function paintObject(world: WorldState, p: PlayerState, obj: WorldObject, colour: number, out: Change[]): void {
+  const todo = [obj];
+  const seen = new Set<number>([obj.id]);
+  while (todo.length) {
+    const o = todo.pop()!;
+    o.variant = colour;
+    out.push({ t: 'object', id: o.id, obj: o });
+    if (!WALL_KINDS.has(o.kind)) continue;
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+      const n = objectAt(world, o.x + dx, o.y + dy);
+      if (n && !seen.has(n.id) && WALL_KINDS.has(n.kind)) {
+        seen.add(n.id);
+        todo.push(n);
+      }
+    }
+  }
+  takeFromSlot(p.inventory, p.selected, 1);
+  bump(p, 'paint', 1, out);
+  out.push(fx(obj.x, obj.y, 'sparkle'), toast(p.id, T.painted), playerChange(p));
+}
+
 const FLOOR_ITEMS: Record<string, Terrain> = {
   path_stone: 'path_stone',
   path_dirt: 'path_dirt',
@@ -408,6 +434,11 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   const obj = objectAt(world, tx, ty);
   if (obj) {
     const def = objectDef(obj.kind);
+    if (heldDef?.paint !== undefined) {
+      if (PAINTABLE.has(obj.kind)) paintObject(world, p, obj, heldDef.paint, out);
+      else out.push(toast(p.id, T.cantPaint));
+      return out;
+    }
     if (def.harvest || (def.breakWith && tool === def.breakWith)) {
       breakObject(world, p, obj, ctx, out);
       return out;
@@ -688,7 +719,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     const floor = FLOOR_ITEMS[def.places];
     if (floor) {
       if (terrain === 'water' || terrain === floor) return;
-      if (terrain === 'soil' || terrain === 'soil_wet') return;
+      if ((terrain === 'soil' || terrain === 'soil_wet') && world.crops[key(tx, ty)]) return;
       const obj = objectAt(world, tx, ty);
       if (obj && objectDef(obj.kind).solid) return;
       const back = TERRAIN_ITEM[terrain];
@@ -714,6 +745,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     }
     takeFromSlot(p.inventory, p.selected, 1);
     bump(p, 'build', 1, out);
+    if (WALL_KINDS.has(obj.kind)) bump(p, 'walls', 1, out);
     out.push({ t: 'object', id: obj.id, obj }, fx(tx, ty, 'poof'), playerChange(p));
     return;
   }
