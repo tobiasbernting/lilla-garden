@@ -3,7 +3,7 @@ import { ITEMS, type ItemDef } from '@lilla-garden/shared';
 import { drawAnimal } from './animals.js';
 import { drawCharacter } from './characters.js';
 import { Px, shade } from './px.js';
-import { OUTLINE, type ObjectArt } from './world.js';
+import { OUTLINE, PAINT_COLORS, type ObjectArt } from './world.js';
 
 const WOOD = '#9a6a3a';
 const WOOD_D = '#6f4a26';
@@ -40,6 +40,9 @@ const tool = (kind: string): Px => {
       break;
     case 'bow':
       p.line(4, 1, 11, 7, WOOD).line(11, 7, 4, 14, WOOD).line(4, 1, 4, 14, '#d8d8d8').rect(5, 7, 7, 1, WOOD_L).rect(12, 6, 2, 3, '#e04a2a');
+      break;
+    case 'bazooka':
+      p.rect(1, 6, 13, 4, '#4f6b3a').rect(1, 6, 13, 1, '#7a9a5a').rect(1, 9, 13, 1, '#2f4a24').rect(13, 5, 3, 6, '#3a4a30').rect(14, 6, 1, 4, '#1a1a1a').rect(0, 5, 2, 6, '#3a4a30').rect(5, 10, 3, 3, WOOD_D).rect(9, 10, 2, 3, WOOD_D).rect(3, 4, 5, 2, '#d8d8d8').rect(4, 3, 3, 1, '#d8d8d8');
       break;
     case 'rod':
       p.line(2, 14, 12, 2, WOOD).line(3, 14, 13, 2, WOOD_D).line(12, 2, 14, 9, '#d8d8d8').rect(13, 9, 2, 2, '#d8d8d8').rect(12, 11, 2, 2, '#e04a2a');
@@ -87,6 +90,9 @@ const produce = (id: string): Px => {
       break;
     case 'stone':
       p.ellipse(2, 4, 12, 9, '#6f6c66').ellipse(3, 3, 10, 8, '#9d9a92').rect(5, 5, 3, 2, '#c9c6bd');
+      break;
+    case 'paper':
+      p.rect(3, 1, 10, 14, '#f6efdc').rect(3, 1, 10, 1, '#ffffff').rect(10, 1, 3, 3, '#e3d7b8').rect(5, 5, 6, 1, '#b9b0a0').rect(5, 8, 6, 1, '#b9b0a0').rect(5, 11, 4, 1, '#b9b0a0');
       break;
     case 'fiber':
       for (let i = 0; i < 5; i++) p.line(3 + i * 2, 14, 5 + i * 2 - (i % 2) * 3, 3 + (i % 3), '#9ab84a');
@@ -145,6 +151,9 @@ const produce = (id: string): Px => {
       break;
     case 'heartberry':
       p.tpl(2, 3, ['.##..##.', '########', '########', '.######.', '..####..', '...##...'], { '#': '#e03a5a' }).px(4, 4, '#ff9ab0').rect(7, 1, 2, 2, '#3f8a2e');
+      break;
+    case 'rocket':
+      p.rect(6, 2, 4, 9, '#d8d8d8').rect(6, 2, 1, 9, '#ffffff').rect(9, 2, 1, 9, '#a8a8a8').tpl(5, 0, ['..##..', '.####.'], { '#': '#e04a2a' }).rect(4, 9, 2, 4, '#e04a2a').rect(10, 9, 2, 4, '#e04a2a').rect(7, 11, 2, 2, '#ffb24a').px(7, 13, '#ffe66a').px(8, 14, '#ff6a2a');
       break;
     case 'wool':
       p.ellipse(2, 3, 12, 10, '#f7f3ee').ellipse(1, 6, 5, 5, '#f7f3ee').ellipse(10, 6, 5, 5, '#f7f3ee').px(7, 8, '#d8d4ce');
@@ -248,6 +257,16 @@ export function drawIcons(objects: Record<string, ObjectArt>): Record<string, Px
         p = new Px(16, 16).rect(2, 2, 12, 12, '#ff00ff');
     }
     icons[d.id] = p;
+  }
+  // paint buckets
+  for (const d of Object.values(ITEMS)) {
+    if (d.paint === undefined) continue;
+    const c = PAINT_COLORS[d.paint] ?? '#ff00ff';
+    const p = new Px(16, 16).rect(3, 5, 10, 9, STEEL).rect(3, 5, 10, 1, '#dfe2e8').rect(3, 13, 10, 1, STEEL_D);
+    p.rect(4, 6, 8, 4, c).rect(4, 6, 8, 1, shade(c, 1.2));
+    p.line(4, 4, 8, 1, STEEL_D).line(8, 1, 12, 4, STEEL_D);
+    p.rect(9, 10, 2, 4, c).rect(10, 13, 2, 2, c);
+    icons[d.id] = p.outline(OUTLINE);
   }
   // floor/path items have no object art: draw tiles
   const floorTile = (base: string, line: string) => new Px(16, 16).rect(1, 3, 14, 10, base).rect(1, 3, 14, 1, shade(base, 1.2)).rect(1, 7, 14, 1, line).rect(7, 3, 1, 4, line).rect(4, 8, 1, 5, line).outline(OUTLINE);

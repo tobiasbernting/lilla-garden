@@ -49,6 +49,9 @@ import {
   swapSlots,
   tick,
   tileIndex,
+  paint,
+  swapSlots as swap,
+  PAINT_EMPTY,
   type Change,
   type PlayerState,
   type SimCtx,
@@ -318,6 +321,94 @@ describe('resources and building', () => {
     performAction(world, p.id, 21, 20, ctx());
     expect(countItem(p.inventory, 'carrot_seed')).toBe(6);
     expect(countItem(p.inventory, 'chest')).toBe(1);
+  });
+});
+
+describe('own house and paint', () => {
+  it('places walls, windows and a passable door; floor paints the ground', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    for (const [x, y] of [[21, 19], [21, 20], [21, 21], [19, 20]] as const) clearTile(world, x, y);
+    addItem(p.inventory, 'wood', 10);
+    addItem(p.inventory, 'stone', 2);
+    craft(world, p.id, 'wall_wood');
+    craft(world, p.id, 'window');
+    craft(world, p.id, 'door');
+    expect(countItem(p.inventory, 'wall_wood')).toBe(2);
+    select(p, 'wall_wood');
+    performAction(world, p.id, 21, 19, ctx());
+    select(p, 'window');
+    performAction(world, p.id, 21, 20, ctx());
+    select(p, 'door');
+    performAction(world, p.id, 21, 21, ctx());
+    expect(objectAt(world, 21, 19)?.kind).toBe('wall_wood');
+    expect(objectAt(world, 21, 20)?.kind).toBe('window');
+    expect(objectAt(world, 21, 21)?.kind).toBe('door');
+    expect(isSolidForPlayer(world, 21, 19)).toBe(true);
+    expect(isSolidForPlayer(world, 21, 20)).toBe(true);
+    expect(isSolidForPlayer(world, 21, 21)).toBe(false);
+    expect(p.stats?.walls).toBe(3);
+    // floor planks paint the ground; the hammer takes them back
+    addItem(p.inventory, 'floor_wood', 2);
+    select(p, 'floor_wood');
+    performAction(world, p.id, 19, 20, ctx());
+    expect(world.terrain[tileIndex(19, 20)]).toBe('floor_wood');
+    expect(countItem(p.inventory, 'floor_wood')).toBe(1);
+    select(p, 'hammer');
+    performAction(world, p.id, 19, 20, ctx());
+    expect(world.terrain[tileIndex(19, 20)]).toBe('grass');
+    expect(countItem(p.inventory, 'floor_wood')).toBe(2);
+  });
+
+  it('allows furniture on wooden floor outside the farmhouse', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    clearTile(world, 21, 21);
+    world.terrain[tileIndex(21, 20)] = 'floor_wood';
+    world.terrain[tileIndex(21, 21)] = 'floor_wood';
+    addItem(p.inventory, 'bed', 1);
+    select(p, 'bed');
+    performAction(world, p.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)?.kind).toBe('bed');
+    expect(objectAt(world, 21, 21)?.kind).toBe('bed');
+  });
+
+  it('paints the farmhouse, and a wall piece together with everything connected to it', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    for (const [x, y] of [[21, 19], [21, 20], [21, 21], [19, 20], [20, 19]] as const) clearTile(world, x, y);
+    addItem(p.inventory, 'wall_wood', 2);
+    addItem(p.inventory, 'door', 1);
+    addItem(p.inventory, 'paint_blue', 2);
+    select(p, 'wall_wood');
+    performAction(world, p.id, 21, 19, ctx());
+    performAction(world, p.id, 19, 20, ctx()); // not connected
+    select(p, 'door');
+    performAction(world, p.id, 21, 20, ctx());
+    select(p, 'paint_blue');
+    const ch = performAction(world, p.id, 21, 19, ctx());
+    expect(objectAt(world, 21, 19)?.variant).toBe(3);
+    expect(objectAt(world, 21, 20)?.variant).toBe(3);
+    expect(objectAt(world, 19, 20)?.variant).toBeUndefined();
+    expect(countItem(p.inventory, 'paint_blue')).toBe(1);
+    expect(toasts(ch).some((t) => t.includes('målat'))).toBe(true);
+    expect(p.stats?.painted).toBe(1);
+    // the farmhouse
+    const house = Object.values(world.objects).find((o) => o.kind === 'house')!;
+    standAt(world, p, house.x + 2, house.y + 4);
+    performAction(world, p.id, house.x + 2, house.y + 3, ctx());
+    expect(house.variant).toBe(3);
+    expect(countItem(p.inventory, 'paint_blue')).toBe(0);
+    // paint on something else just says no
+    addItem(p.inventory, 'paint_red', 1);
+    select(p, 'paint_red');
+    standAt(world, p, 20, 20);
+    const rock = addObject(world, 'rock', 20, 19)!;
+    const ch2 = performAction(world, p.id, 20, 19, ctx());
+    expect(world.objects[rock.id]).toBeDefined();
+    expect(toasts(ch2).length).toBe(1);
+    expect(countItem(p.inventory, 'paint_red')).toBe(1);
   });
 });
 
@@ -627,6 +718,88 @@ describe('house, villagers, fishing', () => {
   });
 });
 
+describe('tavlor (rita på papper)', () => {
+  const pic = '2' + '.'.repeat(254) + '7';
+  const draw = (world: WorldState, p: PlayerState) => {
+    addItem(p.inventory, 'paper', 1);
+    return paint(world, p.id, pic);
+  };
+
+  it('paper opens the drawing screen', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    addItem(p.inventory, 'paper', 1);
+    select(p, 'paper');
+    const ch = performAction(world, p.id, 21, 20, ctx());
+    expect(ch.some((c) => c.t === 'open' && c.ui === 'paint')).toBe(true);
+    expect(countItem(p.inventory, 'paper')).toBe(1);
+  });
+
+  it('rejects bad drawings and needs paper', () => {
+    const { world, p } = setup();
+    expect(toasts(paint(world, p.id, 'xyz')).length).toBe(1);
+    expect(toasts(paint(world, p.id, PAINT_EMPTY)).length).toBe(1);
+    expect(toasts(paint(world, p.id, pic)).length).toBe(1);
+    expect(countItem(p.inventory, 'painting')).toBe(0);
+  });
+
+  it('turns paper into a tavla carrying the drawing, worth 20 kr', () => {
+    const { world, p } = setup();
+    const ch = draw(world, p);
+    expect(countItem(p.inventory, 'paper')).toBe(0);
+    const slot = p.inventory.findIndex((s) => s?.item === 'painting');
+    expect(p.inventory[slot]?.data).toBe(pic);
+    expect(p.inventory[slot]?.count).toBe(1);
+    expect(p.achievements).toContain('paint_1');
+    expect(toasts(ch)).toContain('Vilken fin tavla!');
+    // two drawings never merge into one stack
+    draw(world, p);
+    expect(p.inventory.filter((s) => s?.item === 'painting').length).toBe(2);
+    // a bought painting does not join a painted one
+    addItem(p.inventory, 'painting', 1);
+    expect(p.inventory.filter((s) => s?.item === 'painting' && s.data === undefined).length).toBe(1);
+    const coins = p.coins;
+    sell(world, p.id, slot, 1);
+    expect(p.coins - coins).toBe(20);
+  });
+
+  it('hangs up with the drawing and comes back down with it', () => {
+    const { world, p } = setup();
+    draw(world, p);
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    select(p, 'painting');
+    performAction(world, p.id, 21, 20, ctx());
+    const obj = objectAt(world, 21, 20);
+    expect(obj?.kind).toBe('painting');
+    expect(obj?.data).toBe(pic);
+    expect(countItem(p.inventory, 'painting')).toBe(0);
+    // pick it up by hand
+    p.selected = p.inventory.findIndex((s) => s === null);
+    performAction(world, p.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)).toBeUndefined();
+    expect(p.inventory.find((s) => s?.item === 'painting')?.data).toBe(pic);
+  });
+
+  it('keeps the drawing when dropped, moved and picked up', () => {
+    const { world, p } = setup();
+    draw(world, p);
+    const slot = p.inventory.findIndex((s) => s?.item === 'painting');
+    swap(world, p.id, { slot }, { slot: 0 });
+    expect(p.inventory[0]?.data).toBe(pic);
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    const ch = dropItem(world, p.id, 0, 1);
+    const drop = ch.find((c) => c.t === 'drop');
+    expect(drop && drop.t === 'drop' && drop.drop?.data).toBe(pic);
+    p.x = 21 * TILE + 8;
+    for (let i = 0; i < 80; i++) tick(world, 50, ctx());
+    expect(Object.keys(world.drops).length).toBe(0);
+    expect(p.inventory.find((s) => s?.item === 'painting')?.data).toBe(pic);
+  });
+});
+
 describe('cooking and pets', () => {
   it('cooks dishes at the stove', () => {
     const { world, p } = setup();
@@ -774,6 +947,77 @@ describe('grottan', () => {
     expect(p.area).toBe('farm');
     expect(Math.floor(p.x / 16)).toBe(CAVE_EXIT_TILE.x);
     expect(d.players[p.id]).toBeUndefined();
+  });
+
+  it('bazooka fires a rocket that blasts every monster nearby and reloads', () => {
+    const { world, p } = setup();
+    weapons(p);
+    addItem(p.inventory, 'bazooka', 1);
+    addItem(p.inventory, 'rocket', 2);
+    const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
+    standAt(world, p, cave.x, cave.y + 2);
+    performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    const d = world.dungeon!;
+    const px = Math.floor(p.x / 16);
+    const py = Math.floor(p.y / 16);
+    for (let dx = 1; dx <= 4; dx++) {
+      d.terrain[py * 64 + px + dx] = 'floor_stone';
+      const o = objectAt(d, px + dx, py);
+      if (o) {
+        delete d.objects[o.id];
+        delete d.occupancy[key(px + dx, py)];
+      }
+    }
+    const troll = spawnMob(d, 'troll', px + 3, py);
+    const slime = spawnMob(d, 'slime', px + 4, py);
+    p.facing = 'right';
+    select(p, 'bazooka');
+    const c = ctx();
+    const ch = performAction(d, p.id, px + 1, py, c);
+    expect(ch.some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(true);
+    expect(ch.some((x) => x.t === 'fx' && x.kind === 'boom')).toBe(true);
+    expect(troll.hp).toBe(0);
+    expect(d.animals[troll.id]).toBeUndefined();
+    expect(d.animals[slime.id]).toBeUndefined(); // within the blast radius
+    expect(countItem(p.inventory, 'rocket')).toBe(1);
+    expect(p.achievements).toContain('boom_1');
+    // reloading: nothing happens for a second
+    expect(performAction(d, p.id, px + 1, py, c).some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(false);
+    expect(countItem(p.inventory, 'rocket')).toBe(1);
+    const later = { ...c, now: c.now + 1100 };
+    expect(performAction(d, p.id, px + 1, py, later).some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(true);
+    expect(countItem(p.inventory, 'rocket')).toBe(0);
+    // out of rockets: a toast, no shot
+    const empty = performAction(d, p.id, px + 1, py, { ...c, now: c.now + 2500 });
+    expect(empty.some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(false);
+    expect(toasts(empty).length).toBe(1);
+  });
+
+  it('on the farm the bazooka breaks rocks but never buildings, fences, crops or animals', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'bazooka', 1);
+    addItem(p.inventory, 'rocket', 1);
+    standAt(world, p, 30, 30);
+    for (let dx = 0; dx <= 5; dx++) for (let dy = -2; dy <= 2; dy++) clearTile(world, 30 + dx, 30 + dy);
+    const rock = addObject(world, 'rock', 33, 30)!;
+    const fence = addObject(world, 'fence', 33, 31)!;
+    const chest = addObject(world, 'chest', 32, 29)!;
+    world.terrain[tileIndex(34, 30)] = 'soil';
+    world.crops[key(34, 30)] = { crop: 'carrot', stage: 1, progress: 0, watered: false };
+    const hen = addAnimal(world, 'hen', 0);
+    hen.x = 34 * TILE + 8;
+    hen.y = 31 * TILE + 8;
+    p.facing = 'right';
+    select(p, 'bazooka');
+    const ch = performAction(world, p.id, 31, 30, ctx());
+    expect(ch.some((x) => x.t === 'fx' && x.kind === 'boom')).toBe(true);
+    expect(world.objects[rock.id]).toBeUndefined();
+    expect(countItem(p.inventory, 'stone')).toBeGreaterThan(0);
+    expect(world.objects[fence.id]).toBeDefined();
+    expect(world.objects[chest.id]).toBeDefined();
+    expect(world.crops[key(34, 30)]).toBeDefined();
+    expect(world.animals[hen.id]).toBeDefined();
+    expect(p.hearts).toBe(MAX_HEARTS);
   });
 
   it('sword and bow hurt monsters, monsters hurt players, shield blocks, hearts out = carried home', () => {
@@ -991,5 +1235,89 @@ describe('vilda djur', () => {
       expect(p.stats.wildpet).toBe(2);
     }
     expect(p.stats.areas).toBe(1);
+  });
+});
+
+describe('hästar', () => {
+  const stable = () => {
+    const { world, p } = setup();
+    for (let y = 28; y < 38; y++) for (let x = 28; x < 40; x++) clearTile(world, x, y);
+    const stall = addObject(world, 'stall', 30, 28)!;
+    const horse = addAnimal(world, 'horse', stall.id, 'Blixten');
+    horse.owner = p.id;
+    horse.petted = true;
+    horse.x = 34 * TILE + 8;
+    horse.y = 34 * TILE + 8;
+    standAt(world, p, 33, 34);
+    return { world, p, stall, horse };
+  };
+
+  it('needs a stall and belongs to the buyer', () => {
+    const { world, p } = setup();
+    p.coins = 2000;
+    expect(toasts(buy(world, p.id, 'animal_horse', 1, ctx()))[0]).toContain('Stall');
+    for (let y = 28; y < 34; y++) for (let x = 28; x < 36; x++) clearTile(world, x, y);
+    addObject(world, 'stall', 30, 28);
+    buy(world, p.id, 'animal_horse', 1, ctx());
+    expect(p.coins).toBe(1500);
+    newDay(world, ctx());
+    const horse = Object.values(world.animals).find((a) => a.species === 'horse')!;
+    expect(horse.owner).toBe(p.id);
+  });
+
+  it('mounts, rides faster, and dismounts with the next action', () => {
+    const { world, p, horse } = stable();
+    expect(toasts(performAction(world, p.id, 34, 34, ctx())).some((t) => t.includes('hoppar upp'))).toBe(true);
+    expect(p.riding).toBe(horse.id);
+    expect(p.stats.ride).toBe(1);
+    expect(p.achievements).toContain('ride_1');
+    // the horse sticks to the rider
+    const before = { x: p.x, y: p.y };
+    stepPlayer(world, p, 1, 0, 1000, 1.8);
+    expect(p.x - before.x).toBeCloseTo(64 * 1.8, 0);
+    stepPlayer(world, p, 1, 0, 1000);
+    expect(p.x - before.x).toBeCloseTo(64 * 2.8, 0);
+    tick(world, 50, ctx());
+    expect(Math.hypot(horse.x - p.x, horse.y - p.y)).toBeLessThan(3);
+    // any action dismounts; tools do nothing while riding
+    addItem(p.inventory, 'hoe', 1);
+    select(p, 'hoe');
+    const ftx = Math.floor(p.x / TILE) + 1;
+    const ch = performAction(world, p.id, ftx, 34, ctx());
+    expect(toasts(ch).some((t) => t.includes('hoppar av'))).toBe(true);
+    expect(p.riding).toBeUndefined();
+    expect(world.terrain[tileIndex(ftx, 34)]).toBe('grass');
+    expect(Math.hypot(horse.x - p.x, horse.y - p.y)).toBeLessThan(2 * TILE);
+  });
+
+  it('only the owner may ride, foals and busy horses are refused', () => {
+    const { world, p, horse } = stable();
+    const other = createPlayer(world, 'Kompis', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    setOnline(world, other.id, true);
+    standAt(world, other, 35, 34);
+    other.facing = 'left';
+    expect(toasts(performAction(world, other.id, 34, 34, ctx()))[0]).toContain('tillhör Test');
+    expect(other.riding).toBeUndefined();
+    horse.age = 0;
+    expect(toasts(performAction(world, p.id, 34, 34, ctx()))[0]).toContain('för liten');
+    horse.age = 10;
+    performAction(world, p.id, 34, 34, ctx());
+    expect(p.riding).toBe(horse.id);
+    tick(world, 50, ctx());
+    standAt(world, other, 34, 34);
+    other.facing = 'left';
+    expect(toasts(performAction(world, other.id, 33, 34, ctx()))[0]).toContain('rider redan');
+  });
+
+  it('gets off the horse when leaving the farm', () => {
+    const { world, p, horse } = stable();
+    performAction(world, p.id, 34, 34, ctx());
+    expect(p.riding).toBe(horse.id);
+    standAt(world, p, 32, 0);
+    travel(world, p.id, 'n');
+    expect(p.area).not.toBe('farm');
+    expect(p.riding).toBeUndefined();
+    expect(horse.y).toBeLessThan(3 * TILE);
+    expect(Object.values(areaOf(world, p).animals).some((a) => a.species === 'horse')).toBe(false);
   });
 });

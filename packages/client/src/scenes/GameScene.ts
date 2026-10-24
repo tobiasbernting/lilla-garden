@@ -1,6 +1,7 @@
 // The farm: tilemap, sprites, prediction, interpolation, night, effects.
 import Phaser from 'phaser';
 import {
+  WALL_KINDS,
   ANIMALS,
   CROPS,
   DAY_LENGTH_MS,
@@ -24,6 +25,7 @@ import {
   nightAmount,
   objectDef,
   stepPlayer,
+  RIDE_SPEED_MUL,
   tileOf,
   type AnimalState,
   type Change,
@@ -35,13 +37,16 @@ import {
 import { animalKey, ANIMAL_SIZE } from '../art/animals.js';
 import { dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
-import { EMOTE_GLYPH } from '../art/world.js';
-import { NEW_ART } from '../art/style.ts';
+import { EMOTE_GLYPH, PAINT_COLORS } from '../art/world.js';
+import { HD, NEW_ART, R } from '../art/style.ts';
+import { paintingTexture } from '../art/painting.ts';
 import { net } from '../net.js';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '../state.js';
 
 export const VIEW_W = 320;
 export const VIEW_H = 180;
+/** Sprite scale: textures are drawn at R× resolution, world units stay 16 px per tile. */
+const S = 1 / R;
 
 interface Actor {
   sprite: Phaser.GameObjects.Sprite;
@@ -71,6 +76,8 @@ export class GameScene extends Phaser.Scene {
   private waterFrame = 0;
   private objects = new Map<number, Phaser.GameObjects.Image>();
   private objectShadows = new Map<number, Phaser.GameObjects.Image>();
+  private doorIds = new Set<number>();
+  private doorOpen = new Map<number, boolean>();
   private crops = new Map<string, Phaser.GameObjects.Image>();
   private drops = new Map<number, Phaser.GameObjects.Image>();
   private players = new Map<string, Actor>();
@@ -109,6 +116,8 @@ export class GameScene extends Phaser.Scene {
     // A restart keeps class fields: drop everything that belonged to the previous scene
     this.objects.clear();
     this.objectShadows.clear();
+    this.doorIds.clear();
+    this.doorOpen.clear();
     this.crops.clear();
     this.drops.clear();
     this.players.clear();
@@ -126,10 +135,10 @@ export class GameScene extends Phaser.Scene {
     const art = getArt();
 
     // --- terrain ---
-    this.map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H });
-    const tileset = this.map.addTilesetImage('terrain', 'terrain', TILE, TILE, 0, 0)!;
+    this.map = this.make.tilemap({ tileWidth: TILE * R, tileHeight: TILE * R, width: MAP_W, height: MAP_H });
+    const tileset = this.map.addTilesetImage('terrain', 'terrain', TILE * R, TILE * R, 0, 0)!;
     this.layer = this.map.createBlankLayer('ground', tileset)!;
-    this.layer.setDepth(0);
+    this.layer.setDepth(0).setScale(1 / R);
     this.rebuildTerrain();
 
     // --- objects, crops, drops ---
@@ -140,18 +149,22 @@ export class GameScene extends Phaser.Scene {
     for (const p of Object.values(world.players)) if (p.online && (p.area ?? 'farm') === this.area) this.putPlayer(p);
     for (const npc of Object.values(NPCS).filter((n) => (n.area ?? 'farm') === this.area)) {
       const texture = characterTexture(this.textures, npc.appearance, npc.outfit);
+      this.ensureCharAnims(texture);
       const snap = client.snaps.npcs.get(npc.id);
       const x = snap?.x ?? npc.x * TILE + TILE / 2;
       const y = snap?.y ?? npc.y * TILE + TILE / 2;
-      const shadow = this.add.image(x, y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6);
-      const sprite = this.add.sprite(x, y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1).setDepth(y + 4);
+      const shadow = this.add.image(x, y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6).setScale(S);
+      const sprite = this.add.sprite(x, y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1).setDepth(y + 4).setScale(S);
       this.npcs.set(npc.id, { sprite, shadow, label: this.makeLabel(npc.name, 'npc'), texture, x, y });
     }
 
     // --- cursor, night, snow ---
-    this.cursor = this.add.image(0, 0, 'fx-cursor-0').setOrigin(0).setDepth(9000).setAlpha(0.9);
+    this.cursor = this.add.image(0, 0, 'fx-cursor-0').setOrigin(0).setDepth(9000).setAlpha(0.9).setScale(S);
     this.glow = this.makeGlowTexture();
-    this.night = this.add.renderTexture(0, 0, VIEW_W, VIEW_H).setOrigin(0).setScrollFactor(0).setDepth(9500);
+    // scroll-factor-0 overlays are zoomed by the camera too: offset them so they cover the whole view
+    const ovx = (VIEW_W * (R - 1)) / 2;
+    const ovy = (VIEW_H * (R - 1)) / 2;
+    this.night = this.add.renderTexture(ovx, ovy, VIEW_W, VIEW_H).setOrigin(0).setScrollFactor(0).setDepth(9500);
     if (!this.textures.exists('fx-white')) {
       const c = document.createElement('canvas');
       c.width = 2;
@@ -167,7 +180,8 @@ export class GameScene extends Phaser.Scene {
     // --- camera ---
     if (this.area === 'dungeon') this.cameras.main.setBounds(0, 0, DUNGEON_W * TILE, DUNGEON_H * TILE);
     else this.cameras.main.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE);
-    this.cameras.main.setRoundPixels(true);
+    this.cameras.main.setRoundPixels(!HD);
+    this.cameras.main.setZoom(R);
     void art;
 
     // --- input ---
@@ -260,21 +274,52 @@ export class GameScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ sprites
 
-  /** Neighbour mask for fences: 1 up, 2 right, 4 down, 8 left. */
-  private fenceMask(x: number, y: number): number {
-    const isFence = (tx: number, ty: number) => {
+  /** Neighbour mask (1 up, 2 right, 4 down, 8 left) over tiles whose object passes `linked`. */
+  private linkMask(x: number, y: number, linked: (kind: string) => boolean): number {
+    const is = (tx: number, ty: number) => {
       const id = this.world.occupancy[`${tx},${ty}`];
       const k = id === undefined ? undefined : this.world.objects[id]?.kind;
-      return k === 'fence' || k === 'gate';
+      return k !== undefined && linked(k);
     };
-    return (isFence(x, y - 1) ? 1 : 0) | (isFence(x + 1, y) ? 2 : 0) | (isFence(x, y + 1) ? 4 : 0) | (isFence(x - 1, y) ? 8 : 0);
+    return (is(x, y - 1) ? 1 : 0) | (is(x + 1, y) ? 2 : 0) | (is(x, y + 1) ? 4 : 0) | (is(x - 1, y) ? 8 : 0);
   }
 
+  private fenceMask(x: number, y: number): number {
+    return this.linkMask(x, y, (k) => k === 'fence' || k === 'gate');
+  }
+
+  private wallMask(x: number, y: number): number {
+    return this.linkMask(x, y, (k) => WALL_KINDS.has(k));
+  }
+
+  /** Redraws fences and wall pieces next to a tile so they connect up. */
   private refreshFenceNeighbours(x: number, y: number): void {
     for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
       const id = this.world.occupancy[`${x + dx},${y + dy}`];
       const o = id === undefined ? undefined : this.world.objects[id];
-      if (o && (o.kind === 'fence' || o.kind === 'gate')) this.putObject(o, false);
+      if (o && (o.kind === 'fence' || o.kind === 'gate' || WALL_KINDS.has(o.kind))) this.putObject(o, false);
+    }
+  }
+
+  /** Doors swing open while a player or villager stands on or next to them. */
+  private doorIsOpen(o: WorldObject): boolean {
+    const cx = o.x * TILE + TILE / 2;
+    const cy = o.y * TILE + TILE / 2;
+    const near = (a: { x: number; y: number }) => Math.abs(a.x - cx) < TILE * 1.2 && Math.abs(a.y - cy) < TILE * 1.2;
+    for (const a of this.players.values()) if (near(a)) return true;
+    for (const a of this.npcs.values()) if (near(a)) return true;
+    return false;
+  }
+
+  private updateDoors(): void {
+    for (const id of this.doorIds) {
+      const o = this.world.objects[id];
+      if (!o) {
+        this.doorIds.delete(id);
+        continue;
+      }
+      const open = this.doorIsOpen(o);
+      if (this.doorOpen.get(id) !== open) this.putObject(o, false);
     }
   }
 
@@ -284,18 +329,34 @@ export class GameScene extends Phaser.Scene {
     this.objects.get(o.id)?.destroy();
     if (!art) return;
     let variant = (o.variant ?? 0) % art.frames.length;
+    const isWall = WALL_KINDS.has(o.kind);
     if (o.kind === 'fence') variant = this.fenceMask(o.x, o.y);
     else if (o.kind === 'gate') {
       const m = this.fenceMask(o.x, o.y);
       variant = m & 5 && !(m & 10) ? 1 : 0;
-    }
-    if (refresh && (o.kind === 'fence' || o.kind === 'gate')) this.refreshFenceNeighbours(o.x, o.y);
-    const img = this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0);
+    } else if (isWall) {
+      // painted colour in o.variant; orientation from the neighbours
+      const colour = (o.variant ?? 0) % PAINT_COLORS.length;
+      const m = this.wallMask(o.x, o.y);
+      const vertical = m & 5 && !(m & 10) ? 1 : 0;
+      if (o.kind === 'window') variant = colour * 2 + vertical;
+      else if (o.kind === 'door') {
+        const open = this.doorIsOpen(o);
+        this.doorIds.add(o.id);
+        this.doorOpen.set(o.id, open);
+        variant = colour * 4 + vertical * 2 + (open ? 1 : 0);
+      } else variant = colour * 16 + m;
+    } else if (o.kind === 'house') variant = (o.variant ?? 0) % art.frames.length;
+    if (refresh && (o.kind === 'fence' || o.kind === 'gate' || isWall)) this.refreshFenceNeighbours(o.x, o.y);
+    const img =
+      o.kind === 'painting' && o.data !== undefined
+        ? this.add.image(o.x * TILE - 2, o.y * TILE - 8, paintingTexture(this.textures, o.data)).setOrigin(0).setScale(S)
+        : this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0).setScale(S);
     img.setDepth(def.flat ? 1 : (o.y + def.h) * TILE);
     this.objects.set(o.id, img);
-    if (NEW_ART && (o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'bush')) {
+    if ((NEW_ART || HD) && (o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'bush')) {
       this.objectShadows.get(o.id)?.destroy();
-      const sh = this.add.image(o.x * TILE + TILE / 2, (o.y + 1) * TILE - 2, 'fx-shadowBig-0').setDepth(1.5).setAlpha(0.7);
+      const sh = this.add.image(o.x * TILE + TILE / 2, (o.y + 1) * TILE - 2, 'fx-shadowBig-0').setDepth(1.5).setAlpha(0.7).setScale(S);
       this.objectShadows.set(o.id, sh);
     }
   }
@@ -308,14 +369,14 @@ export class GameScene extends Phaser.Scene {
     const frame = Math.min(stage, n);
     let img = this.crops.get(k);
     if (!img) {
-      img = this.add.image(x * TILE, y * TILE, `crop-${crop}-${frame}`).setOrigin(0).setDepth((y + 1) * TILE - 2);
+      img = this.add.image(x * TILE, y * TILE, `crop-${crop}-${frame}`).setOrigin(0).setDepth((y + 1) * TILE - 2).setScale(S);
       this.crops.set(k, img);
     } else img.setTexture(`crop-${crop}-${frame}`);
   }
 
   private putDrop(d: DropState): void {
     this.drops.get(d.id)?.destroy();
-    const img = this.add.image(d.x, d.y, `icon-${d.item}`).setScale(0.75).setDepth(d.y);
+    const img = this.add.image(d.x, d.y, `icon-${d.item}`).setScale(0.75 * S).setDepth(d.y);
     this.tweens.add({ targets: img, y: d.y - 3, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.drops.set(d.id, img);
   }
@@ -333,8 +394,8 @@ export class GameScene extends Phaser.Scene {
     this.ensureCharAnims(texture);
     let actor = this.players.get(p.id);
     if (!actor) {
-      const shadow = this.add.image(p.x, p.y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6);
-      const sprite = this.add.sprite(p.x, p.y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1);
+      const shadow = this.add.image(p.x, p.y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6).setScale(S);
+      const sprite = this.add.sprite(p.x, p.y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1).setScale(S);
       actor = { sprite, shadow, label: this.makeLabel(p.name, p.id === client.me ? 'me' : 'other'), texture, x: p.x, y: p.y };
       this.players.set(p.id, actor);
     } else if (actor.texture !== texture) {
@@ -360,8 +421,8 @@ export class GameScene extends Phaser.Scene {
     let actor = this.animals.get(a.id);
     if (!actor) {
       const size = ANIMAL_SIZE[a.species] ?? { w: 16, h: 16 };
-      const shadow = this.add.image(a.x, a.y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.5).setScale(size.w / 12, 1);
-      const sprite = this.add.sprite(a.x, a.y + 4, texture, 0).setOrigin(0.5, 1);
+      const shadow = this.add.image(a.x, a.y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.5).setScale((size.w / 12) * S, S);
+      const sprite = this.add.sprite(a.x, a.y + 4, texture, 0).setOrigin(0.5, 1).setScale(S);
       actor = { sprite, shadow, label: this.makeLabel(a.name, 'animal'), texture, x: a.x, y: a.y };
       this.animals.set(a.id, actor);
     } else if (actor.texture !== texture) {
@@ -423,6 +484,8 @@ export class GameScene extends Phaser.Scene {
           this.objects.delete(c.id);
           this.objectShadows.get(c.id)?.destroy();
           this.objectShadows.delete(c.id);
+          this.doorIds.delete(c.id);
+          this.doorOpen.delete(c.id);
           if (gone) this.refreshFenceNeighbours(Math.round(gone.x / TILE), Math.round(gone.y / TILE));
         }
         break;
@@ -465,8 +528,9 @@ export class GameScene extends Phaser.Scene {
     this.rebuildTerrain();
     for (const a of Object.values(this.world.animals)) this.putAnimal(a);
     if (client.season === 'jul' && this.area === 'farm' && !this.snow) {
-      this.snow = this.add.particles(0, 0, 'fx-snow-0', {
+      this.snow = this.add.particles((VIEW_W * (R - 1)) / 2, (VIEW_H * (R - 1)) / 2, 'fx-snow-0', {
         x: { min: 0, max: VIEW_W },
+        scale: S,
         y: -4,
         lifespan: 7000,
         speedY: { min: 12, max: 26 },
@@ -524,13 +588,41 @@ export class GameScene extends Phaser.Scene {
   private bump(id: string): void {
     const a = this.players.get(id);
     if (!a) return;
-    this.tweens.add({ targets: a.sprite, scaleX: 1.15, scaleY: 0.9, duration: 70, yoyo: true });
+    this.tweens.add({ targets: a.sprite, scaleX: 1.15 * S, scaleY: 0.9 * S, duration: 70, yoyo: true });
   }
 
   private spawnFx(x: number, y: number, kind: string, from?: { x: number; y: number }): void {
+    if (kind === 'rocket' && from) {
+      const ang = Math.atan2(y - from.y, x - from.x);
+      const img = this.add.image(from.x, from.y - 6, 'fx-rocket-0').setRotation(ang).setDepth(8000).setScale(S);
+      const dist = Math.hypot(x - from.x, y - from.y);
+      const duration = Math.min(420, 60 + dist * 2.2);
+      const trail = this.time.addEvent({
+        delay: 40,
+        repeat: Math.floor(duration / 40),
+        callback: () => {
+          const s = this.add.image(img.x, img.y, `fx-smoke-${Math.random() < 0.5 ? 0 : 1}`).setDepth(7999).setAlpha(0.8).setScale(S);
+          this.tweens.add({ targets: s, alpha: 0, scale: 2 * S, y: s.y - 4, duration: 450, onComplete: () => s.destroy() });
+        },
+      });
+      this.tweens.add({ targets: img, x, y: y - 6, duration, onComplete: () => { trail.remove(); img.destroy(); } });
+      return;
+    }
+    if (kind === 'boom') {
+      const img = this.add.image(x, y - 4, 'fx-boom-0').setDepth(8001).setScale(0.5 * S);
+      this.tweens.add({ targets: img, scale: 1.2 * S, duration: 120, onComplete: () => img.setTexture('fx-boom-1') });
+      this.time.delayedCall(180, () => img.setTexture('fx-boom-2'));
+      this.tweens.add({ targets: img, alpha: 0, scale: 1.6 * S, delay: 200, duration: 260, onComplete: () => img.destroy() });
+      for (let i = 0; i < 6; i++) {
+        const s = this.add.image(x + (Math.random() - 0.5) * 20, y - 4 + (Math.random() - 0.5) * 20, `fx-smoke-${i % 2}`).setDepth(8000).setAlpha(0.9).setScale(1.5 * S);
+        this.tweens.add({ targets: s, alpha: 0, scale: 3 * S, y: s.y - 12, duration: 600 + i * 60, onComplete: () => s.destroy() });
+      }
+      this.cameras.main.shake(220, 0.012);
+      return;
+    }
     if (kind === 'arrow' && from) {
       const ang = Math.atan2(y - from.y, x - from.x);
-      const img = this.add.image(from.x, from.y - 6, 'fx-arrow-0').setRotation(ang).setDepth(8000);
+      const img = this.add.image(from.x, from.y - 6, 'fx-arrow-0').setRotation(ang).setDepth(8000).setScale(S);
       this.tweens.add({ targets: img, x, y: y - 6, duration: Math.min(260, Math.hypot(x - from.x, y - from.y) * 2.5), onComplete: () => img.destroy() });
       return;
     }
@@ -538,14 +630,14 @@ export class GameScene extends Phaser.Scene {
     const n = kind === 'water' ? 3 : kind === 'chop' ? 4 : kind === 'sparkle' ? 3 : 1;
     for (let i = 0; i < n; i++) {
       const ox = n > 1 ? (Math.random() - 0.5) * 12 : 0;
-      const img = this.add.image(x + ox, y - 4, `fx-${kind}-${i % frames}`).setDepth(8000);
+      const img = this.add.image(x + ox, y - 4, `fx-${kind}-${i % frames}`).setDepth(8000).setScale(S);
       if (kind === 'hit') {
-        img.setScale(0.6);
-        this.tweens.add({ targets: img, scale: 1.6, alpha: 0, duration: 220, onComplete: () => img.destroy() });
+        img.setScale(0.6 * S);
+        this.tweens.add({ targets: img, scale: 1.6 * S, alpha: 0, duration: 220, onComplete: () => img.destroy() });
         this.cameras.main.shake(80, 0.004);
       } else if (kind === 'poof') {
         img.setAlpha(0.9);
-        this.tweens.add({ targets: img, scale: 1.8, alpha: 0, duration: 350, onComplete: () => img.destroy() });
+        this.tweens.add({ targets: img, scale: 1.8 * S, alpha: 0, duration: 350, onComplete: () => img.destroy() });
       } else if (kind === 'water' || kind === 'chop') {
         this.tweens.add({ targets: img, y: y + 6, x: img.x + (Math.random() - 0.5) * 10, alpha: 0, duration: 350 + i * 60, onComplete: () => img.destroy() });
       } else {
@@ -587,7 +679,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     const running = !this.uiOpen && (this.keys.SHIFT!.isDown || this.runHeld);
-    stepPlayer(world, me, dx, dy, dt * (running ? 1.7 : 1));
+    stepPlayer(world, me, dx, dy, dt, me.riding !== undefined ? RIDE_SPEED_MUL : running ? 1.7 : 1);
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
@@ -632,13 +724,22 @@ export class GameScene extends Phaser.Scene {
           }
         }
       }
-      this.placeActor(actor, p.facing, p.moving, true);
+      this.placeActor(actor, p.facing, p.moving, true, p.riding !== undefined);
       this.updateBubble(actor, p);
     }
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
       const snap = client.snaps.animals.get(id);
       if (!a) continue;
+      const rider = a.species === 'horse' ? Object.values(world.players).find((p) => p.riding === id) : undefined;
+      const riderActor = rider ? this.players.get(rider.id) : undefined;
+      if (riderActor) {
+        // glued under its rider (predicted for me, interpolated for others)
+        actor.x = riderActor.x;
+        actor.y = riderActor.y + 1;
+        this.placeActor(actor, rider!.facing, rider!.moving, false);
+        continue;
+      }
       if (snap) {
         if (Math.hypot(snap.x - actor.x, snap.y - actor.y) > 48) {
           actor.x = snap.x;
@@ -683,9 +784,9 @@ export class GameScene extends Phaser.Scene {
     this.cursor.setPosition(target.tx * TILE, target.ty * TILE).setVisible(inReach && !this.uiOpen);
 
     // --- labels (DOM) ---
-    const zoom = this.scale.zoom;
-    const sx = cam.scrollX;
-    const sy = cam.scrollY;
+    const zoom = this.scale.zoom * cam.zoom;
+    const sx = cam.worldView.x;
+    const sy = cam.worldView.y;
     for (const actor of this.players.values()) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 24 - sy) * zoom);
     for (const actor of this.npcs.values()) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 24 - sy) * zoom);
     for (const [id, actor] of this.animals) {
@@ -696,15 +797,19 @@ export class GameScene extends Phaser.Scene {
       if (near) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 18 - sy) * zoom);
     }
 
+    this.updateDoors();
+
     // --- night ---
     this.drawNight();
   }
 
-  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean): void {
+  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean, riding = false): void {
     const { dir, flip } = dirOf(facing);
-    actor.sprite.setPosition(Math.round(actor.x), Math.round(actor.y) + 4);
+    const lift = riding ? 7 : 0; // sitting on the horse's back
+    actor.sprite.setPosition(Math.round(actor.x), Math.round(actor.y) + 4 - lift);
     actor.shadow.setPosition(Math.round(actor.x), Math.round(actor.y) + 3);
-    actor.sprite.setDepth(actor.y + 4);
+    actor.shadow.setVisible(!riding);
+    actor.sprite.setDepth(actor.y + 4 + (riding ? 2 : 0));
     if (isPlayer) {
       actor.sprite.setFlipX(flip);
       const anim = `${actor.texture}-walk-${dir}`;
@@ -784,8 +889,8 @@ export class GameScene extends Phaser.Scene {
       actor.bubble.className = `label ${cls}`;
       actor.bubble.textContent = text;
       const cam = this.cameras.main;
-      const zoom = this.scale.zoom;
-      this.placeLabel(actor.bubble, (actor.x - cam.scrollX) * zoom, (actor.y - 34 - cam.scrollY) * zoom);
+      const zoom = this.scale.zoom * cam.zoom;
+      this.placeLabel(actor.bubble, (actor.x - cam.worldView.x) * zoom, (actor.y - 34 - cam.worldView.y) * zoom);
     } else if (actor.bubble) {
       actor.bubble.remove();
       actor.bubble = undefined;
@@ -802,9 +907,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (actor.bubble) {
       const cam = this.cameras.main;
-      const zoom = this.scale.zoom;
+      const zoom = this.scale.zoom * cam.zoom;
       actor.bubble.textContent = EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id;
-      this.placeLabel(actor.bubble, (actor.x - cam.scrollX) * zoom, (actor.y - 34 - cam.scrollY) * zoom);
+      this.placeLabel(actor.bubble, (actor.x - cam.worldView.x) * zoom, (actor.y - 34 - cam.worldView.y) * zoom);
     }
   }
 
@@ -837,7 +942,7 @@ export class GameScene extends Phaser.Scene {
     if (this.inside) {
       const cam = this.cameras.main;
       this.night.fill(0x000000, 1);
-      this.night.erase(this.roomMask, (INTERIOR.x - 1) * TILE - cam.scrollX, (INTERIOR.y - 1) * TILE - cam.scrollY);
+      this.night.erase(this.roomMask, (INTERIOR.x - 1) * TILE - cam.worldView.x, (INTERIOR.y - 1) * TILE - cam.worldView.y);
       return;
     }
     if (amount <= 0.01) return;
@@ -860,13 +965,13 @@ export class GameScene extends Phaser.Scene {
       else if (o.kind === 'house') r = 1.6;
       else if (o.kind === 'pumpkin_lantern' || o.kind === 'xmas_tree' || o.kind === 'lights') r = 0.8;
       if (!r) continue;
-      const x = (o.x + def.w / 2) * TILE - cam.scrollX;
-      const y = (o.y + def.h / 2) * TILE - cam.scrollY;
+      const x = (o.x + def.w / 2) * TILE - cam.worldView.x;
+      const y = (o.y + def.h / 2) * TILE - cam.worldView.y;
       if (x < -40 || y < -40 || x > VIEW_W + 40 || y > VIEW_H + 40) continue;
       this.night.erase(this.glow, x - 32 * r, y - 32 * r);
       void r;
     }
-    for (const actor of this.players.values()) this.night.erase(this.glow, actor.x - cam.scrollX - 20, actor.y - cam.scrollY - 24);
+    for (const actor of this.players.values()) this.night.erase(this.glow, actor.x - cam.worldView.x - 20, actor.y - cam.worldView.y - 24);
   }
 }
 

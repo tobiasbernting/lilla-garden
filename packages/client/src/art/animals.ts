@@ -7,6 +7,7 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   rabbit: { w: 16, h: 14 },
   sheep: { w: 18, h: 16 },
   cow: { w: 24, h: 18 },
+  horse: { w: 26, h: 24 },
   dog: { w: 16, h: 14 },
   cat: { w: 14, h: 12 },
   fox: { w: 18, h: 12 },
@@ -49,6 +50,27 @@ function cow(p: Px, f: number): void {
   p.rect(3 + f, 13, 3, 5, c).rect(8, 13, 3, 5, c).rect(13 - f, 13, 3, 5, c).rect(3 + f, 17, 3, 1, '#3a3129').rect(8, 17, 3, 1, '#3a3129').rect(13 - f, 17, 3, 1, '#3a3129');
   p.rect(0, 5, 2, 6, c).px(0, 11, '#3a3129');
   p.rect(2, 10, 3, 2, '#f0b8a8');
+}
+
+function horse(p: Px, f: number): void {
+  // side view facing right: chestnut body, dark mane and tail, white blaze
+  const c = '#9a5a2c';
+  const d = shade(c, 0.75);
+  const mane = '#3a2414';
+  p.ellipse(3, 8, 17, 10, c).rect(4, 9, 15, 8, c);
+  // neck + head
+  p.rect(16, 3, 5, 9, c).rect(19, 1, 6, 6, c).rect(22, 6, 4, 3, c).rect(23, 7, 2, 1, shade(c, 0.9));
+  p.rect(20, 0, 2, 2, d).rect(23, 0, 1, 2, d); // ears
+  p.rect(15, 2, 2, 8, mane).rect(17, 1, 3, 2, mane).rect(18, 3, 1, 2, mane); // mane
+  p.rect(21, 2, 1, 4, '#f4ead8'); // blaze
+  p.px(22, 3, OUTLINE).px(25, 8, shade(c, 0.6));
+  // tail
+  p.rect(1, 7, 2, 9, mane).rect(0, 10, 2, 6, mane).px(2, 6, mane);
+  // belly shade
+  p.rect(6, 14, 11, 3, d);
+  // legs (alternate with frame)
+  p.rect(5 + f, 17, 3, 6, c).rect(9, 17, 3, 6, d).rect(13, 17, 3, 6, c).rect(17 - f, 17, 3, 6, d);
+  p.rect(5 + f, 22, 3, 2, mane).rect(9, 22, 3, 2, mane).rect(13, 22, 3, 2, mane).rect(17 - f, 22, 3, 2, mane);
 }
 
 function dog(p: Px, f: number): void {
@@ -135,10 +157,10 @@ function lizard(p: Px, f: number): void {
   p.rect(5 + f, 7, 2, 1, c).rect(10 - f, 7, 2, 1, c).rect(7, 1, 1, 1, shade(c, 0.7));
 }
 
-const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, dog, cat, fox, deer, penguin, crab, goat, lizard, slime, bat, troll, boss };
+const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, slime, bat, troll, boss };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
-const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0] };
+const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0] };
 
 export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean): Px {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };

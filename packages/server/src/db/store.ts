@@ -90,6 +90,7 @@ export class PgStore implements Store {
     for (const a of await this.db.select().from(s.animals)) world.animals[a.id] = a.data;
     for (const p of await this.db.select().from(s.players)) {
       world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, stats: p.data.stats ?? {}, achievements: p.data.achievements ?? [], area: p.data.area && p.data.area !== 'dungeon' ? p.data.area : 'farm', visited: p.data.visited ?? ['farm'], hearts: MAX_HEARTS, online: false, moving: false };
+      delete world.players[p.id]!.riding; // horses are re-mounted after a restart
       if (p.data.area === 'dungeon') {
         world.players[p.id]!.x = CAVE_EXIT_TILE.x * TILE + TILE / 2;
         world.players[p.id]!.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { T } from '@lilla-garden/shared';
 import './style.css';
+import { HD, R } from './art/style.ts';
 import { getArt } from './art/textures.js';
 import { net } from './net.js';
 import { GameScene, VIEW_H, VIEW_W } from './scenes/GameScene.js';
@@ -18,7 +19,9 @@ if (isTouch) document.body.classList.add('touch');
 
 // ---- integer zoom so pixels stay crisp ----
 function computeZoom(): number {
-  return Math.max(1, Math.floor(Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H)));
+  const z = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
+  // HD renders at R× and may scale smoothly; pixel styles keep an integer zoom so pixels stay crisp
+  return HD ? Math.max(1, Math.floor(z * 4) / 4) : Math.max(1, Math.floor(z));
 }
 let zoom = computeZoom();
 document.documentElement.style.setProperty('--z', String(zoom));
@@ -29,7 +32,7 @@ let scene: GameScene | null = null;
 function applyZoom(): void {
   zoom = computeZoom();
   document.documentElement.style.setProperty('--z', String(zoom));
-  game?.scale.setZoom(zoom);
+  game?.scale.setZoom(zoom / R);
 }
 window.addEventListener('resize', applyZoom);
 
@@ -77,12 +80,13 @@ function startGame(): void {
     game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: 'game',
-      width: VIEW_W,
-      height: VIEW_H,
-      pixelArt: true,
-      roundPixels: true,
+      width: VIEW_W * R,
+      height: VIEW_H * R,
+      pixelArt: !HD,
+      roundPixels: !HD,
+      antialias: HD,
       backgroundColor: '#2a3d1f',
-      scale: { mode: Phaser.Scale.NONE, zoom },
+      scale: { mode: Phaser.Scale.NONE, zoom: zoom / R },
       scene: [GameScene],
       input: { activePointers: 3 },
       audio: { noAudio: true },
@@ -135,6 +139,7 @@ void picker.show();
 (window as unknown as { lillaGarden: unknown }).lillaGarden = {
   client,
   net,
+  game: () => game,
   mute: (m = true) => setMuted(m),
   muted: () => isMuted(),
   switchPlayer: () => {

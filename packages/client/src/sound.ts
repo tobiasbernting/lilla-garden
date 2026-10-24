@@ -75,6 +75,15 @@ export const SFX = {
     tone(120, 0.12, 'square', 0.07, -60);
   },
   arrow: () => tone(900, 0.08, 'sine', 0.04, 500),
+  rocket: () => {
+    tone(300, 0.25, 'sawtooth', 0.05, 500);
+    noise(0.25, 0.04);
+  },
+  boom: () => {
+    noise(0.45, 0.16);
+    tone(70, 0.4, 'square', 0.1, -40);
+    setTimeout(() => tone(50, 0.3, 'triangle', 0.08, -20), 80);
+  },
   open: () => tone(440, 0.06, 'triangle', 0.04, 120),
   newDay: () => {
     [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.06), i * 110));

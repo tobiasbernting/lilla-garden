@@ -1,8 +1,9 @@
 // HUD: top chips, hotbar, toasts, touch controls.
 import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
-import { NEW_ART, setArtStyle } from '../art/style.ts';
+import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
+import { stackIconUrl } from '../art/painting.ts';
 import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
 import { bus, client, myPlayer } from '../state.js';
@@ -14,7 +15,7 @@ export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; pick
   const el = h('div', { class: `slot${opts.selected ? ' selected' : ''}${opts.picked ? ' picked' : ''}` });
   if (opts.key) el.append(h('span', { class: 'key' }, opts.key));
   if (stack) {
-    el.append(icon(art.iconUrl[stack.item] ?? '', itemName(stack.item)));
+    el.append(icon(stackIconUrl(stack), itemName(stack.item)));
     el.title = itemName(stack.item);
     if (stack.charges !== undefined) {
       el.append(h('div', { class: 'charges' }, h('i', { style: { width: `${(stack.charges / WATERING_CAN_CHARGES) * 100}%` } })));
@@ -77,8 +78,10 @@ export class Hud {
   }
 
   private artBtn(): HTMLElement {
-    const b = h('div', { class: 'round small', title: NEW_ART ? 'Klassisk grafik' : 'Ny grafik (prototyp)' }, NEW_ART ? '🎨' : '✨');
-    onTap(b, () => setArtStyle(!NEW_ART));
+    const next = nextArtStyle(ART_STYLE);
+    const label: Record<string, string> = { klassisk: 'Klassisk grafik', ny: 'Ny pixelgrafik', hd: 'HD-grafik (prototyp)' };
+    const b = h('div', { class: 'round small', title: `Byt till: ${label[next]}` }, ART_STYLE === 'klassisk' ? '✨' : ART_STYLE === 'ny' ? '🖼️' : '🎨');
+    onTap(b, () => setArtStyle(next));
     return b;
   }
 

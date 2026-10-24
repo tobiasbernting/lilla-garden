@@ -19,6 +19,7 @@ import {
   leaveCave,
   mulberry32,
   nameAnimal,
+  paint,
   newDay,
   npcState,
   performAction,
@@ -329,6 +330,9 @@ export class Game {
         break;
       case 'nameAnimal':
         changes = nameAnimal(w, pid, msg.id, String(msg.name ?? ''));
+        break;
+      case 'paint':
+        changes = paint(w, pid, String(msg.pixels ?? ''));
         break;
       case 'quest':
         changes = completeQuest(w, pid, String(msg.id ?? ''));

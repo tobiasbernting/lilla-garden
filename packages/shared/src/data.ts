@@ -29,6 +29,8 @@ add(I('rod', 'tool', { tool: 'rod' }));
 add(I('sword', 'tool', { tool: 'sword' }));
 add(I('shield', 'tool', { tool: 'shield' }));
 add(I('bow', 'tool', { tool: 'bow' }));
+add(I('bazooka', 'tool', { tool: 'bazooka' }));
+add(I('rocket', 'material', { sell: 3 }));
 
 // Seeds + crops
 const crop = (id: string, buySeed: number, sellCrop: number) => {
@@ -47,6 +49,7 @@ crop('wheat', 10, 10);
 add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials' }));
 add(I('fiber', 'material', { sell: 1 }));
+add(I('paper', 'material', { sell: 1, buy: 3, tab: 'materials' }));
 add(I('hay', 'feed', { sell: 1, buy: 4, tab: 'feed' }));
 // Found out in the world
 add(I('mushroom', 'crop', { sell: 12 }));
@@ -84,6 +87,7 @@ add(I('animal_hen', 'animal', { species: 'hen', buy: 150, tab: 'animals', stack:
 add(I('animal_rabbit', 'animal', { species: 'rabbit', buy: 200, tab: 'animals', stack: 1 }));
 add(I('animal_sheep', 'animal', { species: 'sheep', buy: 400, tab: 'animals', stack: 1 }));
 add(I('animal_cow', 'animal', { species: 'cow', buy: 600, tab: 'animals', stack: 1 }));
+add(I('animal_horse', 'animal', { species: 'horse', buy: 500, tab: 'animals', stack: 1 }));
 add(I('animal_dog', 'animal', { species: 'dog', buy: 250, tab: 'animals', stack: 1 }));
 add(I('animal_cat', 'animal', { species: 'cat', buy: 250, tab: 'animals', stack: 1 }));
 
@@ -99,6 +103,7 @@ place('wall_stone', { sell: 3 });
 place('floor_wood', { sell: 1 });
 place('floor_stone', { sell: 1 });
 place('door', { sell: 4 });
+place('window', { sell: 3 });
 place('chest', { sell: 10 });
 place('trough', { sell: 5 });
 place('workbench', { sell: 10 });
@@ -110,6 +115,7 @@ place('coop', { sell: 20 });
 place('hutch', { sell: 15 });
 place('sheepfold', { sell: 30 });
 place('barn', { sell: 50 });
+place('stall', { sell: 60 });
 place('flowerbox', { sell: 5 });
 place('well', { sell: 20 });
 // Furniture (Möbler) – crafted or bought, usable inside the house and outside
@@ -123,6 +129,9 @@ place('plant', { sell: 4, buy: 30, tab: 'furniture' });
 place('painting', { sell: 5, buy: 60, tab: 'furniture' });
 place('stove', { sell: 10, buy: 110, tab: 'furniture' });
 place('clock', { sell: 5, buy: 50, tab: 'furniture' });
+// Paint buckets (Måla): one bucket paints the farmhouse or a whole run of connected walls
+export const PAINT_NAMES = ['red', 'yellow', 'blue', 'green', 'white', 'pink'] as const;
+PAINT_NAMES.forEach((c, i) => add(I(`paint_${c}`, 'material', { paint: i + 1, buy: 25, sell: 5, tab: 'furniture' })));
 // Season decorations
 place('pumpkin_lantern', { buy: 30, tab: 'season', season: 'halloween', sell: 5 });
 place('ghost_flag', { buy: 25, tab: 'season', season: 'halloween', sell: 5 });
@@ -252,6 +261,7 @@ built('gate', { solid: false });
 built('wall_wood');
 built('wall_stone');
 built('door', { solid: false });
+built('window');
 built('chest', { interact: 'chest' });
 built('trough', { interact: 'feed' });
 built('workbench', { interact: 'workbench' });
@@ -268,7 +278,7 @@ built('sofa', { w: 2, h: 1 });
 built('bookshelf');
 built('lamp', { light: true });
 built('plant');
-built('painting', { solid: false, flat: true });
+built('painting', { solid: false, flat: true, harvest: true });
 built('stove', { light: true, interact: 'cook' });
 built('clock', { solid: false, flat: true });
 built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
@@ -283,6 +293,7 @@ built('coop', { w: 2, h: 2, houses: { species: 'hen', capacity: 4 } });
 built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
 built('barn', { w: 3, h: 2, houses: { species: 'cow', capacity: 2 } });
+built('stall', { w: 3, h: 2, houses: { species: 'horse', capacity: 2 } });
 built('pumpkin_lantern');
 built('ghost_flag', { solid: false });
 built('xmas_tree', { w: 1, h: 2 });
@@ -314,6 +325,8 @@ export const ANIMALS: Record<string, AnimalDef> = {
   rabbit: { species: 'rabbit', house: 'hutch', growDays: 3, speed: 28 },
   sheep: { species: 'sheep', product: 'wool', house: 'sheepfold', growDays: 3, speed: 16 },
   cow: { species: 'cow', product: 'milk', house: 'barn', growDays: 3, speed: 14 },
+  // Horses give nothing but can be ridden by their owner once grown
+  horse: { species: 'horse', house: 'stall', growDays: 3, speed: 24 },
   // Pets follow their owner and need no house
   dog: { species: 'dog', house: '', growDays: 0, speed: 70, pet: true },
   cat: { species: 'cat', house: '', growDays: 0, speed: 60, pet: true },
@@ -341,14 +354,16 @@ const R = (id: string, count: number, ...ins: [string, number][]): RecipeDef => 
 
 export const RECIPES: RecipeDef[] = [
   R('fence', 4, ['wood', 2]),
+  R('paper', 3, ['wood', 1]),
   R('gate', 1, ['wood', 3]),
   R('path_dirt', 4, ['fiber', 1]),
   R('path_stone', 4, ['stone', 2]),
-  R('wall_wood', 2, ['wood', 3]),
+  R('wall_wood', 2, ['wood', 2]),
   R('wall_stone', 2, ['stone', 3]),
   R('floor_wood', 4, ['wood', 2]),
   R('floor_stone', 4, ['stone', 2]),
   R('door', 1, ['wood', 4]),
+  R('window', 1, ['wood', 2], ['stone', 1]),
   R('chest', 1, ['wood', 8]),
   R('workbench', 1, ['wood', 10], ['stone', 2]),
   R('trough', 1, ['wood', 4], ['fiber', 2]),
@@ -362,6 +377,7 @@ export const RECIPES: RecipeDef[] = [
   R('coop', 1, ['wood', 20], ['stone', 4]),
   R('sheepfold', 1, ['wood', 25], ['stone', 6]),
   R('barn', 1, ['wood', 40], ['stone', 15]),
+  R('stall', 1, ['wood', 45], ['stone', 10]),
   R('hay', 2, ['fiber', 3]),
   R('chair', 1, ['wood', 3]),
   R('bed', 1, ['wood', 10], ['fiber', 6]),
@@ -372,6 +388,9 @@ export const RECIPES: RecipeDef[] = [
   R('sword', 1, ['wood', 5], ['stone', 4]),
   R('shield', 1, ['wood', 6], ['stone', 2]),
   R('bow', 1, ['wood', 4], ['fiber', 5]),
+  R('bazooka', 1, ['stone', 12], ['wood', 8], ['gold', 2]),
+  R('rocket', 3, ['stone', 2], ['wood', 1]),
+  ...PAINT_NAMES.map((c) => R(`paint_${c}`, 1, ['wood', 1], ['fiber', 2])),
 ];
 
 /** What the treasure chest may hold besides gold and stars. */
@@ -550,6 +569,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('mine_50', 'mine', 50, 2, 'stone'),
   A('build_10', 'build', 10, 1, 'fence'),
   A('build_50', 'build', 50, 3, 'coop'),
+  A('walls_20', 'walls', 20, 2, 'wall_wood'),
+  A('painted_1', 'painted', 1, 1, 'paint_red'),
   A('fed_5', 'fed', 5, 1, 'hay'),
   A('fed_30', 'fed', 30, 2, 'animal_cow'),
   A('product_10', 'product', 10, 2, 'egg'),
@@ -569,6 +590,12 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('mobs_50', 'mobs', 50, 2, 'bow'),
   A('boss_1', 'boss', 1, 3, 'gem'),
   A('boss_5', 'boss', 5, 5, 'hat_viking'),
+  A('boom_1', 'boom', 1, 1, 'bazooka'),
+  A('boom_25', 'boom', 25, 2, 'rocket'),
+  A('paint_1', 'paint', 1, 2, 'painting'),
+  A('paint_10', 'paint', 10, 3, 'paper'),
+  A('ride_1', 'ride', 1, 1, 'animal_horse'),
+  A('ride_25', 'ride', 25, 2, 'stall'),
 ];
 
 /** Fish and how likely they bite (weights). */

@@ -6,6 +6,7 @@ export const MAP_H = 64;
 export const DAY_LENGTH_MS = 10 * 60 * 1000; // one game day = 10 real minutes
 export const TICK_HZ = 20;
 export const PLAYER_SPEED = 64; // px per second
+export const RIDE_SPEED_MUL = 1.8; // on horseback
 export const MAX_PLAYERS = 8;
 export const HOTBAR_SIZE = 8;
 export const BACKPACK_SIZE = 24;
@@ -72,7 +73,9 @@ export interface ItemDef {
   /** For animals: species that moves in. */
   species?: string;
   /** For tools. */
-  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow';
+  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka';
+  /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
+  paint?: number;
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -142,6 +145,8 @@ export interface ItemStack {
   count: number;
   /** Tool-specific data (watering can charges). */
   charges?: number;
+  /** A painted tavla: its pixels. Stacks with data never merge. */
+  data?: string;
 }
 
 export type Inventory = (ItemStack | null)[];
@@ -193,8 +198,12 @@ export interface PlayerState {
   hearts: number;
   /** Invulnerable until (wall clock) after being hit. */
   hurtUntil?: number;
+  /** Bazooka reloading until (wall clock). */
+  reloadUntil?: number;
   /** Ticks during which client positions are ignored (just moved to another map). */
   moveLock?: number;
+  /** Id of the horse the player is riding. */
+  riding?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -262,6 +271,8 @@ export interface WorldObject {
   by?: string;
   /** Decorations: variant/tint. */
   variant?: number;
+  /** A painted tavla hung up: its pixels. */
+  data?: string;
 }
 
 export interface AnimalState {
@@ -283,7 +294,7 @@ export interface AnimalState {
   named: boolean;
   age: number; // days; < growDays = baby
   homeId: number; // object id of its house
-  /** Pets: the player they follow. */
+  /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
   /** Mobs: remaining hit points and next time it may attack. */
   hp?: number;
@@ -302,6 +313,8 @@ export interface DropState {
   y: number;
   /** The player who dropped it cannot pick it up again for this many ticks. */
   ignore?: { player: string; ticks: number };
+  /** A dropped painted tavla keeps its pixels. */
+  data?: string;
 }
 
 export interface WorldState {
