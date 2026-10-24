@@ -1043,9 +1043,13 @@ export function drawFx(): Record<string, Px[]> {
     p.ellipse(10 - w / 2, 5 - h / 2, w, h, f ? '#dff6ff88' : '#dff6ffcc').ellipse(10 - w / 2 + 1, 5 - h / 2 + 1, w - 2, h - 2, '#00000000');
     return p;
   };
+  const lasso = new Px(12, 12).circle(6, 6, 5.5, WOOD_L).circle(6, 6, 4.5, WOOD_D);
+  lasso.ctx.clearRect(3, 3, 6, 6);
+  lasso.rect(5, 9, 2, 3, WOOD_L);
   return {
     hit: [hit],
     arrow: [arrow],
+    lasso: [lasso],
     splash: [splash],
     ripple: [ripple(0), ripple(1)],
     rocket: [rocket],

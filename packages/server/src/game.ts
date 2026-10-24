@@ -329,7 +329,7 @@ export class Game {
         changes = dropItem(w, pid, msg.slot, msg.qty);
         break;
       case 'nameAnimal':
-        changes = nameAnimal(w, pid, msg.id, String(msg.name ?? ''));
+        changes = tagArea(nameAnimal(w, pid, msg.id, String(msg.name ?? '')), areaK);
         break;
       case 'paint':
         changes = paint(w, pid, String(msg.pixels ?? ''));

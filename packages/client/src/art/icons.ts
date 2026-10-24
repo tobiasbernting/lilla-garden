@@ -47,6 +47,15 @@ const tool = (kind: string): Px => {
     case 'rod':
       p.line(2, 14, 12, 2, WOOD).line(3, 14, 13, 2, WOOD_D).line(12, 2, 14, 9, '#d8d8d8').rect(13, 9, 2, 2, '#d8d8d8').rect(12, 11, 2, 2, '#e04a2a');
       break;
+    case 'lasso':
+      // a rope loop with the coiled end
+      p.circle(6, 7, 5.5, WOOD_L).circle(6, 7, 4.5, WOOD_D);
+      p.ctx.clearRect(3, 4, 6, 6);
+      p.rect(10, 9, 5, 2, WOOD_L).rect(13, 7, 2, 2, WOOD_L).rect(14, 5, 1, 2, WOOD_L).rect(11, 10, 3, 1, WOOD_D);
+      break;
+    case 'fur':
+      p.ellipse(1, 4, 14, 9, '#8a5a2a').ellipse(3, 3, 10, 7, '#a9784a').rect(2, 10, 2, 3, '#8a5a2a').rect(12, 10, 2, 3, '#8a5a2a').rect(6, 2, 4, 2, '#8a5a2a').px(4, 6, '#c58f55').px(9, 7, '#c58f55');
+      break;
     case 'brush':
       p.rect(6, 1, 4, 7, WOOD).rect(9, 1, 1, 7, WOOD_D).rect(3, 8, 10, 4, '#d8363a').rect(3, 12, 10, 3, '#e6c15a');
       for (let x = 3; x < 13; x += 2) p.rect(x, 12, 1, 3, '#cfa84a');

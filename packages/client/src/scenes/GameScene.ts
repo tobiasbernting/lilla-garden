@@ -444,9 +444,10 @@ export class GameScene extends Phaser.Scene {
       actor.texture = texture;
       actor.sprite.setTexture(texture, 0);
     }
-    const mob = ANIMALS[a.species]?.mob;
+    const def = ANIMALS[a.species];
+    const mob = def?.mob ?? (def?.predator && !a.owner ? { hp: def.predator.hp } : undefined);
     actor.label.textContent = mob ? `${a.name} ${'♥'.repeat(Math.max(0, a.hp ?? mob.hp))}` : `${a.name}${a.hasProduct ? ' ✨' : ''}${a.hearts > 0 ? ' ' + '♥'.repeat(a.hearts) : ''}`;
-    if (mob) actor.label.classList.add('mob');
+    actor.label.classList.toggle('mob', !!mob);
   }
 
   private removeAnimal(id: number): void {
@@ -635,6 +636,31 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.shake(220, 0.012);
       return;
     }
+    if (kind === 'lasso' && from) {
+      // a rope loop flies out and snaps back
+      const img = this.add.image(from.x, from.y - 8, 'fx-lasso-0').setDepth(8000).setScale(S);
+      const rope = this.add.graphics().setDepth(7999);
+      const draw = () => {
+        rope.clear();
+        rope.lineStyle(1.2, 0xc58f55, 1);
+        rope.lineBetween(from.x, from.y - 6, img.x, img.y);
+      };
+      this.tweens.add({
+        targets: img,
+        x,
+        y: y - 4,
+        angle: 360,
+        duration: Math.min(220, 60 + Math.hypot(x - from.x, y - from.y) * 2),
+        yoyo: true,
+        hold: 160,
+        onUpdate: draw,
+        onComplete: () => {
+          rope.destroy();
+          img.destroy();
+        },
+      });
+      return;
+    }
     if (kind === 'arrow' && from) {
       const ang = Math.atan2(y - from.y, x - from.x);
       const img = this.add.image(from.x, from.y - 6, 'fx-arrow-0').setRotation(ang).setDepth(8000).setScale(S);
@@ -812,7 +838,8 @@ export class GameScene extends Phaser.Scene {
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
       const onOwner = a?.owner && Math.hypot(a.x - me.x, a.y - me.y) < 14; // pet sitting at its owner's feet
-      const near = a && !onOwner && Math.hypot(a.x - me.x, a.y - me.y) < (ANIMALS[a.species]?.mob ? 140 : 40);
+      const hostile = a && (ANIMALS[a.species]?.mob || (ANIMALS[a.species]?.predator && !a.owner));
+      const near = a && !onOwner && Math.hypot(a.x - me.x, a.y - me.y) < (hostile ? 140 : 40);
       actor.label.style.display = near ? '' : 'none';
       if (near) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 18 - sy) * zoom);
     }

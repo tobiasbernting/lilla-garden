@@ -31,6 +31,8 @@ add(I('shield', 'tool', { tool: 'shield' }));
 add(I('bow', 'tool', { tool: 'bow' }));
 add(I('bazooka', 'tool', { tool: 'bazooka' }));
 add(I('rocket', 'material', { sell: 3 }));
+add(I('lasso', 'tool', { tool: 'lasso' }));
+add(I('fur', 'material', { sell: 15 }));
 
 // Seeds + crops
 const crop = (id: string, buySeed: number, sellCrop: number) => {
@@ -365,6 +367,13 @@ export const ANIMALS: Record<string, AnimalDef> = {
   crab: { species: 'crab', house: '', growDays: 0, speed: 20, wild: 'strand' },
   goat: { species: 'goat', house: '', growDays: 0, speed: 26, wild: 'berg' },
   lizard: { species: 'lizard', house: '', growDays: 0, speed: 36, wild: 'oken' },
+  hare: { species: 'hare', house: '', growDays: 0, speed: 40, wild: 'ang', wildCount: [2, 4] },
+  boar: { species: 'boar', house: '', growDays: 0, speed: 28, wild: 'skog', wildCount: [1, 2], tame: 0.5 },
+  moose: { species: 'moose', house: '', growDays: 0, speed: 22, wild: 'skog', wildCount: [0, 1], tame: 0.2 },
+  // Predators (mild): they chase you a little and bite one heart; a lasso makes them pets
+  bear: { species: 'bear', house: '', growDays: 0, speed: 26, wild: 'skog', wildCount: [1, 1], tame: 0.3, predator: { hp: 5, aggroRange: 4 } },
+  wolf: { species: 'wolf', house: '', growDays: 0, speed: 34, wild: 'berg|skog', wildCount: [1, 2], tame: 0.3, predator: { hp: 3, aggroRange: 4 } },
+  lynx: { species: 'lynx', house: '', growDays: 0, speed: 36, wild: 'berg', wildCount: [1, 1], tame: 0.3, predator: { hp: 3, aggroRange: 3 } },
   // Cave monsters (gentle): slime, bat, troll and the boss troll
   slime: { species: 'slime', house: '', growDays: 0, speed: 22, mob: { hp: 2, drops: [{ item: 'gold', min: 1, max: 2, chance: 0.8 }, { item: 'heartberry', min: 1, max: 1, chance: 0.25 }] } },
   bat: { species: 'bat', house: '', growDays: 0, speed: 44, mob: { hp: 1, drops: [{ item: 'gold', min: 1, max: 1, chance: 0.6 }] } },
@@ -417,6 +426,7 @@ export const RECIPES: RecipeDef[] = [
   R('sword', 1, ['wood', 5], ['stone', 4]),
   R('shield', 1, ['wood', 6], ['stone', 2]),
   R('bow', 1, ['wood', 4], ['fiber', 5]),
+  R('lasso', 1, ['fiber', 5], ['wood', 2]),
   R('bazooka', 1, ['stone', 12], ['wood', 8], ['gold', 2]),
   R('rocket', 3, ['stone', 2], ['wood', 1]),
   ...PAINT_NAMES.map((c) => R(`paint_${c}`, 1, ['wood', 1], ['fiber', 2])),
@@ -654,6 +664,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('truffle_20', 'truffle', 20, 2, 'animal_pig'),
   A('swim_1', 'swim', 1, 1, 'shell'),
   A('swim_25', 'swim', 25, 2, 'shell'),
+  A('tame_1', 'tame', 1, 1, 'lasso'),
+  A('tame_bear', 'tame_bear', 1, 2, 'fur'),
+  A('tame_5', 'tame_species', 5, 3, 'animal_dog'),
 ];
 
 /** Fish and how likely they bite (weights). */

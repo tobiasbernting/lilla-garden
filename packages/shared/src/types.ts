@@ -76,7 +76,7 @@ export interface ItemDef {
   /** For animals: species that moves in. */
   species?: string;
   /** For tools. */
-  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka';
+  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
   paint?: number;
   /** Icon reference in the generated atlas. */
@@ -129,8 +129,14 @@ export interface AnimalDef {
   speed: number;
   /** Pets follow their owner instead of wandering near a house. */
   pet?: boolean;
-  /** Wild animals live in this biome only. */
+  /** Wild animals live in these biomes only ('skog' or 'skog|berg'). */
   wild?: string;
+  /** How many of them an area gets (default 3..5). */
+  wildCount?: [number, number];
+  /** Chance that a lasso throw tames it (default 0.6). */
+  tame?: number;
+  /** Predators chase players within aggroRange tiles and bite; hp like a monster, they drop fur. */
+  predator?: { hp: number; aggroRange: number };
   /** Dungeon monsters: hit points and whether it is the boss. */
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
 }
@@ -211,6 +217,8 @@ export interface PlayerState {
   boostUntil?: number;
   /** Standing in a pool (set by the server tick, drives the splash and the Gårdsbok). */
   swimming?: boolean;
+  /** Next time (wall clock) a lost heart grows back outside the cave. */
+  healAt?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -303,9 +311,13 @@ export interface AnimalState {
   homeId: number; // object id of its house
   /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
-  /** Mobs: remaining hit points and next time it may attack. */
+  /** Mobs and predators: remaining hit points and next time it may attack. */
   hp?: number;
   attackAt?: number;
+  /** Runs away from a point until (wall clock) after a missed lasso throw. */
+  fleeUntil?: number;
+  fleeX?: number;
+  fleeY?: number;
   /** Wander target. */
   tx?: number;
   ty?: number;
