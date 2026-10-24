@@ -2,6 +2,7 @@
 import {
   DAY_LENGTH_MS,
   MAX_PLAYERS,
+  NPCS,
   TICK_HZ,
   applyMove,
   buy,
@@ -16,6 +17,7 @@ import {
   mulberry32,
   nameAnimal,
   newDay,
+  npcState,
   performAction,
   seasonForDate,
   selectSlot,
@@ -24,6 +26,7 @@ import {
   swapSlots,
   tick,
   type AnimalSnap,
+  type NpcSnap,
   type Appearance,
   type Change,
   type ClientMsg,
@@ -123,7 +126,11 @@ export class Game {
       players.push(snap);
     }
     const animals: AnimalSnap[] = Object.values(this.world.animals).map((a) => ({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving }));
-    this.broadcast({ t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, now: Date.now() });
+    const npcs: NpcSnap[] = Object.keys(NPCS).map((id) => {
+      const st = npcState(this.world, id);
+      return { id, x: st.x, y: st.y, facing: st.facing, moving: st.moving };
+    });
+    this.broadcast({ t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() });
   }
 
   async flush(): Promise<void> {

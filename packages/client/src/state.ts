@@ -3,6 +3,7 @@ import {
   objectDef,
   key as tileKey,
   type AnimalSnap,
+  type NpcSnap,
   type Change,
   type PlayerSnap,
   type Season,
@@ -55,7 +56,7 @@ export const client = {
   season: 'none' as Season,
   /** server clock = Date.now() - offset */
   serverOffset: 0,
-  snaps: { players: new Map<string, PlayerSnap>(), animals: new Map<number, AnimalSnap>() },
+  snaps: { players: new Map<string, PlayerSnap>(), animals: new Map<number, AnimalSnap>(), npcs: new Map<string, NpcSnap>() },
   timeMs: 0,
   day: 1,
   lastStateAt: 0,

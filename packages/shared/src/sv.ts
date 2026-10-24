@@ -230,6 +230,9 @@ export const T = {
   help: 'Hjälp',
   helpHint: 'Tryck på ? när du vill veta hur man gör',
   stars: 'stjärnor',
+  book: 'Gårdsbok',
+  achievement: 'Bragd: {title}! +{stars} ⭐',
+  progress: '{have} av {goal}',
   questWant: 'Vill ha',
   questReward: 'Belöning',
   questGive: 'Lämna',
@@ -257,6 +260,29 @@ export const DEFAULT_ANIMAL_NAMES = [
   'Pelle', 'Lisa', 'Molly', 'Stina', 'Kalle', 'Maja', 'Ludde', 'Nisse', 'Bella', 'Sigge',
   'Tindra', 'Alfons', 'Majken', 'Doris', 'Gösta', 'Selma', 'Rufus', 'Svea', 'Pricken', 'Tulla',
 ];
+
+export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> = {
+  harvest_1: { title: 'Första skörden', text: 'Skörda en gröda' },
+  harvest_25: { title: 'Grönsaksland', text: 'Skörda 25 grödor' },
+  harvest_100: { title: 'Storbonde', text: 'Skörda 100 grödor' },
+  chop_10: { title: 'Vedhuggare', text: 'Hugg 10 träd' },
+  chop_50: { title: 'Skogsmästare', text: 'Hugg 50 träd' },
+  mine_10: { title: 'Stenknackare', text: 'Knacka 10 stenar' },
+  mine_50: { title: 'Bergsprängare', text: 'Knacka 50 stenar' },
+  build_10: { title: 'Snickarlärling', text: 'Bygg 10 saker' },
+  build_50: { title: 'Byggmästare', text: 'Bygg 50 saker' },
+  fed_5: { title: 'Djurvän', text: 'Mata djur 5 gånger' },
+  fed_30: { title: 'Djurskötare', text: 'Mata djur 30 gånger' },
+  product_10: { title: 'Äggplockare', text: 'Hämta 10 ägg, ull eller mjölk' },
+  fish_1: { title: 'Första nappet', text: 'Fånga en fisk' },
+  fish_20: { title: 'Fiskare', text: 'Fånga 20 fiskar' },
+  fish_gold: { title: 'Guldfisken!', text: 'Fånga den sällsynta guldfisken' },
+  cook_5: { title: 'Kock', text: 'Laga 5 rätter' },
+  quests_3: { title: 'Hjälpsam', text: 'Hjälp byborna 3 gånger' },
+  quests_15: { title: 'Byns hjälte', text: 'Hjälp byborna 15 gånger' },
+  coins_500: { title: 'Sparbössa', text: 'Tjäna 500 kr' },
+  coins_3000: { title: 'Rik bonde', text: 'Tjäna 3000 kr' },
+};
 
 /** Daily quest text templates. {n} and {item} are filled in. */
 export const QUEST_TEXTS: Record<string, string[]> = {
@@ -408,6 +434,8 @@ export const HELP: HelpTopic[] = [
       { icon: 'emoji:💬', text: 'Tant Greta står vid stigen öster om huset. Fiskar-Sven står vid dammen. Använd dem för att prata.' },
       { icon: 'carrot', text: 'De berättar vad de vill ha. Samla sakerna och tryck Lämna.' },
       { icon: 'emoji:⭐', text: 'Du får kr och stjärnor. Stjärnorna syns uppe i hörnet.' },
+      { icon: 'emoji:🚶', text: 'Byborna går runt på gården under dagen. Greta hälsar på Sven vid dammen mitt på dagen.' },
+      { icon: 'emoji:📖', text: 'I Gårdsboken (knappen 📖) ser du dina bragder: skörda, hugga, fiska, laga mat… Varje bragd ger stjärnor.' },
       { icon: 'rod', text: 'Hjälp Sven med 5 trä så får du ett fiskespö!' },
     ],
   },

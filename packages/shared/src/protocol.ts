@@ -61,6 +61,14 @@ export interface PlayerSnap {
   emote?: { id: string; until: number };
 }
 
+export interface NpcSnap {
+  id: string;
+  x: number;
+  y: number;
+  facing: Facing;
+  moving: boolean;
+}
+
 export interface AnimalSnap {
   id: number;
   x: number;
@@ -71,7 +79,7 @@ export interface AnimalSnap {
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; world: WorldState; season: Season; now: number; tick: number }
-  | { t: 'state'; timeMs: number; day: number; season: Season; players: PlayerSnap[]; animals: AnimalSnap[]; now: number }
+  | { t: 'state'; timeMs: number; day: number; season: Season; players: PlayerSnap[]; animals: AnimalSnap[]; npcs: NpcSnap[]; now: number }
   | { t: 'changes'; changes: Change[] }
   | { t: 'error'; text: string }
   | { t: 'pong' };

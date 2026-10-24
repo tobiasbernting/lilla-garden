@@ -105,8 +105,9 @@ export class GameScene extends Phaser.Scene {
     for (const p of Object.values(world.players)) if (p.online) this.putPlayer(p);
     for (const npc of Object.values(NPCS)) {
       const texture = characterTexture(this.textures, npc.appearance, npc.outfit);
-      const x = npc.x * TILE + TILE / 2;
-      const y = npc.y * TILE + TILE / 2;
+      const snap = client.snaps.npcs.get(npc.id);
+      const x = snap?.x ?? npc.x * TILE + TILE / 2;
+      const y = snap?.y ?? npc.y * TILE + TILE / 2;
       const shadow = this.add.image(x, y + 2, 'fx-shadow-0').setDepth(2).setAlpha(0.6);
       const sprite = this.add.sprite(x, y + 4, texture, frameIndex('down', 0)).setOrigin(0.5, 1).setDepth(y + 4);
       this.npcs.set(npc.id, { sprite, shadow, label: this.makeLabel(npc.name, 'npc'), texture, x, y });
@@ -537,27 +538,19 @@ export class GameScene extends Phaser.Scene {
     if (insideNow) cam.centerOn((INTERIOR.x + INTERIOR.w / 2) * TILE, (INTERIOR.y + INTERIOR.h / 2) * TILE);
     else cam.centerOn(Math.round(me.x), Math.round(me.y));
 
-    // --- villagers turn towards the nearest player ---
+    // --- villagers follow the server's routine (interpolated) ---
     for (const [id, actor] of this.npcs) {
-      const npc = NPCS[id]!;
-      let best: PlayerState | null = null;
-      let bestD = 3.5 * TILE;
-      for (const p of Object.values(world.players)) {
-        if (!p.online) continue;
-        const d = Math.hypot(p.x - actor.x, p.y - actor.y);
-        if (d < bestD) {
-          bestD = d;
-          best = p;
+      const snap = client.snaps.npcs.get(id);
+      if (snap) {
+        if (Math.hypot(snap.x - actor.x, snap.y - actor.y) > 64) {
+          actor.x = snap.x;
+          actor.y = snap.y;
+        } else {
+          actor.x += (snap.x - actor.x) * lerp;
+          actor.y += (snap.y - actor.y) * lerp;
         }
-      }
-      let facing: PlayerState['facing'] = 'down';
-      if (best) {
-        const dx = best.x - actor.x;
-        const dy = best.y - actor.y;
-        facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-      }
-      this.placeActor(actor, facing, false, true);
-      void npc;
+        this.placeActor(actor, snap.facing, snap.moving, true);
+      } else this.placeActor(actor, 'down', false, true);
     }
 
     // --- cursor ---

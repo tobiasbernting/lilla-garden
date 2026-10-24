@@ -93,6 +93,10 @@ export function createServer(game: Game, opts: { clientDist: string | null; seas
         } else if (p === '/admin/morning') {
           game.setTimeOfDay(0.05);
           m = 'God morgon';
+        } else if (p === '/admin/time') {
+          const f = Number(form.fraction);
+          if (Number.isFinite(f)) game.setTimeOfDay(f);
+          m = 'Tiden ändrad';
         }
         res.writeHead(303, { location: `/admin?m=${encodeURIComponent(m)}` });
         return res.end();

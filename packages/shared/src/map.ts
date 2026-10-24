@@ -110,10 +110,11 @@ export function ensureInterior(world: WorldState): boolean {
 /** Clears the tiles the villagers stand on (and one around) so they are reachable. Idempotent. */
 export function ensureVillagers(world: WorldState): void {
   for (const n of Object.values(NPCS)) {
+    for (const w of [n, ...n.routine])
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
-        const x = n.x + dx;
-        const y = n.y + dy;
+        const x = w.x + dx;
+        const y = w.y + dy;
         if (!inBounds(x, y)) continue;
         const o = objectAt(world, x, y);
         if (o && objectDef(o.kind).solid && !objectDef(o.kind).houses && o.kind !== 'house') removeObject(world, o.id);
@@ -126,6 +127,7 @@ export function emptyWorld(): WorldState {
   return {
     quests: [],
     questsDay: 0,
+    npcs: {},
     day: 1,
     timeMs: 2 * 60 * 1000, // start mid-morning
     terrain: new Array<Terrain>(MAP_W * MAP_H).fill('grass'),

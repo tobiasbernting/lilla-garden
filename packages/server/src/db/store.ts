@@ -69,6 +69,7 @@ export class PgStore implements Store {
       nextId: row.nextId,
       quests: [],
       questsDay: 0,
+      npcs: {},
       seasonOverride: (row.seasonOverride as WorldState['seasonOverride']) ?? null,
       terrain: row.terrain,
       drops: row.drops ?? {},
@@ -86,7 +87,7 @@ export class PgStore implements Store {
     for (const c of await this.db.select().from(s.crops)) world.crops[c.k] = c.data;
     for (const a of await this.db.select().from(s.animals)) world.animals[a.id] = a.data;
     for (const p of await this.db.select().from(s.players)) {
-      world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, online: false, moving: false };
+      world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, stats: p.data.stats ?? {}, achievements: p.data.achievements ?? [], online: false, moving: false };
       delete world.players[p.id]!.emote;
       delete world.players[p.id]!.fishing;
     }
