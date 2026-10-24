@@ -104,6 +104,9 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     if (dir === 'right') p.rect(6, 11 + bob, 3, 5, '#d9ccb0');
     else p.rect(2, 11 + bob, 2, 5, '#d9ccb0').rect(12, 11 + bob, 2, 5, '#d9ccb0');
   }
+  if (l.shirt.style === 'star') {
+    p.px(7, 12 + bob, '#f5e04a').px(8, 12 + bob, '#f5e04a').rect(6, 13 + bob, 4, 1, '#f5e04a').px(7, 14 + bob, '#f5e04a').px(8, 14 + bob, '#f5e04a').px(6, 15 + bob, '#f5e04a').px(9, 15 + bob, '#f5e04a');
+  }
   if (l.shirt.style === 'xmas') {
     p.rect(3, 12 + bob, 10, 1, '#d8363a').rect(3, 14 + bob, 10, 1, '#ffffff');
     for (let x = 3; x < 13; x += 2) p.px(x, 13 + bob, '#ffffff');
@@ -190,6 +193,14 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
         break;
       case 'santa':
         p.rect(hx - 1, hy - 2, 10, 3, C).rect(hx, hy - 4, 8, 2, C).rect(hx + 1, hy - 6, 5, 2, C).rect(hx + 3, hy - 7, 3, 1, C).rect(hx - 1, hy + 1, 10, 1, '#ffffff').rect(hx + 6, hy - 7, 2, 2, '#ffffff');
+        break;
+      case 'party':
+        p.rect(hx + 1, hy - 2, 6, 2, C).rect(hx + 2, hy - 5, 4, 3, C).rect(hx + 3, hy - 8, 2, 3, C).px(hx + 3, hy - 9, '#f5e04a').px(hx + 4, hy - 9, '#f5e04a');
+        p.px(hx + 2, hy - 4, '#ffffff').px(hx + 5, hy - 2, '#ffffff').px(hx + 4, hy - 6, '#5aa0e8');
+        break;
+      case 'crown':
+        p.rect(hx, hy - 3, 8, 3, C).rect(hx, hy - 5, 2, 2, C).rect(hx + 3, hy - 5, 2, 2, C).rect(hx + 6, hy - 5, 2, 2, C).rect(hx, hy - 1, 8, 1, Cd);
+        p.px(hx + 1, hy - 2, '#e03a3a').px(hx + 4, hy - 2, '#4ad0ff').px(hx + 6, hy - 2, '#7aff7a');
         break;
       case 'bunny':
         p.rect(hx - 1, hy - 2, 10, 2, C).rect(hx, hy - 8, 2, 6, C).rect(hx + 6, hy - 8, 2, 6, C).rect(hx, hy - 7, 1, 4, '#ffb0c8').rect(hx + 7, hy - 7, 1, 4, '#ffb0c8');

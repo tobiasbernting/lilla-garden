@@ -140,6 +140,7 @@ const clothingIcon = (d: ItemDef): Px => {
       if (c.style === 'stripes') for (let y = 5; y < 12; y += 2) p.rect(4, y, 8, 1, '#ffffff');
       if (c.style === 'overalls') p.rect(4, 3, 8, 10, '#f0e4c8').rect(6, 3, 4, 10, C).rect(5, 3, 1, 3, C).rect(10, 3, 1, 3, C);
       if (c.style === 'xmas') p.rect(4, 6, 8, 1, '#d8363a').rect(4, 8, 8, 1, '#ffffff');
+      if (c.style === 'star') p.rect(7, 5, 2, 1, '#f5e04a').rect(6, 6, 4, 1, '#f5e04a').rect(7, 7, 2, 1, '#f5e04a').px(6, 8, '#f5e04a').px(9, 8, '#f5e04a');
       if (c.style === 'ghost') p.rect(4, 3, 8, 10, '#f4f4f4').rect(1, 3, 3, 5, '#f4f4f4').rect(12, 3, 3, 5, '#f4f4f4').rect(6, 6, 1, 2, OUTLINE).rect(9, 6, 1, 2, OUTLINE);
       break;
     case 'pants':

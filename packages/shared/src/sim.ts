@@ -713,7 +713,7 @@ export function cook(world: WorldState, playerId: string, recipeId: string): Cha
 
 export const catalogueAvailable = (id: string, season: Season): boolean => {
   const d = ITEMS[id];
-  if (!d || d.buy === undefined) return false;
+  if (!d || (d.buy === undefined && d.stars === undefined)) return false;
   if (d.season && d.season !== season) return false;
   return true;
 };
@@ -724,9 +724,17 @@ export function buy(world: WorldState, playerId: string, id: string, qty: number
   const d = item(id);
   qty = Math.max(1, Math.min(99, Math.floor(qty)));
   if (d.category === 'animal' || d.category === 'clothing') qty = 1;
+  const out: Change[] = [];
+  if (d.stars !== undefined) {
+    if (p.wardrobe.includes(id)) return [toast(p.id, T.notNow)];
+    if (p.stars < d.stars) return [toast(p.id, T.notEnoughStars)];
+    p.stars -= d.stars;
+    p.wardrobe.push(id);
+    out.push(toast(p.id, fmt(T.bought, { item: itemName(id) })), fx(tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p));
+    return out;
+  }
   const cost = (d.buy ?? 0) * qty;
   if (p.coins < cost) return [toast(p.id, T.notEnoughCoins)];
-  const out: Change[] = [];
   if (d.category === 'animal' && d.species && ANIMALS[d.species]?.pet) {
     const already = Object.values(world.animals).some((a) => a.owner === p.id && a.species === d.species) || p.orders.some((o) => o.species === d.species);
     if (already) return [toast(p.id, T.notNow)];

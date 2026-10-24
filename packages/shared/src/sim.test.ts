@@ -667,6 +667,18 @@ describe('gårdsbok and routines', () => {
     void world;
   });
 
+  it('stars buy special clothes', () => {
+    const { world, p } = setup();
+    expect(toasts(buy(world, p.id, 'hat_crown', 1, ctx()))).toContain('Du behöver fler stjärnor');
+    p.stars = 25;
+    buy(world, p.id, 'hat_crown', 1, ctx());
+    expect(p.stars).toBe(5);
+    expect(p.wardrobe).toContain('hat_crown');
+    expect(p.coins).toBe(150);
+    equip(world, p.id, 'hat', 'hat_crown');
+    expect(p.outfit.hat).toBe('hat_crown');
+  });
+
   it('villagers walk their routine and stop to chat', () => {
     const { world, p } = setup();
     const c = ctx();

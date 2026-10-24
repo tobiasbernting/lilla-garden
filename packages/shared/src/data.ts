@@ -159,6 +159,13 @@ cloth('hat_santa', 'hat', 'santa', '#d9453b', 80, 'jul');
 cloth('shirt_xmas', 'shirt', 'xmas', '#2e8a3a', 100, 'jul');
 cloth('hat_bunny', 'hat', 'bunny', '#f5e6e8', 70, 'pask');
 cloth('shirt_easter', 'shirt', 'plain', '#f5e04a', 70, 'pask');
+// Star rewards: bought with stars from quests and achievements
+const starCloth = (id: string, slot: 'hat' | 'shirt' | 'pants' | 'shoes', style: string, color: string, stars: number) =>
+  add(I(id, 'clothing', { clothing: { slot, style, color }, stars, tab: 'stars', stack: 1 }));
+starCloth('hat_party', 'hat', 'party', '#e87ab8', 5);
+starCloth('shirt_gold', 'shirt', 'plain', '#f2c230', 10);
+starCloth('hat_crown', 'hat', 'crown', '#f2d35a', 20);
+starCloth('shirt_star', 'shirt', 'star', '#3b3f8a', 30);
 
 export const item = (id: string): ItemDef => {
   const d = ITEMS[id];
