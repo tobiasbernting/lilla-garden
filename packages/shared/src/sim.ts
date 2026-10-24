@@ -398,6 +398,10 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     dismount(world, p, out);
     return out;
   }
+  if (p.sleeping) {
+    wakeUp(p, out, true);
+    return out;
+  }
   const held = heldItem(p);
   const heldDef = held ? item(held.item) : null;
   const tool = heldDef?.tool;
@@ -414,7 +418,10 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     return out;
   }
   // 0c. Outside the cave, sword and bow only work on wild predators
-  if (world.area !== 'dungeon' && (tool === 'sword' || tool === 'bow')) {
+  const pointedObject = objectAt(world, tx, ty);
+  const canOpen = !!pointedObject && !!objectDef(pointedObject.kind).interact;
+  if (world.area !== 'dungeon' && (tool === 'sword' || tool === 'bow') && !canOpen) {
+    // (pointing at a door, chest or the cave mouth still opens it, whatever you hold)
     const target = animalAt(world, tx, ty);
     if (tool === 'sword') {
       if (target && isHostile(target)) attackMob(world, p, target, 2, ctx, out);
@@ -713,6 +720,9 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
       return;
     case 'bath':
       out.push(...enterBath(world, p.id));
+      return;
+    case 'sleep':
+      goToSleep(world, p, out);
       return;
     case 'exit':
       if (isBathKey(world.area)) out.push(...leaveBath(world, p.id));
@@ -1146,7 +1156,7 @@ export function setOnline(world: WorldState, playerId: string, online: boolean):
 
 export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean): void {
   const p = world.players[playerId];
-  if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (!p || !Number.isFinite(x) || !Number.isFinite(y) || p.sleeping) return;
   if (p.moveLock && p.moveLock > 0) {
     // just arrived on another map: the client's old positions are meaningless; accept only nearby ones
     if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
@@ -1825,6 +1835,45 @@ function hurtPlayer(world: WorldState, target: PlayerState, ctx: SimCtx, out: Ch
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Sleeping: crawl into a bed; the night passes as soon as everyone online sleeps.
+// ---------------------------------------------------------------------------
+const SLEEP_FADE_MS = 2500;
+const onlinePlayers = (world: WorldState): PlayerState[] => Object.values(farmOf(world).players).filter((p) => p.online);
+
+function goToSleep(world: WorldState, p: PlayerState, out: Change[]): void {
+  p.sleeping = true;
+  p.moving = false;
+  out.push(playerChange(p), toast(p.id, T.goodNight));
+  const awake = onlinePlayers(world).filter((o) => o.id !== p.id && !o.sleeping);
+  if (awake.length) out.push(toast(p.id, fmt(T.sleepWaiting, { names: awake.map((o) => o.name).join(', ') })));
+}
+
+function wakeUp(p: PlayerState, out: Change[], tell: boolean): void {
+  if (!p.sleeping) return;
+  delete p.sleeping;
+  out.push(playerChange(p));
+  if (tell) out.push(toast(p.id, T.wokeUp));
+}
+
+/** Every online player asleep → it is morning. Offline sleepers wake up too, so nobody is stuck in bed. */
+function tickSleep(world: WorldState, ctx: SimCtx, out: Change[]): void {
+  const online = onlinePlayers(world);
+  if (!online.length || !online.every((p) => p.sleeping)) {
+    for (const p of Object.values(world.players)) if (!p.online && p.sleeping) wakeUp(p, out, false);
+    delete world.nightAt;
+    return;
+  }
+  // a short night so everyone sees the lights go out before the new day
+  if (world.nightAt === undefined) world.nightAt = ctx.now + SLEEP_FADE_MS;
+  if (ctx.now < world.nightAt) return;
+  delete world.nightAt;
+  newDay(world, ctx, out);
+  world.timeMs = 1000;
+  for (const p of Object.values(world.players)) wakeUp(p, out, false);
+  out.push(toast(null, T.goodMorning));
+}
+
 /** Hearts grow back one per game hour outside the cave. */
 const HEAL_MS = DAY_LENGTH_MS / 24;
 function tickHearts(world: WorldState, ctx: SimCtx, out: Change[]): void {
@@ -2031,6 +2080,7 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickBoosts(world, ctx.now, out);
   tickFishing(world, ctx, out);
   tickHearts(world, ctx, out);
+  tickSleep(world, ctx, out);
   tickOtherAreas(world, dtMs, ctx, out);
   for (const p of Object.values(world.players)) {
     if (p.emote && p.emote.until < ctx.now) delete p.emote;

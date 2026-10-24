@@ -62,6 +62,9 @@ export interface GameOptions {
   autoStart?: boolean;
 }
 
+/** How long an offline player may stay in the cave before being carried out. */
+const DUNGEON_GRACE_MS = 90_000;
+
 export class Game {
   world!: WorldState;
   private clients = new Set<Client>();
@@ -241,9 +244,18 @@ export class Game {
       this.clients.delete(c);
       if (c.playerId && ![...this.clients].some((o) => o.playerId === c.playerId)) {
         const p = this.world.players[c.playerId];
-        if (p?.area === 'dungeon') this.pending.push(...leaveCave(this.world, c.playerId, false));
         this.pending.push(...setOnline(this.world, c.playerId, false));
         this.dispatchPending();
+        // A flaky tablet connection must not throw you out of the cave: wait a while before carrying you out
+        if (p?.area === 'dungeon') {
+          const id = c.playerId;
+          setTimeout(() => {
+            const q = this.world.players[id];
+            if (!q || q.online || q.area !== 'dungeon') return;
+            this.pending.push(...leaveCave(this.world, id, false));
+            this.dispatchPending();
+          }, DUNGEON_GRACE_MS);
+        }
       }
     }
   }
@@ -269,7 +281,14 @@ export class Game {
       }
       client.playerId = msg.playerId;
       client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount });
-      if (p.area !== 'farm' && p.area !== 'dungeon') {
+      if (p.area === 'dungeon') {
+        // back in the cave after a dropped connection (the cave may have been cleared meanwhile)
+        const d = this.world.dungeon;
+        if (d) {
+          d.players[p.id] = p;
+          client.link.send({ t: 'changes', changes: [{ t: 'areaData', to: p.id, key: 'dungeon', world: d }] });
+        } else this.pending.push(...leaveCave(this.world, p.id, false));
+      } else if (p.area !== 'farm') {
         const area = getArea(this.world, p.area);
         if (area) {
           area.players[p.id] = p;

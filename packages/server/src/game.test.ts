@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import type { ServerMsg } from '../../shared/src/index.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { addItem, enterCave, type ServerMsg } from '../../shared/src/index.ts';
 import { Game, type Link } from './game.ts';
 import { MemoryStore } from './db/store.ts';
 
@@ -88,5 +88,43 @@ describe('Game', () => {
     await game.start();
     for (let i = 0; i < 8; i++) expect(game.createPlayer(`P${i}`, { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })).not.toBeNull();
     expect(game.createPlayer('P9', { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })).toBeNull();
+  });
+});
+
+describe('cave and dropped connections', () => {
+  it('keeps you in the cave through a short disconnect and carries you out after the grace period', async () => {
+    vi.useFakeTimers();
+    try {
+      const game = new Game(new MemoryStore(), { autoStart: false });
+      await game.start();
+      const a = game.createPlayer('Astrid', { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })!;
+      const la = fakeLink();
+      const ha = game.connect(la);
+      ha({ t: 'hello', playerId: a.id });
+      const pa = game.world.players[a.id]!;
+      addItem(pa.inventory, 'sword', 1);
+      enterCave(game.world, a.id);
+      expect(pa.area).toBe('dungeon');
+      // the tablet drops the socket for a moment
+      game.disconnect(la);
+      expect(pa.online).toBe(false);
+      expect(pa.area).toBe('dungeon');
+      // ...and comes back: welcome plus the cave map, still inside
+      const lb = fakeLink();
+      const hb = game.connect(lb);
+      hb({ t: 'hello', playerId: a.id });
+      expect(pa.area).toBe('dungeon');
+      expect(lb.msgs.some((m) => m.t === 'changes' && m.changes.some((c) => c.t === 'areaData' && c.key === 'dungeon'))).toBe(true);
+      vi.advanceTimersByTime(120_000);
+      expect(pa.area).toBe('dungeon');
+      // gone for good: carried out after the grace period
+      game.disconnect(lb);
+      vi.advanceTimersByTime(60_000);
+      expect(pa.area).toBe('dungeon');
+      vi.advanceTimersByTime(60_000);
+      expect(pa.area).toBe('farm');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -102,12 +102,18 @@ function startGame(): void {
   hud.root.style.display = '';
 }
 
+/** The running scene, or null while Phaser is still booting (its create() reads the current area itself). */
+const liveScene = (): GameScene | null => (game ? ((game.scene.getScene('game') as GameScene | null) ?? null) : null);
+
 bus.on('welcome', () => {
   if (!game) startGame();
   else {
-    scene = game.scene.getScene('game') as GameScene;
-    scene.touch = isTouch;
-    scene.scene.restart();
+    const s = liveScene();
+    if (s) {
+      scene = s;
+      scene.touch = isTouch;
+      scene.scene.restart();
+    }
     hud.render();
   }
   // First visit on this device: show the help screen once
@@ -121,8 +127,9 @@ bus.on('welcome', () => {
 });
 
 bus.on('area', () => {
-  if (!game) return;
-  scene = game.scene.getScene('game') as GameScene;
+  const s = liveScene();
+  if (!s) return; // still booting: the scene starts in the right area by itself
+  scene = s;
   scene.touch = isTouch;
   scene.scene.restart();
   hud.render();
