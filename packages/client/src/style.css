@@ -830,3 +830,63 @@ body:not(.touch) .run-btn {
   border-color: var(--gold);
   box-shadow: 0 0 0 var(--u) var(--gold);
 }
+
+/* ---- Rita en tavla ---- */
+.paint {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--u));
+}
+.paint-top {
+  display: flex;
+  gap: calc(3 * var(--u));
+  align-items: flex-start;
+}
+.paint-canvas {
+  width: min(calc(128 * var(--u)), 60vmin);
+  height: min(calc(128 * var(--u)), 60vmin);
+  image-rendering: pixelated;
+  border: var(--u) solid var(--ink);
+  border-radius: calc(1 * var(--u));
+  background: #f6efdc;
+  touch-action: none;
+  cursor: crosshair;
+  flex: none;
+}
+.paint-side {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--u));
+}
+.paint-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(1.5 * var(--u));
+}
+.paint-swatch {
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  padding: 0;
+  border-radius: calc(2 * var(--u));
+}
+.paint-swatch.on,
+.paint-tool.on {
+  outline: calc(1.5 * var(--u)) solid var(--gold);
+  outline-offset: calc(0.5 * var(--u));
+}
+.paint-tools {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.5 * var(--u));
+}
+.paint-tools button {
+  text-align: left;
+}
+.paint-actions {
+  display: flex;
+  gap: calc(2 * var(--u));
+  align-items: center;
+}
+.paint-actions .spacer {
+  flex: 1;
+}

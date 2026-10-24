@@ -37,6 +37,7 @@ import { dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
 import { HD, NEW_ART, R } from '../art/style.ts';
+import { paintingTexture } from '../art/painting.ts';
 import { net } from '../net.js';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '../state.js';
 
@@ -297,7 +298,10 @@ export class GameScene extends Phaser.Scene {
       variant = m & 5 && !(m & 10) ? 1 : 0;
     }
     if (refresh && (o.kind === 'fence' || o.kind === 'gate')) this.refreshFenceNeighbours(o.x, o.y);
-    const img = this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0).setScale(S);
+    const img =
+      o.kind === 'painting' && o.data !== undefined
+        ? this.add.image(o.x * TILE - 2, o.y * TILE - 8, paintingTexture(this.textures, o.data)).setOrigin(0).setScale(S)
+        : this.add.image(o.x * TILE + art.ox, o.y * TILE + art.oy, `obj-${o.kind}-${variant}`).setOrigin(0).setScale(S);
     img.setDepth(def.flat ? 1 : (o.y + def.h) * TILE);
     this.objects.set(o.id, img);
     if ((NEW_ART || HD) && (o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'bush')) {

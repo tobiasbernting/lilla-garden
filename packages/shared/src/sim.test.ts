@@ -49,6 +49,9 @@ import {
   swapSlots,
   tick,
   tileIndex,
+  paint,
+  swapSlots as swap,
+  PAINT_EMPTY,
   type Change,
   type PlayerState,
   type SimCtx,
@@ -624,6 +627,88 @@ describe('house, villagers, fishing', () => {
     performAction(world, p.id, wx, wy, c);
     applyMove(world, p.id, p.x - 5, p.y, 'left', true);
     expect(p.fishing).toBeUndefined();
+  });
+});
+
+describe('tavlor (rita på papper)', () => {
+  const pic = '2' + '.'.repeat(254) + '7';
+  const draw = (world: WorldState, p: PlayerState) => {
+    addItem(p.inventory, 'paper', 1);
+    return paint(world, p.id, pic);
+  };
+
+  it('paper opens the drawing screen', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    addItem(p.inventory, 'paper', 1);
+    select(p, 'paper');
+    const ch = performAction(world, p.id, 21, 20, ctx());
+    expect(ch.some((c) => c.t === 'open' && c.ui === 'paint')).toBe(true);
+    expect(countItem(p.inventory, 'paper')).toBe(1);
+  });
+
+  it('rejects bad drawings and needs paper', () => {
+    const { world, p } = setup();
+    expect(toasts(paint(world, p.id, 'xyz')).length).toBe(1);
+    expect(toasts(paint(world, p.id, PAINT_EMPTY)).length).toBe(1);
+    expect(toasts(paint(world, p.id, pic)).length).toBe(1);
+    expect(countItem(p.inventory, 'painting')).toBe(0);
+  });
+
+  it('turns paper into a tavla carrying the drawing, worth 20 kr', () => {
+    const { world, p } = setup();
+    const ch = draw(world, p);
+    expect(countItem(p.inventory, 'paper')).toBe(0);
+    const slot = p.inventory.findIndex((s) => s?.item === 'painting');
+    expect(p.inventory[slot]?.data).toBe(pic);
+    expect(p.inventory[slot]?.count).toBe(1);
+    expect(p.achievements).toContain('paint_1');
+    expect(toasts(ch)).toContain('Vilken fin tavla!');
+    // two drawings never merge into one stack
+    draw(world, p);
+    expect(p.inventory.filter((s) => s?.item === 'painting').length).toBe(2);
+    // a bought painting does not join a painted one
+    addItem(p.inventory, 'painting', 1);
+    expect(p.inventory.filter((s) => s?.item === 'painting' && s.data === undefined).length).toBe(1);
+    const coins = p.coins;
+    sell(world, p.id, slot, 1);
+    expect(p.coins - coins).toBe(20);
+  });
+
+  it('hangs up with the drawing and comes back down with it', () => {
+    const { world, p } = setup();
+    draw(world, p);
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    select(p, 'painting');
+    performAction(world, p.id, 21, 20, ctx());
+    const obj = objectAt(world, 21, 20);
+    expect(obj?.kind).toBe('painting');
+    expect(obj?.data).toBe(pic);
+    expect(countItem(p.inventory, 'painting')).toBe(0);
+    // pick it up by hand
+    p.selected = p.inventory.findIndex((s) => s === null);
+    performAction(world, p.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)).toBeUndefined();
+    expect(p.inventory.find((s) => s?.item === 'painting')?.data).toBe(pic);
+  });
+
+  it('keeps the drawing when dropped, moved and picked up', () => {
+    const { world, p } = setup();
+    draw(world, p);
+    const slot = p.inventory.findIndex((s) => s?.item === 'painting');
+    swap(world, p.id, { slot }, { slot: 0 });
+    expect(p.inventory[0]?.data).toBe(pic);
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    const ch = dropItem(world, p.id, 0, 1);
+    const drop = ch.find((c) => c.t === 'drop');
+    expect(drop && drop.t === 'drop' && drop.drop?.data).toBe(pic);
+    p.x = 21 * TILE + 8;
+    for (let i = 0; i < 80; i++) tick(world, 50, ctx());
+    expect(Object.keys(world.drops).length).toBe(0);
+    expect(p.inventory.find((s) => s?.item === 'painting')?.data).toBe(pic);
   });
 });
 

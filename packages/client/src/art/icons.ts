@@ -91,6 +91,9 @@ const produce = (id: string): Px => {
     case 'stone':
       p.ellipse(2, 4, 12, 9, '#6f6c66').ellipse(3, 3, 10, 8, '#9d9a92').rect(5, 5, 3, 2, '#c9c6bd');
       break;
+    case 'paper':
+      p.rect(3, 1, 10, 14, '#f6efdc').rect(3, 1, 10, 1, '#ffffff').rect(10, 1, 3, 3, '#e3d7b8').rect(5, 5, 6, 1, '#b9b0a0').rect(5, 8, 6, 1, '#b9b0a0').rect(5, 11, 4, 1, '#b9b0a0');
+      break;
     case 'fiber':
       for (let i = 0; i < 5; i++) p.line(3 + i * 2, 14, 5 + i * 2 - (i % 2) * 3, 3 + (i % 3), '#9ab84a');
       break;

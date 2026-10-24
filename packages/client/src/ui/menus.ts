@@ -17,6 +17,7 @@ import {
   HOTBAR_SIZE,
   INVENTORY_SIZE,
   ITEMS,
+  PAINTED_SELL,
   RECIPES,
   SPECIES_NAMES,
   T,
@@ -36,8 +37,10 @@ import { net } from '../net.js';
 import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
+import { PaintBoard } from './paint.ts';
+import { stackIconUrl } from '../art/painting.ts';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}` };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
@@ -126,6 +129,7 @@ export class Menus {
       cook: `🍳 ${T.cook}`,
       book: `📖 ${T.book}`,
       map: `🗺️ ${T.worldMap}`,
+      paint: `🎨 ${T.paint}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
@@ -173,6 +177,17 @@ export class Menus {
         break;
       case 'map':
         this.renderMap(body);
+        break;
+      case 'paint':
+        body.append(
+          new PaintBoard(
+            (pixels) => {
+              net.send({ t: 'paint', pixels });
+              this.close();
+            },
+            () => this.close(),
+          ).el,
+        );
         break;
     }
     this.modal.append(panel);
@@ -305,11 +320,12 @@ export class Menus {
       const d = itemDef(s.item);
       if (d.sell === undefined) return;
       any = true;
-      const one = h('button', null, `${T.sellOne} (${d.sell} ${T.coins})`);
+      const price = s.data !== undefined ? PAINTED_SELL : d.sell;
+      const one = h('button', null, `${T.sellOne} (${price} ${T.coins})`);
       onTap(one, () => net.send({ t: 'sell', slot, qty: 1 }));
-      const all = h('button', { class: 'alt' }, `${T.sellAll} (${d.sell * s.count} ${T.coins})`);
+      const all = h('button', { class: 'alt' }, `${T.sellAll} (${price * s.count} ${T.coins})`);
       onTap(all, () => net.send({ t: 'sell', slot, qty: s.count }));
-      rows.append(h('div', { class: 'row' }, icon(getArt().iconUrl[s.item] ?? ''), h('span', { class: 'name' }, `${itemName(s.item)} × ${s.count}`), one, s.count > 1 ? all : null!));
+      rows.append(h('div', { class: 'row' }, icon(stackIconUrl(s)), h('span', { class: 'name' }, `${itemName(s.item)} × ${s.count}`), one, s.count > 1 ? all : null!));
     });
     if (!any) rows.append(h('div', { class: 'hint' }, 'Du har inget att sälja just nu. Odla något!'));
     body.append(rows);

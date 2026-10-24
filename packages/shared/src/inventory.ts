@@ -18,7 +18,7 @@ export function addItem(inv: Inventory, id: string, count: number): number {
   // Fill existing stacks first
   for (const s of inv) {
     if (left <= 0) break;
-    if (s && s.item === id && s.count < max) {
+    if (s && s.item === id && s.count < max && s.data === undefined) {
       const take = Math.min(max - s.count, left);
       s.count += take;
       left -= take;
@@ -73,7 +73,7 @@ export function moveStack(a: Inventory, ia: number, b: Inventory, ib: number): v
   const sa = a[ia];
   const sb = b[ib];
   if (ia < 0 || ia >= a.length || ib < 0 || ib >= b.length) return;
-  if (sa && sb && sa.item === sb.item && sa.charges === undefined) {
+  if (sa && sb && sa.item === sb.item && sa.charges === undefined && sa.data === undefined && sb.data === undefined) {
     const max = Math.min(item(sa.item).stack, MAX_STACK);
     const take = Math.min(max - sb.count, sa.count);
     sb.count += take;
