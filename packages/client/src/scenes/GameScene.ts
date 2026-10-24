@@ -24,6 +24,7 @@ import {
   nightAmount,
   objectDef,
   stepPlayer,
+  RIDE_SPEED_MUL,
   tileOf,
   type AnimalState,
   type Change,
@@ -587,7 +588,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     const running = !this.uiOpen && (this.keys.SHIFT!.isDown || this.runHeld);
-    stepPlayer(world, me, dx, dy, dt * (running ? 1.7 : 1));
+    stepPlayer(world, me, dx, dy, dt, me.riding !== undefined ? RIDE_SPEED_MUL : running ? 1.7 : 1);
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
@@ -632,13 +633,22 @@ export class GameScene extends Phaser.Scene {
           }
         }
       }
-      this.placeActor(actor, p.facing, p.moving, true);
+      this.placeActor(actor, p.facing, p.moving, true, p.riding !== undefined);
       this.updateBubble(actor, p);
     }
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
       const snap = client.snaps.animals.get(id);
       if (!a) continue;
+      const rider = a.species === 'horse' ? Object.values(world.players).find((p) => p.riding === id) : undefined;
+      const riderActor = rider ? this.players.get(rider.id) : undefined;
+      if (riderActor) {
+        // glued under its rider (predicted for me, interpolated for others)
+        actor.x = riderActor.x;
+        actor.y = riderActor.y + 1;
+        this.placeActor(actor, rider!.facing, rider!.moving, false);
+        continue;
+      }
       if (snap) {
         if (Math.hypot(snap.x - actor.x, snap.y - actor.y) > 48) {
           actor.x = snap.x;
@@ -700,11 +710,13 @@ export class GameScene extends Phaser.Scene {
     this.drawNight();
   }
 
-  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean): void {
+  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean, riding = false): void {
     const { dir, flip } = dirOf(facing);
-    actor.sprite.setPosition(Math.round(actor.x), Math.round(actor.y) + 4);
+    const lift = riding ? 7 : 0; // sitting on the horse's back
+    actor.sprite.setPosition(Math.round(actor.x), Math.round(actor.y) + 4 - lift);
     actor.shadow.setPosition(Math.round(actor.x), Math.round(actor.y) + 3);
-    actor.sprite.setDepth(actor.y + 4);
+    actor.shadow.setVisible(!riding);
+    actor.sprite.setDepth(actor.y + 4 + (riding ? 2 : 0));
     if (isPlayer) {
       actor.sprite.setFlipX(flip);
       const anim = `${actor.texture}-walk-${dir}`;

@@ -172,6 +172,7 @@ export function stepPlayer(
   dx: number,
   dy: number,
   dtMs: number,
+  speedMul = 1,
 ): void {
   const len = Math.hypot(dx, dy);
   if (len < 0.01) {
@@ -180,7 +181,7 @@ export function stepPlayer(
   }
   const ux = dx / len;
   const uy = dy / len;
-  const dist = (PLAYER_SPEED * dtMs) / 1000;
+  const dist = (PLAYER_SPEED * speedMul * dtMs) / 1000;
   const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, p.x + ux * dist, p.y + uy * dist);
   p.moving = r.x !== p.x || r.y !== p.y;
   p.x = r.x;
@@ -332,6 +333,10 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   const ptx = tileOf(p.x);
   const pty = tileOf(p.y);
   if (Math.abs(tx - ptx) > REACH || Math.abs(ty - pty) > REACH) return out;
+  if (p.riding !== undefined) {
+    dismount(world, p, out);
+    return out;
+  }
   const held = heldItem(p);
   const heldDef = held ? item(held.item) : null;
   const tool = heldDef?.tool;
@@ -450,6 +455,10 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
   const aty = tileOf(a.y);
   const name = animalDisplayName(a);
   const heldDef = held ? item(held.item) : null;
+  if (riderOf(world, a)) {
+    out.push(toast(p.id, fmt(T.horseBusy, { name })));
+    return;
+  }
   if (held?.item === 'hay' && !ANIMALS[a.species]?.wild) {
     if (a.fed) {
       out.push(toast(p.id, fmt(T.alreadyFed, { name })));
@@ -493,9 +502,90 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.wildPetted, { name })), { t: 'animal', id: a.id, animal: a }, playerChange(p));
     return;
   }
+  if (a.species === 'horse' && a.petted && a.named) {
+    mount(world, p, a, out);
+    return;
+  }
   a.petted = true;
   out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.petted, { name })), { t: 'animal', id: a.id, animal: a });
   if (!a.named) out.push({ t: 'open', to: p.id, ui: 'nameAnimal', id: a.id });
+}
+
+// ---------------------------------------------------------------------------
+// Riding
+// ---------------------------------------------------------------------------
+
+/** The player currently riding this animal, if any. */
+export function riderOf(world: WorldState, a: AnimalState): PlayerState | undefined {
+  for (const p of Object.values(world.players)) if (p.riding === a.id) return p;
+  return undefined;
+}
+
+function mount(world: WorldState, p: PlayerState, a: AnimalState, out: Change[]): void {
+  const name = animalDisplayName(a);
+  if (isBaby(a)) {
+    out.push(toast(p.id, fmt(T.horseTooYoung, { name })));
+    return;
+  }
+  if (a.owner && a.owner !== p.id) {
+    out.push(toast(p.id, fmt(T.notYourHorse, { name, owner: world.players[a.owner]?.name ?? '?' })));
+    return;
+  }
+  if (!isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
+    out.push(toast(p.id, T.notNow));
+    return;
+  }
+  p.riding = a.id;
+  delete p.fishing;
+  a.x = p.x;
+  a.y = p.y;
+  a.facing = p.facing;
+  a.moving = false;
+  delete a.tx;
+  delete a.ty;
+  bump(p, 'ride', 1, out);
+  out.push(toast(p.id, fmt(T.mounted, { name })), fx(tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p), { t: 'animal', id: a.id, animal: a });
+}
+
+/** Gets off the horse; the horse stays just behind the player (or on their tile). */
+export function dismount(world: WorldState, p: PlayerState, out: Change[]): void {
+  const farm = farmOf(world);
+  const a = p.riding !== undefined ? farm.animals[p.riding] : undefined;
+  delete p.riding;
+  out.push(playerChange(p));
+  if (!a) return;
+  const d = DIR_VEC[p.facing] ?? { dx: 0, dy: 1 };
+  const btx = tileOf(p.x) - d.dx;
+  const bty = tileOf(p.y) - d.dy;
+  const behindFree = inBounds(btx, bty) && !isSolidForAnimal(farm, btx, bty) && !inInterior(btx, bty);
+  a.x = behindFree ? btx * TILE + TILE / 2 : p.x;
+  a.y = behindFree ? bty * TILE + TILE / 2 : p.y;
+  a.moving = false;
+  a.waitMs = 1500;
+  delete a.tx;
+  delete a.ty;
+  out.push(toast(p.id, fmt(T.dismounted, { name: animalDisplayName(a) })), { t: 'animal', id: a.id, animal: a });
+}
+
+const DIR_VEC: Record<Facing, { dx: number; dy: number }> = { up: { dx: 0, dy: -1 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 } };
+
+/** Ridden horses sit under their rider; riders that vanished free their horse. */
+function tickRiding(world: WorldState, out: Change[]): void {
+  for (const p of Object.values(world.players)) {
+    if (p.riding === undefined) continue;
+    const a = world.animals[p.riding];
+    if (!a || !p.online || p.area !== 'farm' || inInterior(tileOf(p.x), tileOf(p.y))) {
+      delete p.riding;
+      out.push(playerChange(p));
+      continue;
+    }
+    a.x = p.x;
+    a.y = p.y + 1;
+    a.facing = p.facing;
+    a.moving = p.moving;
+    delete a.tx;
+    delete a.ty;
+  }
 }
 
 function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, held: ItemStack | null, out: Change[]): void {
@@ -947,7 +1037,17 @@ export function applyMove(world: WorldState, playerId: string, x: number, y: num
   p.facing = facing;
   p.moving = moving;
   if (moved && p.fishing) delete p.fishing;
-  applyPortal(p, world);
+  if (applyPortal(p, world) && p.riding !== undefined) {
+    // walked indoors: the horse waits outside where it was (tickRiding would otherwise drag it along)
+    const a = world.animals[p.riding];
+    delete p.riding;
+    if (a) {
+      a.x = r.x;
+      a.y = r.y;
+      a.moving = false;
+      a.waitMs = 1500;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1217,6 +1317,7 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   const target = getArea(farm, keyStr);
   if (!target) return false;
   const current = areaOf(farm, p);
+  if (p.riding !== undefined) dismount(current, p, out);
   if (current !== farm) delete current.players[p.id];
   p.area = keyStr;
   p.x = tx * TILE + TILE / 2;
@@ -1584,7 +1685,9 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
 }
 
 function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
+  if (isFarm(world)) tickRiding(world, out);
   for (const a of Object.values(world.animals)) {
+    if (a.species === 'horse' && riderOf(world, a)) continue;
     if (ANIMALS[a.species]?.pet && tickPet(world, a, dtMs)) continue;
     if (world.area === 'dungeon' && isMob(a) && tickMob(world, a, dtMs, ctx, out)) continue;
     if (a.waitMs > 0) {
@@ -1800,6 +1903,7 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
         a.owner = p.id;
         a.age = 10;
       }
+      if (o.species === 'horse') a.owner = p.id;
       world.animals[a.id] = a;
       out.push({ t: 'animal', id: a.id, animal: a }, toast(null, fmt(def.pet ? T.petArrived : T.animalArrived, { name: `${animalDisplayName(a)} (${SPECIES_NAMES[o.species] ?? o.species})` })));
     }

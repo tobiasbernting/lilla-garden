@@ -6,6 +6,7 @@ export const MAP_H = 64;
 export const DAY_LENGTH_MS = 10 * 60 * 1000; // one game day = 10 real minutes
 export const TICK_HZ = 20;
 export const PLAYER_SPEED = 64; // px per second
+export const RIDE_SPEED_MUL = 1.8; // on horseback
 export const MAX_PLAYERS = 8;
 export const HOTBAR_SIZE = 8;
 export const BACKPACK_SIZE = 24;
@@ -195,6 +196,8 @@ export interface PlayerState {
   hurtUntil?: number;
   /** Ticks during which client positions are ignored (just moved to another map). */
   moveLock?: number;
+  /** Id of the horse the player is riding. */
+  riding?: number;
   /** Unlocked achievement ids. */
   achievements: string[];
 }
@@ -283,7 +286,7 @@ export interface AnimalState {
   named: boolean;
   age: number; // days; < growDays = baby
   homeId: number; // object id of its house
-  /** Pets: the player they follow. */
+  /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
   /** Mobs: remaining hit points and next time it may attack. */
   hp?: number;

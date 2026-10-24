@@ -70,6 +70,7 @@ export const ITEM_NAMES: Record<string, string> = {
   animal_rabbit: 'Kanin',
   animal_sheep: 'Får',
   animal_cow: 'Ko',
+  animal_horse: 'Häst',
   fence: 'Staket',
   gate: 'Grind',
   path_stone: 'Stenstig',
@@ -90,6 +91,7 @@ export const ITEM_NAMES: Record<string, string> = {
   hutch: 'Kaninbur',
   sheepfold: 'Fårhus',
   barn: 'Lada',
+  stall: 'Stall',
   flowerbox: 'Blomlåda',
   well: 'Brunn',
   pumpkin_lantern: 'Pumpalykta',
@@ -182,6 +184,7 @@ export const SPECIES_NAMES: Record<string, string> = {
   rabbit: 'Kanin',
   sheep: 'Får',
   cow: 'Ko',
+  horse: 'Häst',
   dog: 'Hund',
   cat: 'Katt',
   fox: 'Räv',
@@ -259,6 +262,11 @@ export const T = {
   brushed: '{name} är fin!',
   collected: 'Fick {item} av {name}',
   alreadyFed: '{name} är mätt',
+  mounted: 'Du hoppar upp på {name}! Använd igen för att hoppa av.',
+  dismounted: 'Du hoppar av {name}.',
+  horseBusy: 'Någon rider redan på {name}.',
+  notYourHorse: '{name} tillhör {owner}.',
+  horseTooYoung: '{name} är för liten att rida på än.',
   needHay: 'Håll hö för att mata',
   troughFilled: 'Lade hö i mathon ({count} hö)',
   troughHas: 'Mathon har {count} hö',
@@ -357,6 +365,8 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   mobs_50: { title: 'Grottmästare', text: 'Besegra 50 monster' },
   boss_1: { title: 'Trollbesegrare', text: 'Besegra Stora Trollet' },
   boss_5: { title: 'Trollkung', text: 'Besegra Stora Trollet 5 gånger' },
+  ride_1: { title: 'Första ridturen', text: 'Rid på en häst' },
+  ride_25: { title: 'Hästkompis', text: 'Hoppa upp på din häst 25 gånger' },
 };
 
 /** Daily quest text templates. {n} and {item} are filled in. */
@@ -493,6 +503,8 @@ export const HELP: HelpTopic[] = [
       { icon: 'trough', text: 'Snickra en matho och lägg hö i den, så äter djuren själva på natten.' },
       { icon: 'emoji:🐣', text: 'Ungar växer upp på tre dagar.' },
       { icon: 'animal_dog', text: 'En hund eller katt från brevlådan behöver inget hus. Den följer med dig överallt!' },
+      { icon: 'stall', text: 'Snickra ett stall vid arbetsbänken, så kan du köpa en häst i brevlådan under Djur.' },
+      { icon: 'animal_horse', text: 'När hästen vuxit upp: klappa den och ge den ett namn, använd den sedan igen för att hoppa upp. På hästryggen springer du nästan dubbelt så fort! Använd igen för att hoppa av.' },
     ],
   },
   {

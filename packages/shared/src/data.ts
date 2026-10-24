@@ -84,6 +84,7 @@ add(I('animal_hen', 'animal', { species: 'hen', buy: 150, tab: 'animals', stack:
 add(I('animal_rabbit', 'animal', { species: 'rabbit', buy: 200, tab: 'animals', stack: 1 }));
 add(I('animal_sheep', 'animal', { species: 'sheep', buy: 400, tab: 'animals', stack: 1 }));
 add(I('animal_cow', 'animal', { species: 'cow', buy: 600, tab: 'animals', stack: 1 }));
+add(I('animal_horse', 'animal', { species: 'horse', buy: 500, tab: 'animals', stack: 1 }));
 add(I('animal_dog', 'animal', { species: 'dog', buy: 250, tab: 'animals', stack: 1 }));
 add(I('animal_cat', 'animal', { species: 'cat', buy: 250, tab: 'animals', stack: 1 }));
 
@@ -110,6 +111,7 @@ place('coop', { sell: 20 });
 place('hutch', { sell: 15 });
 place('sheepfold', { sell: 30 });
 place('barn', { sell: 50 });
+place('stall', { sell: 60 });
 place('flowerbox', { sell: 5 });
 place('well', { sell: 20 });
 // Furniture (Möbler) – crafted or bought, usable inside the house and outside
@@ -283,6 +285,7 @@ built('coop', { w: 2, h: 2, houses: { species: 'hen', capacity: 4 } });
 built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
 built('barn', { w: 3, h: 2, houses: { species: 'cow', capacity: 2 } });
+built('stall', { w: 3, h: 2, houses: { species: 'horse', capacity: 2 } });
 built('pumpkin_lantern');
 built('ghost_flag', { solid: false });
 built('xmas_tree', { w: 1, h: 2 });
@@ -314,6 +317,8 @@ export const ANIMALS: Record<string, AnimalDef> = {
   rabbit: { species: 'rabbit', house: 'hutch', growDays: 3, speed: 28 },
   sheep: { species: 'sheep', product: 'wool', house: 'sheepfold', growDays: 3, speed: 16 },
   cow: { species: 'cow', product: 'milk', house: 'barn', growDays: 3, speed: 14 },
+  // Horses give nothing but can be ridden by their owner once grown
+  horse: { species: 'horse', house: 'stall', growDays: 3, speed: 24 },
   // Pets follow their owner and need no house
   dog: { species: 'dog', house: '', growDays: 0, speed: 70, pet: true },
   cat: { species: 'cat', house: '', growDays: 0, speed: 60, pet: true },
@@ -362,6 +367,7 @@ export const RECIPES: RecipeDef[] = [
   R('coop', 1, ['wood', 20], ['stone', 4]),
   R('sheepfold', 1, ['wood', 25], ['stone', 6]),
   R('barn', 1, ['wood', 40], ['stone', 15]),
+  R('stall', 1, ['wood', 45], ['stone', 10]),
   R('hay', 2, ['fiber', 3]),
   R('chair', 1, ['wood', 3]),
   R('bed', 1, ['wood', 10], ['fiber', 6]),
@@ -569,6 +575,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('mobs_50', 'mobs', 50, 2, 'bow'),
   A('boss_1', 'boss', 1, 3, 'gem'),
   A('boss_5', 'boss', 5, 5, 'hat_viking'),
+  A('ride_1', 'ride', 1, 1, 'animal_horse'),
+  A('ride_25', 'ride', 25, 2, 'stall'),
 ];
 
 /** Fish and how likely they bite (weights). */
