@@ -259,7 +259,7 @@ export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.sele
 
 const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
 const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit'): Change => ({
+const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -335,6 +335,12 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   const held = heldItem(p);
   const heldDef = held ? item(held.item) : null;
   const tool = heldDef?.tool;
+
+  // 0. Bazooka: works everywhere, fires straight ahead
+  if (tool === 'bazooka') {
+    fireRocket(world, p, ctx, out);
+    return out;
+  }
 
   // 0a. In the cave: weapons, exit, treasure
   if (world.area === 'dungeon') {
@@ -1288,7 +1294,7 @@ const dungeonOccupied = (d: WorldState): boolean => Object.values(d.players).som
 export function enterCave(world: WorldState, playerId: string): Change[] {
   const p = world.players[playerId];
   if (!p || p.area === 'dungeon') return [];
-  const hasWeapon = p.inventory.some((s) => s && (s.item === 'sword' || s.item === 'bow'));
+  const hasWeapon = p.inventory.some((s) => s && (s.item === 'sword' || s.item === 'bow' || s.item === 'bazooka'));
   if (!hasWeapon) return [toast(p.id, T.caveNeedWeapon)];
   let d = world.dungeon;
   if (!d || (d.dungeonInfo?.cleared && !dungeonOccupied(d))) {
@@ -1379,6 +1385,58 @@ function shootArrow(d: WorldState, p: PlayerState, ctx: SimCtx, out: Change[]): 
     }
   }
   out.push({ t: 'fx', x: (tx - dir[0]!) * TILE + TILE / 2, y: (ty - dir[1]!) * TILE + TILE / 2, kind: 'arrow', from });
+}
+
+const ROCKET_RANGE = 7;
+const ROCKET_RELOAD_MS = 1000;
+const ROCKET_DAMAGE = 4;
+
+/** Fires a rocket straight ahead: it explodes on the first mob, solid object or wall, or at max range. */
+function fireRocket(world: WorldState, p: PlayerState, ctx: SimCtx, out: Change[]): void {
+  if (ctx.now < (p.reloadUntil ?? 0)) return;
+  if (!removeItem(p.inventory, 'rocket', 1)) {
+    out.push(toast(p.id, T.needRockets));
+    return;
+  }
+  p.reloadUntil = ctx.now + ROCKET_RELOAD_MS;
+  const dir = p.facing === 'left' ? [-1, 0] : p.facing === 'right' ? [1, 0] : p.facing === 'up' ? [0, -1] : [0, 1];
+  let tx = tileOf(p.x);
+  let ty = tileOf(p.y);
+  const from = { x: p.x, y: p.y };
+  for (let i = 0; i < ROCKET_RANGE; i++) {
+    const nx = tx + dir[0]!;
+    const ny = ty + dir[1]!;
+    if (!inBounds(nx, ny)) break;
+    tx = nx;
+    ty = ny;
+    if (animalAt(world, tx, ty)) break;
+    const obj = objectAt(world, tx, ty);
+    if (obj && objectDef(obj.kind).solid) break;
+  }
+  out.push({ t: 'fx', x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2, kind: 'rocket', from });
+  explode(world, p, tx, ty, ctx, out);
+  bump(p, 'boom', 1, out);
+  out.push(playerChange(p));
+}
+
+/** Blast at a tile: hurts every mob within 1.5 tiles; on the farm it also breaks rocks, stumps and weeds. */
+function explode(world: WorldState, p: PlayerState, cx: number, cy: number, ctx: SimCtx, out: Change[]): void {
+  out.push(fx(cx, cy, 'boom'));
+  const r2 = 1.5 * 1.5;
+  for (const mob of Object.values(world.animals)) {
+    if (!ANIMALS[mob.species]?.mob) continue;
+    const dx = tileOf(mob.x) - cx;
+    const dy = tileOf(mob.y) - cy;
+    if (dx * dx + dy * dy <= r2) attackMob(world, p, mob, ROCKET_DAMAGE, ctx, out);
+  }
+  if (world.area === 'dungeon') return;
+  for (const obj of Object.values(world.objects)) {
+    const def = objectDef(obj.kind);
+    if (!def.breakWith || def.breakWith === 'hammer' || obj.kind.startsWith('tree') || obj.kind === 'palm') continue; // only rocks, stumps, weeds and the like
+    const dx = obj.x - cx;
+    const dy = obj.y - cy;
+    if (dx * dx + dy * dy <= r2) breakObject(world, p, obj, ctx, out);
+  }
 }
 
 function openTreasure(d: WorldState, p: PlayerState, chest: WorldObject, ctx: SimCtx, out: Change[]): void {

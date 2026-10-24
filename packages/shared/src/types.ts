@@ -72,7 +72,7 @@ export interface ItemDef {
   /** For animals: species that moves in. */
   species?: string;
   /** For tools. */
-  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow';
+  tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka';
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -193,6 +193,8 @@ export interface PlayerState {
   hearts: number;
   /** Invulnerable until (wall clock) after being hit. */
   hurtUntil?: number;
+  /** Bazooka reloading until (wall clock). */
+  reloadUntil?: number;
   /** Ticks during which client positions are ignored (just moved to another map). */
   moveLock?: number;
   /** Unlocked achievement ids. */

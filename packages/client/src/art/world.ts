@@ -876,10 +876,25 @@ export function drawFx(): Record<string, Px[]> {
   const cursor = new Px(16, 16).box(0, 0, 16, 16, '#ffffff').box(1, 1, 14, 14, '#2b2419');
   const bubble = new Px(16, 14).rect(1, 0, 14, 11, '#ffffff').rect(0, 1, 16, 9, '#ffffff').rect(6, 11, 3, 1, '#ffffff').rect(7, 12, 1, 1, '#ffffff').outline(OUTLINE);
   const hit = new Px(10, 10).tpl(0, 0, ['....##....', '.#..##..#.', '..######..', '.########.', '##########', '##########', '.########.', '..######..', '.#..##..#.', '....##....'], { '#': '#ff5a3a' }).rect(4, 4, 2, 2, '#fff2a0');
+  const rocket = new Px(12, 5).rect(0, 1, 9, 3, '#d8d8d8').rect(0, 1, 9, 1, '#ffffff').rect(9, 1, 3, 3, '#e04a2a').px(11, 2, '#ff9a7a').rect(0, 0, 2, 1, '#e04a2a').rect(0, 4, 2, 1, '#e04a2a');
+  const smoke = (f: number) => new Px(8, 8).circle(4, 4, 2 + f, f === 0 ? '#d0d0d0cc' : '#b0b0b088');
+  const boom = (f: number) => {
+    const p = new Px(32, 32);
+    const r = 8 + f * 4;
+    p.circle(16, 16, r, f < 2 ? '#ff6a2a' : '#ffb24a');
+    p.circle(16, 16, Math.max(2, r - 4), f < 2 ? '#ffd24a' : '#fff2a0');
+    if (f === 0) p.circle(16, 16, 3, '#ffffff');
+    const spikes = [[0, -1], [1, 0], [0, 1], [-1, 0], [0.7, -0.7], [0.7, 0.7], [-0.7, 0.7], [-0.7, -0.7]] as const;
+    for (const [sx, sy] of spikes) p.rect(Math.round(16 + sx * (r + 2)) - 1, Math.round(16 + sy * (r + 2)) - 1, 2, 2, '#ff6a2a');
+    return p;
+  };
   const arrow = new Px(12, 3).rect(0, 1, 10, 1, WOOD_L).rect(9, 0, 3, 3, '#d8d8d8').px(11, 1, '#ffffff').rect(0, 0, 2, 3, '#e04a2a');
   return {
     hit: [hit],
     arrow: [arrow],
+    rocket: [rocket],
+    smoke: [smoke(0), smoke(1)],
+    boom: [boom(0), boom(1), boom(2)],
     heart: [heart],
     sparkle: [sparkle(0), sparkle(1)],
     water: [water],

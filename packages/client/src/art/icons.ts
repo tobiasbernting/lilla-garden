@@ -41,6 +41,9 @@ const tool = (kind: string): Px => {
     case 'bow':
       p.line(4, 1, 11, 7, WOOD).line(11, 7, 4, 14, WOOD).line(4, 1, 4, 14, '#d8d8d8').rect(5, 7, 7, 1, WOOD_L).rect(12, 6, 2, 3, '#e04a2a');
       break;
+    case 'bazooka':
+      p.rect(1, 6, 13, 4, '#4f6b3a').rect(1, 6, 13, 1, '#7a9a5a').rect(1, 9, 13, 1, '#2f4a24').rect(13, 5, 3, 6, '#3a4a30').rect(14, 6, 1, 4, '#1a1a1a').rect(0, 5, 2, 6, '#3a4a30').rect(5, 10, 3, 3, WOOD_D).rect(9, 10, 2, 3, WOOD_D).rect(3, 4, 5, 2, '#d8d8d8').rect(4, 3, 3, 1, '#d8d8d8');
+      break;
     case 'rod':
       p.line(2, 14, 12, 2, WOOD).line(3, 14, 13, 2, WOOD_D).line(12, 2, 14, 9, '#d8d8d8').rect(13, 9, 2, 2, '#d8d8d8').rect(12, 11, 2, 2, '#e04a2a');
       break;
@@ -145,6 +148,9 @@ const produce = (id: string): Px => {
       break;
     case 'heartberry':
       p.tpl(2, 3, ['.##..##.', '########', '########', '.######.', '..####..', '...##...'], { '#': '#e03a5a' }).px(4, 4, '#ff9ab0').rect(7, 1, 2, 2, '#3f8a2e');
+      break;
+    case 'rocket':
+      p.rect(6, 2, 4, 9, '#d8d8d8').rect(6, 2, 1, 9, '#ffffff').rect(9, 2, 1, 9, '#a8a8a8').tpl(5, 0, ['..##..', '.####.'], { '#': '#e04a2a' }).rect(4, 9, 2, 4, '#e04a2a').rect(10, 9, 2, 4, '#e04a2a').rect(7, 11, 2, 2, '#ffb24a').px(7, 13, '#ffe66a').px(8, 14, '#ff6a2a');
       break;
     case 'wool':
       p.ellipse(2, 3, 12, 10, '#f7f3ee').ellipse(1, 6, 5, 5, '#f7f3ee').ellipse(10, 6, 5, 5, '#f7f3ee').px(7, 8, '#d8d4ce');
