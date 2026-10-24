@@ -3,7 +3,13 @@ import {
   ACHIEVEMENTS,
   ACHIEVEMENT_TEXT,
   ANIMALS,
+  BIOME_EMOJI,
+  BIOME_NAMES,
   CHEST_SIZE,
+  areaCoords,
+  areaKey,
+  biomeAt,
+  type Biome,
   COOKING,
   HELP,
   NPCS,
@@ -31,7 +37,7 @@ import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}` };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
@@ -119,6 +125,7 @@ export class Menus {
       help: `❓ ${T.help}`,
       cook: `🍳 ${T.cook}`,
       book: `📖 ${T.book}`,
+      map: `🗺️ ${T.worldMap}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
@@ -163,6 +170,9 @@ export class Menus {
         break;
       case 'book':
         this.renderBook(body);
+        break;
+      case 'map':
+        this.renderMap(body);
         break;
     }
     this.modal.append(panel);
@@ -372,6 +382,41 @@ export class Menus {
       grid.append(b);
     }
     body.append(grid);
+  }
+
+  // ---- world map ----
+
+  private renderMap(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const here = me.area === 'dungeon' ? 'farm' : me.area;
+    const c = areaCoords(here) ?? { ax: 0, ay: 0 };
+    const visited = new Set(me.visited ?? ['farm']);
+    const R = 3;
+    const grid = h('div', { class: 'worldmap' });
+    for (let dy = -R; dy <= R; dy++)
+      for (let dx = -R; dx <= R; dx++) {
+        const ax = c.ax + dx;
+        const ay = c.ay + dy;
+        const k = ax === 0 && ay === 0 ? 'farm' : areaKey(ax, ay);
+        const known = visited.has(k);
+        const biome = k === 'farm' ? 'farm' : known ? ((client.areas[k]?.biome as Biome | undefined) ?? biomeAt(ax, ay)) : null;
+        const cell = h('div', { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: known ? BIOME_NAMES[biome!] : T.notVisited }, known ? h('span', { class: 'em' }, BIOME_EMOJI[biome!]) : h('span', { class: 'em' }, '❔'), known ? h('span', { class: 'nm' }, BIOME_NAMES[biome!]) : null);
+        if (known && k !== here && me.area !== 'dungeon') {
+          onTap(cell, () => {
+            net.send({ t: 'teleport', to: k });
+            this.close();
+          });
+        }
+        grid.append(cell);
+      }
+    const home = h('button', { disabled: me.area === 'farm' || me.area === 'dungeon' }, `🏡 ${T.teleportHome}`);
+    onTap(home, () => {
+      net.send({ t: 'teleport', to: 'farm' });
+      this.close();
+    });
+    const mini = h('button', { class: 'alt' }, '🧭 Minikarta av/på');
+    onTap(mini, () => document.dispatchEvent(new CustomEvent('lilla:minimap')));
+    body.append(h('p', { class: 'help-intro' }, `${T.youAreHere}: ${BIOME_EMOJI[(client.areas[here]?.biome as Biome | undefined) ?? (here === 'farm' ? 'farm' : 'ang')]} ${here === 'farm' ? BIOME_NAMES.farm : BIOME_NAMES[(client.areas[here]?.biome as Biome | undefined) ?? 'ang']} · Norr är uppåt. Kallare norrut, varmare söderut.`), grid, h('div', { class: 'tabs' }, home, mini));
   }
 
   // ---- gårdsbok ----

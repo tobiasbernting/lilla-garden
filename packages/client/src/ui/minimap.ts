@@ -13,6 +13,9 @@ const COLORS: Record<string, string> = {
   path_dirt: '#c9a978',
   floor_wood: '#b07a44',
   floor_stone: '#9d9a92',
+  snow: '#eef2f7',
+  gravel: '#8f8a80',
+  ice: '#bfe3f5',
 };
 
 export class Minimap {
@@ -22,6 +25,7 @@ export class Minimap {
   private dirty = true;
   private visible = false;
   private timer: number | null = null;
+  private lastKey = '';
 
   constructor() {
     this.canvas = document.createElement('canvas');
@@ -38,7 +42,7 @@ export class Minimap {
     }
     this.el.hidden = !this.visible;
     bus.on('change', (c) => {
-      if (c.t === 'terrain' || c.t === 'object' || c.t === 'dungeon') this.dirty = true;
+      if (c.t === 'terrain' || c.t === 'object' || c.t === 'areaData') this.dirty = true;
     });
     bus.on('welcome', () => (this.dirty = true));
     bus.on('area', () => (this.dirty = true));
@@ -60,6 +64,7 @@ export class Minimap {
   private drawBase(world: WorldState): void {
     const ctx = this.base.getContext('2d')!;
     const cave = world.area === 'dungeon';
+    this.lastKey = world.area ?? 'farm';
     const w = cave ? DUNGEON_W : MAP_W;
     const hgt = cave ? DUNGEON_H : MAP_H;
     this.base.width = w * 2;
@@ -78,8 +83,8 @@ export class Minimap {
     for (const o of Object.values(world.objects)) {
       const def = objectDef(o.kind);
       let c: string | null = null;
-      if (o.kind.startsWith('tree') || o.kind === 'bush') c = '#2f6e2a';
-      else if (o.kind.startsWith('rock') || o.kind === 'cave_rock') c = '#7d7a73';
+      if (o.kind.startsWith('tree') || o.kind === 'bush' || o.kind === 'palm' || o.kind === 'cactus') c = '#2f6e2a';
+      else if (o.kind.startsWith('rock') || o.kind === 'cave_rock' || o.kind === 'ore') c = '#7d7a73';
       else if (o.kind === 'house') c = '#b5413a';
       else if (o.kind === 'cave') c = '#1b1a17';
       else if (o.kind === 'cave_wall') c = o.variant === 1 ? '#f5a623' : '#3a3a40';
@@ -100,7 +105,7 @@ export class Minimap {
     const world = activeWorld();
     const me = myPlayer();
     if (!world || !me) return;
-    if (this.dirty) this.drawBase(world);
+    if (this.dirty || this.lastKey !== (world.area ?? 'farm')) this.drawBase(world);
     const ctx = this.canvas.getContext('2d')!;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.drawImage(this.base, 0, 0);
@@ -108,19 +113,20 @@ export class Minimap {
       ctx.fillStyle = c;
       ctx.fillRect(Math.round(x / 8) - r / 2, Math.round(y / 8) - r / 2, r, r);
     };
-    const cave = myArea() === 'dungeon';
-    if (!cave) for (const id of Object.keys(NPCS)) {
+    const area = myArea();
+    const cave = area === 'dungeon';
+    if (area === 'farm') for (const id of Object.keys(NPCS)) {
       const n = client.snaps.npcs.get(id);
       if (n) dot(n.x, n.y, '#ff8ae0', 3);
     }
     for (const a of client.snaps.animals.values()) {
-      if ((a.area === 'dungeon') !== cave) continue;
+      if ((a.area ?? 'farm') !== area) continue;
       const rec = world.animals[a.id];
       const mob = rec && ANIMALS[rec.species]?.mob;
       dot(a.x, a.y, mob ? '#ff4a4a' : '#f4ead8', mob ? 3 : 2);
     }
     for (const p of client.snaps.players.values()) {
-      if ((p.area === 'dungeon') !== cave) continue;
+      if ((p.area ?? 'farm') !== area) continue;
       dot(p.x, p.y, p.id === me.id ? '#ffe14a' : '#ffffff', 4);
     }
     dot(me.x, me.y, '#ffe14a', 4);

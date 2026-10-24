@@ -15,20 +15,20 @@ import type {
 
 /** A change to the world that the server broadcasts after applying. `area` marks dungeon changes. */
 export type Change =
-  | { t: 'terrain'; x: number; y: number; terrain: Terrain; area?: 'dungeon' }
-  | { t: 'crop'; k: string; crop: CropState | null; area?: 'dungeon' }
-  | { t: 'object'; id: number; obj: WorldObject | null; area?: 'dungeon' }
-  | { t: 'animal'; id: number; animal: AnimalState | null; area?: 'dungeon' }
-  | { t: 'drop'; id: number; drop: DropState | null; area?: 'dungeon' }
+  | { t: 'terrain'; x: number; y: number; terrain: Terrain; area?: string }
+  | { t: 'crop'; k: string; crop: CropState | null; area?: string }
+  | { t: 'object'; id: number; obj: WorldObject | null; area?: string }
+  | { t: 'animal'; id: number; animal: AnimalState | null; area?: string }
+  | { t: 'drop'; id: number; drop: DropState | null; area?: string }
   /** Full player record (inventory, coins, outfit…). Sent to everyone; inventory only matters to the owner. */
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
   | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook'; id?: number; npc?: string }
   | { t: 'quests'; quests: Quest[] }
-  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow'; area?: 'dungeon'; from?: { x: number; y: number } }
-  /** Sent to one player when they enter the cave (full instance) or when it is torn down (null). */
-  | { t: 'dungeon'; to: string; world: WorldState | null };
+  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow'; area?: string; from?: { x: number; y: number } }
+  /** Sent to one player when they enter another map (full state) or when it is torn down (null). */
+  | { t: 'areaData'; to: string; key: string; world: WorldState | null };
 
 /** A slot in the player's own inventory (chest undefined) or in a chest object. */
 export interface SlotRef {
@@ -51,6 +51,8 @@ export type ClientMsg =
   | { t: 'drop'; slot: number; qty: number }
   | { t: 'nameAnimal'; id: number; name: string }
   | { t: 'quest'; id: string }
+  | { t: 'travel'; dir: 'n' | 's' | 'e' | 'w' }
+  | { t: 'teleport'; to: string }
   | { t: 'ping' };
 
 export interface PlayerSnap {
@@ -61,7 +63,7 @@ export interface PlayerSnap {
   moving: boolean;
   held: string | null;
   emote?: { id: string; until: number };
-  area?: 'dungeon';
+  area?: string;
 }
 
 export interface NpcSnap {
@@ -78,7 +80,7 @@ export interface AnimalSnap {
   y: number;
   facing: Facing;
   moving: boolean;
-  area?: 'dungeon';
+  area?: string;
 }
 
 export type ServerMsg =

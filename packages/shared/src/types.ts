@@ -24,7 +24,10 @@ export type Terrain =
   | 'path_stone'
   | 'path_dirt'
   | 'floor_wood'
-  | 'floor_stone';
+  | 'floor_stone'
+  | 'snow'
+  | 'gravel'
+  | 'ice';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -180,8 +183,10 @@ export interface PlayerState {
   fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
   /** Lifetime counters for the Gårdsbok (harvest, chop, …). */
   stats: Record<string, number>;
-  /** Which map the player is on. */
-  area: 'farm' | 'dungeon';
+  /** Which map the player is on: 'farm', 'dungeon' or an area key 'a:x,y'. */
+  area: string;
+  /** Area keys the player has been to (for the world map and teleport). */
+  visited: string[];
   /** Hearts left (dungeon); restored when leaving. */
   hearts: number;
   /** Invulnerable until (wall clock) after being hit. */
@@ -313,10 +318,14 @@ export interface WorldState {
   questsDay: number;
   /** Villager positions (not persisted; rebuilt from routines). */
   npcs: Record<string, NpcState>;
-  /** 'dungeon' for the generated cave world; undefined for the farm. */
-  area?: 'dungeon';
+  /** 'dungeon', an area key 'a:x,y', or undefined for the farm. */
+  area?: string;
+  /** Biome of a generated area. */
+  biome?: string;
   /** The current cave instance (farm world only, not persisted). */
   dungeon?: WorldState;
+  /** Loaded overworld areas by key (farm world only). */
+  areas?: Record<string, WorldState>;
   /** Dungeon: seed, size, whether the boss is beaten. */
   dungeonInfo?: { seed: number; w: number; h: number; cleared: boolean; level: number; start: { x: number; y: number }; bossRoom: { x: number; y: number; w: number; h: number } };
 }

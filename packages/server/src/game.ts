@@ -14,6 +14,7 @@ import {
   dropItem,
   emote,
   equip,
+  getArea,
   isSeason,
   leaveCave,
   mulberry32,
@@ -26,8 +27,10 @@ import {
   sell,
   setOnline,
   swapSlots,
-  tagDungeon,
+  tagArea,
+  teleport,
   tick,
+  travel,
   type AnimalSnap,
   type NpcSnap,
   type Appearance,
@@ -126,11 +129,15 @@ export class Game {
       if (!p.online) continue;
       const snap: PlayerSnap = { id: p.id, x: p.x, y: p.y, facing: p.facing, moving: p.moving, held: p.inventory[p.selected]?.item ?? null };
       if (p.emote) snap.emote = p.emote;
-      if (p.area === 'dungeon') snap.area = 'dungeon';
+      if (p.area !== 'farm') snap.area = p.area;
       players.push(snap);
     }
     const animals: AnimalSnap[] = Object.values(this.world.animals).map((a) => ({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving }));
     if (this.world.dungeon) for (const a of Object.values(this.world.dungeon.animals)) animals.push({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving, area: 'dungeon' });
+    for (const [k, area] of Object.entries(this.world.areas ?? {})) {
+      if (!Object.values(area.players).some((p) => p.online)) continue;
+      for (const a of Object.values(area.animals)) animals.push({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving, area: k });
+    }
     const npcs: NpcSnap[] = Object.keys(NPCS).map((id) => {
       const st = npcState(this.world, id);
       return { id, x: st.x, y: st.y, facing: st.facing, moving: st.moving };
@@ -255,7 +262,14 @@ export class Game {
         }
       }
       client.playerId = msg.playerId;
-      client.link.send({ t: 'welcome', you: p.id, world: this.world, season: this.season(), now: Date.now(), tick: this.tickCount });
+      client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount });
+      if (p.area !== 'farm' && p.area !== 'dungeon') {
+        const area = getArea(this.world, p.area);
+        if (area) {
+          area.players[p.id] = p;
+          client.link.send({ t: 'changes', changes: [{ t: 'areaData', to: p.id, key: p.area, world: area }] });
+        } else p.area = 'farm';
+      }
       this.pending.push(...setOnline(this.world, p.id, true));
       this.dispatchPending();
       return;
@@ -265,15 +279,21 @@ export class Game {
     const me = this.world.players[pid];
     if (!me) return;
     const w = areaOf(this.world, me);
-    const inCave = w.area === 'dungeon';
+    const areaK = me.area;
     let changes: Change[] = [];
     switch (msg.t) {
       case 'move':
         applyMove(w, pid, msg.x, msg.y, msg.facing, msg.moving);
         return;
       case 'act':
-        changes = performAction(w, pid, Math.floor(msg.tx), Math.floor(msg.ty), this.ctx());
-        if (inCave) tagDungeon(changes);
+        changes = tagArea(performAction(w, pid, Math.floor(msg.tx), Math.floor(msg.ty), this.ctx()), areaK);
+        break;
+      case 'travel':
+        changes = travel(this.world, pid, msg.dir);
+        if (changes.length) this.store.noteArea?.(me.area);
+        break;
+      case 'teleport':
+        changes = teleport(this.world, pid, String(msg.to ?? ''));
         break;
       case 'select':
         changes = selectSlot(w, pid, msg.slot);

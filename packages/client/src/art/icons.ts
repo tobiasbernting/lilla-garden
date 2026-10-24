@@ -121,6 +121,22 @@ const produce = (id: string): Px => {
     case 'bread':
       p.ellipse(1, 4, 14, 9, '#c8924a').ellipse(2, 3, 12, 6, '#e0b070').rect(5, 5, 2, 1, '#b07a3a').rect(9, 5, 2, 1, '#b07a3a');
       break;
+    case 'mushroom':
+      p.rect(6, 9, 4, 6, '#f0e4c8').rect(2, 4, 12, 5, '#d8363a').rect(3, 3, 10, 1, '#d8363a').px(5, 5, '#ffffff').px(10, 6, '#ffffff').px(8, 4, '#ffffff');
+      break;
+    case 'honey':
+      p.rect(4, 4, 8, 10, '#f5a623').rect(4, 4, 8, 1, '#ffd45a').rect(3, 2, 10, 2, '#e6c15a').rect(5, 7, 6, 4, '#f7f0e0');
+      break;
+    case 'iceberry':
+      [[4, 5], [9, 4], [6, 10], [11, 9]].forEach(([x, y]) => p.rect(x!, y!, 3, 3, '#8fd0f0').px(x!, y!, '#ffffff'));
+      p.rect(7, 2, 2, 2, '#4a7a6a');
+      break;
+    case 'shell':
+      p.ellipse(2, 5, 12, 8, '#f7d7c0').rect(5, 7, 1, 4, '#d8b8a0').rect(8, 6, 1, 6, '#d8b8a0').rect(11, 7, 1, 4, '#d8b8a0');
+      break;
+    case 'cactus_fruit':
+      p.ellipse(4, 3, 8, 10, '#e87ab8').px(6, 5, '#ffb0d8').rect(7, 1, 2, 2, '#4f9a3a').px(5, 8, '#c45a98');
+      break;
     case 'gold':
       p.circle(8, 8, 6, '#d9b53a').circle(8, 8, 5, '#f2d35a').rect(6, 5, 4, 1, '#fff2a0').rect(7, 6, 2, 5, '#d9b53a').rect(6, 10, 4, 1, '#d9b53a');
       break;

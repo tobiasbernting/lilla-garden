@@ -1,5 +1,5 @@
 // HUD: top chips, hotbar, toasts, touch controls.
-import { HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type ItemStack } from '@lilla-garden/shared';
+import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
 import { getArt } from '../art/textures.js';
 import { net } from '../net.js';
@@ -36,7 +36,7 @@ export class Hud {
   constructor(
     private ui: HTMLElement,
     private scene: () => GameScene | null,
-    private openMenu: (ui: 'inventory' | 'emotes' | 'help' | 'book') => void,
+    private openMenu: (ui: 'inventory' | 'emotes' | 'help' | 'book' | 'map') => void,
   ) {
     this.root = h('div', { class: 'hud' });
     this.top = h('div', { class: 'hud-top' });
@@ -57,8 +57,9 @@ export class Hud {
       setRun(true);
     });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) run.addEventListener(ev, () => setRun(false));
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn());
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), this.fullscreenBtn());
     this.minimap = new Minimap();
+    document.addEventListener('lilla:minimap', () => this.minimap.toggle());
     this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act, run, this.minimap.el);
     ui.append(this.root);
     this.setupJoystick(zone);
@@ -72,6 +73,17 @@ export class Hud {
     bus.on('day', () => this.renderTop());
     bus.on('toast', (text) => this.toast(text));
     this.render();
+  }
+
+  private fullscreenBtn(): HTMLElement {
+    const b = h('div', { class: 'round small', title: T.fullscreen }, '⛶');
+    onTap(b, () => {
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else void (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.())?.catch(() => {});
+    });
+    document.addEventListener('fullscreenchange', () => (b.textContent = document.fullscreenElement ? '🡼' : '⛶'));
+    return b;
   }
 
   private muteBtn(): HTMLElement {
@@ -140,6 +152,10 @@ export class Hud {
     if (me) this.top.append(h('div', { class: 'chip' }, h('span', { class: 'coins' }, `${me.coins} ${T.coins}`)));
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
     if (me && me.area === 'dungeon') this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
+    if (me && me.area !== 'farm' && me.area !== 'dungeon') {
+      const b = (client.areas[me.area]?.biome as Biome | undefined) ?? 'ang';
+      this.top.append(h('div', { class: 'chip' }, `${BIOME_EMOJI[b]} ${BIOME_NAMES[b]}`));
+    }
     if (client.season !== 'none') {
       const glyph = { halloween: '🎃', jul: '🎄', pask: '🐣', midsommar: '🌸', none: '' }[client.season];
       this.top.append(h('div', { class: 'chip' }, glyph));
