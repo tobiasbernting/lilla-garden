@@ -159,3 +159,19 @@ export const rememberPlayer = (id: string | null): void => {
     /* ignore */
   }
 };
+
+const LS_HELP = 'lilla-garden.helpSeen';
+export const helpSeen = (): boolean => {
+  try {
+    return localStorage.getItem(LS_HELP) === '1';
+  } catch {
+    return true;
+  }
+};
+export const markHelpSeen = (): void => {
+  try {
+    localStorage.setItem(LS_HELP, '1');
+  } catch {
+    /* ignore */
+  }
+};

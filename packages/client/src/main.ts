@@ -4,7 +4,7 @@ import './style.css';
 import { getArt } from './art/textures.js';
 import { net } from './net.js';
 import { GameScene, VIEW_H, VIEW_W } from './scenes/GameScene.js';
-import { bus, client, rememberPlayer } from './state.js';
+import { bus, client, helpSeen, markHelpSeen, rememberPlayer } from './state.js';
 import { h } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
@@ -62,6 +62,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     menus.toggle('inventory');
   } else if (e.key === 'f' || e.key === 'F') menus.toggle('emotes');
+  else if (e.key === 'h' || e.key === 'H' || e.key === '?') menus.toggle('help');
   else if (/^[1-8]$/.test(e.key)) hud.select(Number(e.key) - 1);
 });
 
@@ -100,6 +101,14 @@ bus.on('welcome', () => {
     scene.touch = isTouch;
     scene.scene.restart();
     hud.render();
+  }
+  // First visit on this device: show the help screen once
+  if (!helpSeen()) {
+    markHelpSeen();
+    setTimeout(() => {
+      menus.open('help');
+      hud.toast(T.helpHint);
+    }, 600);
   }
 });
 

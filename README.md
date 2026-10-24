@@ -45,8 +45,9 @@ Environment:
 
 ## Controls
 
-- Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `Esc` stänger.
+- Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Esc` stänger.
 - Surfplatta: styrspak till vänster, stor handknapp till höger, tryck på en ruta bredvid dig.
+- `?` i hörnet öppnar hjälpen (visas automatiskt första gången på en enhet).
 
 ## Art
 

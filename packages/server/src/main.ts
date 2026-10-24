@@ -8,7 +8,12 @@ async function main(): Promise<void> {
   let store: MemoryStore | PgStore;
   if (url) {
     const pg = new PgStore(url);
-    await pg.migrate();
+    try {
+      await pg.migrate();
+    } catch (e) {
+      console.error(`Could not reach or migrate the database at ${url.replace(/\/\/.*@/, '//…@')}. Is Postgres running (pnpm db:up)?`);
+      throw e;
+    }
     store = pg;
     console.log('database: postgres');
   } else {

@@ -598,3 +598,64 @@ input[type='text'] {
   font-weight: 800;
   font-size: calc(4.5 * var(--u));
 }
+
+/* ---- help ---- */
+.help-intro {
+  margin: 0 0 var(--u);
+  font-weight: 800;
+  color: #5a5040;
+  font-size: calc(4.5 * var(--u));
+}
+.help-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--u);
+  counter-reset: step;
+}
+.help-steps li {
+  display: grid;
+  grid-template-columns: calc(7 * var(--u)) calc(14 * var(--u)) 1fr;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  background: var(--panel-dark);
+  border-radius: calc(2 * var(--u));
+  padding: var(--u) calc(2 * var(--u));
+  font-size: calc(4.5 * var(--u));
+  line-height: 1.3;
+}
+.help-steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  width: calc(6 * var(--u));
+  height: calc(6 * var(--u));
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(4 * var(--u));
+}
+.help-icon {
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: var(--u) solid var(--ink);
+  border-radius: calc(2 * var(--u));
+}
+.help-icon img {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+.help-icon.emoji {
+  font-size: calc(8 * var(--u));
+}

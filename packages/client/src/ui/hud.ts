@@ -33,7 +33,7 @@ export class Hud {
   constructor(
     private ui: HTMLElement,
     private scene: () => GameScene | null,
-    private openMenu: (ui: 'inventory' | 'emotes') => void,
+    private openMenu: (ui: 'inventory' | 'emotes' | 'help') => void,
   ) {
     this.root = h('div', { class: 'hud' });
     this.top = h('div', { class: 'hud-top' });
@@ -44,7 +44,7 @@ export class Hud {
     this.joy = h('div', { class: 'joy' }, this.joyKnob);
     const zone = h('div', { class: 'joy-zone' }, this.joy);
     const act = h('div', { class: 'act-btn' }, '✋');
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')));
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('❓', () => this.openMenu('help')));
     this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act);
     ui.append(this.root);
     this.setupJoystick(zone);

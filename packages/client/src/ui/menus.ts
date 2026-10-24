@@ -2,6 +2,7 @@
 import {
   ANIMALS,
   CHEST_SIZE,
+  HELP,
   HOTBAR_SIZE,
   INVENTORY_SIZE,
   ITEMS,
@@ -24,7 +25,7 @@ import { bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, clothes: T.tabClothes, season: T.tabSeason };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'clothes', 'season'] as const;
@@ -105,6 +106,7 @@ export class Menus {
       wardrobe: `👕 ${T.wardrobe}`,
       emotes: '😊',
       nameAnimal: '🐾',
+      help: `❓ ${T.help}`,
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
@@ -136,6 +138,9 @@ export class Menus {
         break;
       case 'nameAnimal':
         this.renderName(body);
+        break;
+      case 'help':
+        this.renderHelp(panel, body);
         break;
     }
     this.modal.append(panel);
@@ -340,6 +345,67 @@ export class Menus {
       grid.append(b);
     }
     body.append(grid);
+  }
+
+  // ---- help ----
+
+  private helpTopic = 'controls';
+
+  private helpText(text: string): string {
+    return text
+      .replace(/\{recipe:(\w+)\}/g, (_, id: string) => {
+        const r = RECIPES.find((x) => x.id === id);
+        return r ? r.in.map((i) => `${i.count} ${itemName(i.item).toLowerCase()}`).join(' + ') : id;
+      })
+      .replace(/\{price:(\w+)\}/g, (_, id: string) => `${ITEMS[id]?.buy ?? '?'} ${T.coins}`)
+      .replace(/\{name:(\w+)\}/g, (_, id: string) => itemName(id));
+  }
+
+  private helpIcon(ref: string | undefined): HTMLElement {
+    if (!ref) return h('span', { class: 'help-icon' });
+    if (ref.startsWith('emoji:')) return h('span', { class: 'help-icon emoji' }, ref.slice(6));
+    const url = getArt().iconUrl[ref] ?? getArt().objects[ref]?.frames[0]?.dataUrl();
+    return url ? h('span', { class: 'help-icon' }, icon(url)) : h('span', { class: 'help-icon' });
+  }
+
+  private renderHelp(panel: HTMLElement, body: HTMLElement): void {
+    const touch = document.body.classList.contains('touch');
+    const tabs = h('div', { class: 'tabs' });
+    for (const t of HELP) {
+      const b = h('button', { class: this.helpTopic === t.id ? 'on' : '' }, `${t.emoji} ${t.title}`);
+      onTap(b, () => {
+        this.helpTopic = t.id;
+        this.rerender();
+      });
+      tabs.append(b);
+    }
+    panel.insertBefore(tabs, body);
+    const topic = HELP.find((t) => t.id === this.helpTopic) ?? HELP[0]!;
+    if (topic.intro) body.append(h('p', { class: 'help-intro' }, topic.intro));
+    const list = h('ol', { class: 'help-steps' });
+    for (const step of topic.steps) {
+      if (step.only === 'touch' && !touch) continue;
+      if (step.only === 'desktop' && touch) continue;
+      list.append(h('li', null, this.helpIcon(step.icon), h('span', null, this.helpText(step.text))));
+    }
+    body.append(list);
+    if (topic.houses) {
+      const rows = h('div', { class: 'rows' });
+      for (const a of Object.values(ANIMALS)) {
+        const r = RECIPES.find((x) => x.id === a.house);
+        const animalItem = ITEMS[`animal_${a.species}`];
+        rows.append(
+          h(
+            'div',
+            { class: 'row' },
+            icon(getArt().iconUrl[a.house] ?? ''),
+            h('span', { class: 'name' }, `${itemName(a.house)} → ${SPECIES_NAMES[a.species] ?? a.species}`, h('br'), h('span', { class: 'need' }, r ? r.in.map((i) => `${i.count} ${itemName(i.item).toLowerCase()}`).join(' + ') : '')),
+            h('span', { class: 'price' }, `${animalItem?.buy ?? '?'} ${T.coins}`),
+          ),
+        );
+      }
+      body.append(h('p', { class: 'help-intro' }, 'Alla djurhus:'), rows);
+    }
   }
 
   // ---- animal name ----
