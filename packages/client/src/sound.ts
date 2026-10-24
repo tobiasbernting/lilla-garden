@@ -64,6 +64,10 @@ export const SFX = {
     setTimeout(() => tone(880, 0.18, 'sine', 0.08), 90);
   },
   water: () => tone(500, 0.12, 'sine', 0.06, -250),
+  splash: () => {
+    noise(0.18, 0.07);
+    tone(420, 0.14, 'sine', 0.06, -300);
+  },
   chop: () => {
     noise(0.08, 0.08);
     tone(160, 0.08, 'square', 0.05, -60);

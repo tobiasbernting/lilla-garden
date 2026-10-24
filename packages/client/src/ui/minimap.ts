@@ -8,6 +8,7 @@ const COLORS: Record<string, string> = {
   soil: '#9a6a3a',
   soil_wet: '#5f3d1d',
   water: '#3f86d6',
+  pool: '#4fc0e6',
   sand: '#e3d08f',
   path_stone: '#b5b2a8',
   path_dirt: '#c9a978',

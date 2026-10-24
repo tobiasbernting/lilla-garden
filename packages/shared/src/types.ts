@@ -28,7 +28,8 @@ export type Terrain =
   | 'floor_stone'
   | 'snow'
   | 'gravel'
-  | 'ice';
+  | 'ice'
+  | 'pool'; // swimmable water (the bath house)
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -107,7 +108,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'bath';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -204,6 +205,8 @@ export interface PlayerState {
   moveLock?: number;
   /** Id of the horse the player is riding. */
   riding?: number;
+  /** Standing in a pool (set by the server tick, drives the splash and the Gårdsbok). */
+  swimming?: boolean;
   /** Unlocked achievement ids. */
   achievements: string[];
 }

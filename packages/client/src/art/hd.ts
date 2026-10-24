@@ -217,6 +217,32 @@ export function drawTerrainTilesHD(): TerrainTiles {
     ),
   );
 
+  const pool: number[][] = Array.from({ length: 16 }, (_, mask) =>
+    [0, 1].map((frame) =>
+      tile((ctx) => {
+        // pale stone rim underneath
+        ctx.fillStyle = lin(ctx, 0, 0, 16, 16, [[0, '#e2ded2'], [1, '#c9c5b8']]);
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.save();
+        insetPath(ctx, mask, 1.5, 3);
+        ctx.clip();
+        ctx.fillStyle = lin(ctx, 0, 0, 0, 16, [[0, '#5fd0f0'], [1, '#38aee0']]);
+        ctx.fillRect(-8, -8, 32, 32);
+        const sh = frame ? 3 : 0;
+        scatter(ctx, 130 + mask, 4, (x, y, i) => {
+          const w = 2.5 + rnd(mask, 70 + i) * 3;
+          stroke(ctx, [[x + sh - w, y], [x + sh - w / 2, y - 0.6], [x + sh, y], [x + sh + w / 2, y - 0.6], [x + sh + w, y]], 'rgba(230,250,255,0.6)', 0.8);
+        });
+        if (mask) {
+          insetPath(ctx, mask, 1.5, 3);
+          ctx.strokeStyle = 'rgba(0,60,90,0.25)';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }),
+    ),
+  );
   const sand = tile((ctx) => {
     ctx.fillStyle = lin(ctx, 0, 0, 16, 16, [[0, '#e8d6a4'], [1, '#d8c48c']]);
     ctx.fillRect(0, 0, 16, 16);
@@ -316,6 +342,8 @@ export function drawTerrainTilesHD(): TerrainTiles {
           return gravel;
         case 'ice':
           return ice;
+        case 'pool':
+          return pool[mask & 15]![frame]!;
       }
     },
   };
