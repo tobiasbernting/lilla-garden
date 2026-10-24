@@ -317,6 +317,13 @@ export const ANIMALS: Record<string, AnimalDef> = {
   // Pets follow their owner and need no house
   dog: { species: 'dog', house: '', growDays: 0, speed: 70, pet: true },
   cat: { species: 'cat', house: '', growDays: 0, speed: 60, pet: true },
+  // Wild animals, one kind per biome; they wander and like to be petted
+  fox: { species: 'fox', house: '', growDays: 0, speed: 34, wild: 'skog' },
+  deer: { species: 'deer', house: '', growDays: 0, speed: 30, wild: 'ang' },
+  penguin: { species: 'penguin', house: '', growDays: 0, speed: 18, wild: 'is' },
+  crab: { species: 'crab', house: '', growDays: 0, speed: 20, wild: 'strand' },
+  goat: { species: 'goat', house: '', growDays: 0, speed: 26, wild: 'berg' },
+  lizard: { species: 'lizard', house: '', growDays: 0, speed: 36, wild: 'oken' },
   // Cave monsters (gentle): slime, bat, troll and the boss troll
   slime: { species: 'slime', house: '', growDays: 0, speed: 22, mob: { hp: 2, drops: [{ item: 'gold', min: 1, max: 2, chance: 0.8 }, { item: 'heartberry', min: 1, max: 1, chance: 0.25 }] } },
   bat: { species: 'bat', house: '', growDays: 0, speed: 44, mob: { hp: 1, drops: [{ item: 'gold', min: 1, max: 1, chance: 0.6 }] } },
@@ -554,6 +561,10 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('quests_15', 'quests', 15, 3, 'maypole'),
   A('coins_500', 'earned', 500, 1, 'animal_hen'),
   A('coins_3000', 'earned', 3000, 3, 'animal_cow'),
+  A('areas_5', 'areas', 5, 2, 'signpost'),
+  A('areas_15', 'areas', 15, 4, 'signpost'),
+  A('wild_5', 'wildpet', 5, 2, 'animal_rabbit'),
+  A('wild_20', 'wildpet', 20, 3, 'animal_sheep'),
   A('mobs_10', 'mobs', 10, 1, 'sword'),
   A('mobs_50', 'mobs', 50, 2, 'bow'),
   A('boss_1', 'boss', 1, 3, 'gem'),

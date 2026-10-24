@@ -123,6 +123,8 @@ export interface AnimalDef {
   speed: number;
   /** Pets follow their owner instead of wandering near a house. */
   pet?: boolean;
+  /** Wild animals live in this biome only. */
+  wild?: string;
   /** Dungeon monsters: hit points and whether it is the boss. */
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
 }

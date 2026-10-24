@@ -965,3 +965,31 @@ describe('byn', () => {
     expect(village.npcs.bo).toBeDefined();
   });
 });
+
+describe('vilda djur', () => {
+  it('each biome has its own animal and petting them counts', () => {
+    const ice = generateArea(0, -6);
+    const kinds = new Set(Object.values(ice.animals).map((a) => a.species));
+    expect([...kinds]).toEqual(['penguin']);
+    expect(Object.values(ice.animals).length).toBeGreaterThanOrEqual(3);
+    const { world, p } = setup();
+    standAt(world, p, 32, 0);
+    travel(world, p.id, 'n');
+    const north = areaOf(world, p);
+    const wild = Object.values(north.animals)[0];
+    if (wild) {
+      p.x = wild.x - 16;
+      p.y = wild.y;
+      p.facing = 'right';
+      const ch = performAction(north, p.id, Math.floor(wild.x / 16), Math.floor(wild.y / 16), ctx());
+      expect(toasts(ch).some((t) => t.includes('gillade det'))).toBe(true);
+      expect(p.stats.wildpet).toBe(1);
+      performAction(north, p.id, Math.floor(wild.x / 16), Math.floor(wild.y / 16), ctx());
+      expect(p.stats.wildpet).toBe(1); // once per day
+      newDay(world, ctx());
+      performAction(north, p.id, Math.floor(wild.x / 16), Math.floor(wild.y / 16), ctx());
+      expect(p.stats.wildpet).toBe(2);
+    }
+    expect(p.stats.areas).toBe(1);
+  });
+});

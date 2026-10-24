@@ -450,7 +450,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
   const aty = tileOf(a.y);
   const name = animalDisplayName(a);
   const heldDef = held ? item(held.item) : null;
-  if (held?.item === 'hay') {
+  if (held?.item === 'hay' && !ANIMALS[a.species]?.wild) {
     if (a.fed) {
       out.push(toast(p.id, fmt(T.alreadyFed, { name })));
       return;
@@ -486,6 +486,13 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     }
   }
   // Pet
+  const wild = !!ANIMALS[a.species]?.wild;
+  if (wild && !a.petted) bump(p, 'wildpet', 1, out);
+  if (wild) {
+    a.petted = true;
+    out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.wildPetted, { name })), { t: 'animal', id: a.id, animal: a }, playerChange(p));
+    return;
+  }
   a.petted = true;
   out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.petted, { name })), { t: 'animal', id: a.id, animal: a });
   if (!a.named) out.push({ t: 'open', to: p.id, ui: 'nameAnimal', id: a.id });
@@ -1221,7 +1228,10 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   p.moveLock = 30;
   if (!p.visited) p.visited = ['farm'];
   const firstVisit = !p.visited.includes(keyStr);
-  if (firstVisit) p.visited.push(keyStr);
+  if (firstVisit) {
+    p.visited.push(keyStr);
+    bump(p, 'areas', 1, out);
+  }
   if (target !== farm) out.push({ t: 'areaData', to: p.id, key: keyStr, world: target });
   out.push(playerChange(p));
   if (firstVisit && keyStr !== 'farm') out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })), fx(tx, ty, 'sparkle'));
@@ -1764,6 +1774,9 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
     a.brushed = false;
     out.push({ t: 'animal', id: a.id, animal: a });
   }
+
+  // Wild animals out in the world are happy to be petted again tomorrow
+  for (const a of Object.values(world.areas ?? {})) for (const an of Object.values(a.animals)) an.petted = false;
 
   // Ordered animals arrive
   for (const p of Object.values(world.players)) {

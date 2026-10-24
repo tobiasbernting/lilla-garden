@@ -1,10 +1,11 @@
 // The world beyond the farm: an endless grid of 64x64 areas, each generated from its coordinates.
 // Walking off an edge of one area puts you on the opposite edge of the next.
-import { NPCS } from './data.ts';
+import { ANIMALS, NPCS } from './data.ts';
+import { SPECIES_NAMES } from './sv.ts';
 import { addObject, emptyWorld, inBounds, objectAt, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import type { Terrain, WorldState } from './types.ts';
-import { MAP_H, MAP_W, key } from './types.ts';
+import { MAP_H, MAP_W, TILE, key } from './types.ts';
 
 export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken' | 'by';
 
@@ -165,6 +166,40 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
       }
     }
   if (biome === 'by') buildVillage(world, rnd);
+  // Wild animals of this biome
+  const wild = Object.values(ANIMALS).find((a) => a.wild === biome);
+  if (wild) {
+    const n = randInt(rnd, 3, 5);
+    let tries = 0;
+    let placed = 0;
+    while (placed < n && tries++ < 200) {
+      const x = randInt(rnd, 6, MAP_W - 7);
+      const y = randInt(rnd, 6, MAP_H - 7);
+      const t = T[tileIndex(x, y)];
+      if (t === 'water' || t === 'ice' || objectAt(world, x, y) || inEdgeGap(x, y)) continue;
+      const id = world.nextId++;
+      world.animals[id] = {
+        id,
+        species: wild.species,
+        name: SPECIES_NAMES[wild.species] ?? wild.species,
+        x: x * TILE + TILE / 2,
+        y: y * TILE + TILE / 2,
+        facing: 'down',
+        moving: false,
+        hearts: 0,
+        heartProgress: 0,
+        fed: false,
+        petted: false,
+        brushed: false,
+        hasProduct: false,
+        named: true,
+        age: 10,
+        homeId: 0,
+        waitMs: randInt(rnd, 500, 3000),
+      };
+      placed++;
+    }
+  }
   // A signpost at every arrival tile pointing home-ish (decoration)
   for (const side of ['n', 's', 'e', 'w'] as const) {
     const a = arrivalTile(side);
