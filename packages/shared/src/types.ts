@@ -55,7 +55,9 @@ export interface ItemDef {
   /** Price in the catalogue; undefined = not for sale. */
   buy?: number;
   /** Catalogue tab, if sold. */
-  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season';
+  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars';
+  /** Price in stars (Stjärnor tab) instead of kr. */
+  stars?: number;
   /** Season this item is only available in (catalogue). */
   season?: Season;
   /** For seeds: the crop they grow. */

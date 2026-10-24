@@ -117,6 +117,10 @@ export const ITEM_NAMES: Record<string, string> = {
   shirt_xmas: 'Jultröja',
   hat_bunny: 'Kaninöron',
   shirt_easter: 'Påsktröja',
+  hat_party: 'Partyhatt',
+  shirt_gold: 'Guldtröja',
+  hat_crown: 'Krona',
+  shirt_star: 'Stjärntröja',
 };
 
 export const OBJECT_NAMES: Record<string, string> = {
@@ -189,6 +193,8 @@ export const T = {
   tabMaterials: 'Material',
   tabClothes: 'Kläder',
   tabFurniture: 'Möbler',
+  tabStars: 'Stjärnor',
+  notEnoughStars: 'Du behöver fler stjärnor',
   tabSeason: 'Säsong',
   needHouse: 'Bygg ett {house} först',
   houseFull: 'Fullt i {house}',
@@ -436,6 +442,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'emoji:⭐', text: 'Du får kr och stjärnor. Stjärnorna syns uppe i hörnet.' },
       { icon: 'emoji:🚶', text: 'Byborna går runt på gården under dagen. Greta hälsar på Sven vid dammen mitt på dagen.' },
       { icon: 'emoji:📖', text: 'I Gårdsboken (knappen 📖) ser du dina bragder: skörda, hugga, fiska, laga mat… Varje bragd ger stjärnor.' },
+      { icon: 'hat_crown', text: 'Stjärnorna handlar du för i brevlådan under Stjärnor: partyhatt, guldtröja och en krona!' },
       { icon: 'rod', text: 'Hjälp Sven med 5 trä så får du ett fiskespö!' },
     ],
   },

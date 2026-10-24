@@ -33,8 +33,8 @@ import { slotEl } from './hud.js';
 
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book';
 
-const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason };
-const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season'] as const;
+const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}` };
+const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
 
 export class Menus {
   private modal: HTMLElement | null = null;
@@ -123,7 +123,7 @@ export class Menus {
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
-    const coins = h('span', { class: 'price' }, `${me.coins} ${T.coins}`);
+    const coins = h('span', { class: 'price' }, `${me.coins} ${T.coins}${this.kind === 'catalogue' ? ` · ⭐ ${me.stars}` : ''}`);
     const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' ? coins : null, closeBtn);
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: 'panel' }, head, body);
@@ -256,9 +256,14 @@ export class Menus {
     if (items.length === 0) rows.append(h('div', { class: 'hint' }, 'Inget här just nu.'));
     for (const d of items) {
       const owned = d.category === 'clothing' && me.wardrobe.includes(d.id);
-      const row = h('div', { class: `row${owned ? ' off' : ''}` }, icon(getArt().iconUrl[d.id] ?? ''), h('span', { class: 'name' }, this.catalogueName(d)), h('span', { class: 'price' }, `${d.buy} ${T.coins}`));
+      const price = d.stars !== undefined ? `⭐ ${d.stars}` : `${d.buy} ${T.coins}`;
+      const row = h('div', { class: `row${owned ? ' off' : ''}` }, icon(getArt().iconUrl[d.id] ?? ''), h('span', { class: 'name' }, this.catalogueName(d)), h('span', { class: 'price' }, price));
       if (owned) row.append(h('span', { class: 'hint' }, 'Har redan'));
-      else {
+      else if (d.stars !== undefined) {
+        const b = h('button', { disabled: me.stars < d.stars }, T.buy);
+        onTap(b, () => net.send({ t: 'buy', item: d.id, qty: 1 }));
+        row.append(b);
+      } else {
         const qtys = d.category === 'seed' || d.category === 'feed' || d.category === 'material' ? [1, 5, 10] : [1];
         for (const q of qtys) {
           const b = h('button', { disabled: me.coins < (d.buy ?? 0) * q }, qtys.length > 1 ? `${T.buy} ${q}` : T.buy);
