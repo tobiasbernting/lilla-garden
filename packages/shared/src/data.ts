@@ -29,6 +29,8 @@ add(I('rod', 'tool', { tool: 'rod' }));
 add(I('sword', 'tool', { tool: 'sword' }));
 add(I('shield', 'tool', { tool: 'shield' }));
 add(I('bow', 'tool', { tool: 'bow' }));
+add(I('bazooka', 'tool', { tool: 'bazooka' }));
+add(I('rocket', 'material', { sell: 3 }));
 
 // Seeds + crops
 const crop = (id: string, buySeed: number, sellCrop: number) => {
@@ -372,6 +374,8 @@ export const RECIPES: RecipeDef[] = [
   R('sword', 1, ['wood', 5], ['stone', 4]),
   R('shield', 1, ['wood', 6], ['stone', 2]),
   R('bow', 1, ['wood', 4], ['fiber', 5]),
+  R('bazooka', 1, ['stone', 12], ['wood', 8], ['gold', 2]),
+  R('rocket', 3, ['stone', 2], ['wood', 1]),
 ];
 
 /** What the treasure chest may hold besides gold and stars. */
@@ -569,6 +573,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('mobs_50', 'mobs', 50, 2, 'bow'),
   A('boss_1', 'boss', 1, 3, 'gem'),
   A('boss_5', 'boss', 5, 5, 'hat_viking'),
+  A('boom_1', 'boom', 1, 1, 'bazooka'),
+  A('boom_25', 'boom', 25, 2, 'rocket'),
 ];
 
 /** Fish and how likely they bite (weights). */

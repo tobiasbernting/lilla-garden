@@ -536,6 +536,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnFx(x: number, y: number, kind: string, from?: { x: number; y: number }): void {
+    if (kind === 'rocket' && from) {
+      const ang = Math.atan2(y - from.y, x - from.x);
+      const img = this.add.image(from.x, from.y - 6, 'fx-rocket-0').setRotation(ang).setDepth(8000);
+      const dist = Math.hypot(x - from.x, y - from.y);
+      const duration = Math.min(420, 60 + dist * 2.2);
+      const trail = this.time.addEvent({
+        delay: 40,
+        repeat: Math.floor(duration / 40),
+        callback: () => {
+          const s = this.add.image(img.x, img.y, `fx-smoke-${Math.random() < 0.5 ? 0 : 1}`).setDepth(7999).setAlpha(0.8);
+          this.tweens.add({ targets: s, alpha: 0, scale: 2, y: s.y - 4, duration: 450, onComplete: () => s.destroy() });
+        },
+      });
+      this.tweens.add({ targets: img, x, y: y - 6, duration, onComplete: () => { trail.remove(); img.destroy(); } });
+      return;
+    }
+    if (kind === 'boom') {
+      const img = this.add.image(x, y - 4, 'fx-boom-0').setDepth(8001).setScale(0.5);
+      this.tweens.add({ targets: img, scale: 1.2, duration: 120, onComplete: () => img.setTexture('fx-boom-1') });
+      this.time.delayedCall(180, () => img.setTexture('fx-boom-2'));
+      this.tweens.add({ targets: img, alpha: 0, scale: 1.6, delay: 200, duration: 260, onComplete: () => img.destroy() });
+      for (let i = 0; i < 6; i++) {
+        const s = this.add.image(x + (Math.random() - 0.5) * 20, y - 4 + (Math.random() - 0.5) * 20, `fx-smoke-${i % 2}`).setDepth(8000).setAlpha(0.9).setScale(1.5);
+        this.tweens.add({ targets: s, alpha: 0, scale: 3, y: s.y - 12, duration: 600 + i * 60, onComplete: () => s.destroy() });
+      }
+      this.cameras.main.shake(220, 0.012);
+      return;
+    }
     if (kind === 'arrow' && from) {
       const ang = Math.atan2(y - from.y, x - from.x);
       const img = this.add.image(from.x, from.y - 6, 'fx-arrow-0').setRotation(ang).setDepth(8000).setScale(S);

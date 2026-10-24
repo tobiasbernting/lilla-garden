@@ -776,6 +776,77 @@ describe('grottan', () => {
     expect(d.players[p.id]).toBeUndefined();
   });
 
+  it('bazooka fires a rocket that blasts every monster nearby and reloads', () => {
+    const { world, p } = setup();
+    weapons(p);
+    addItem(p.inventory, 'bazooka', 1);
+    addItem(p.inventory, 'rocket', 2);
+    const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
+    standAt(world, p, cave.x, cave.y + 2);
+    performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    const d = world.dungeon!;
+    const px = Math.floor(p.x / 16);
+    const py = Math.floor(p.y / 16);
+    for (let dx = 1; dx <= 4; dx++) {
+      d.terrain[py * 64 + px + dx] = 'floor_stone';
+      const o = objectAt(d, px + dx, py);
+      if (o) {
+        delete d.objects[o.id];
+        delete d.occupancy[key(px + dx, py)];
+      }
+    }
+    const troll = spawnMob(d, 'troll', px + 3, py);
+    const slime = spawnMob(d, 'slime', px + 4, py);
+    p.facing = 'right';
+    select(p, 'bazooka');
+    const c = ctx();
+    const ch = performAction(d, p.id, px + 1, py, c);
+    expect(ch.some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(true);
+    expect(ch.some((x) => x.t === 'fx' && x.kind === 'boom')).toBe(true);
+    expect(troll.hp).toBe(0);
+    expect(d.animals[troll.id]).toBeUndefined();
+    expect(d.animals[slime.id]).toBeUndefined(); // within the blast radius
+    expect(countItem(p.inventory, 'rocket')).toBe(1);
+    expect(p.achievements).toContain('boom_1');
+    // reloading: nothing happens for a second
+    expect(performAction(d, p.id, px + 1, py, c).some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(false);
+    expect(countItem(p.inventory, 'rocket')).toBe(1);
+    const later = { ...c, now: c.now + 1100 };
+    expect(performAction(d, p.id, px + 1, py, later).some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(true);
+    expect(countItem(p.inventory, 'rocket')).toBe(0);
+    // out of rockets: a toast, no shot
+    const empty = performAction(d, p.id, px + 1, py, { ...c, now: c.now + 2500 });
+    expect(empty.some((x) => x.t === 'fx' && x.kind === 'rocket')).toBe(false);
+    expect(toasts(empty).length).toBe(1);
+  });
+
+  it('on the farm the bazooka breaks rocks but never buildings, fences, crops or animals', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'bazooka', 1);
+    addItem(p.inventory, 'rocket', 1);
+    standAt(world, p, 30, 30);
+    for (let dx = 0; dx <= 5; dx++) for (let dy = -2; dy <= 2; dy++) clearTile(world, 30 + dx, 30 + dy);
+    const rock = addObject(world, 'rock', 33, 30)!;
+    const fence = addObject(world, 'fence', 33, 31)!;
+    const chest = addObject(world, 'chest', 32, 29)!;
+    world.terrain[tileIndex(34, 30)] = 'soil';
+    world.crops[key(34, 30)] = { crop: 'carrot', stage: 1, progress: 0, watered: false };
+    const hen = addAnimal(world, 'hen', 0);
+    hen.x = 34 * TILE + 8;
+    hen.y = 31 * TILE + 8;
+    p.facing = 'right';
+    select(p, 'bazooka');
+    const ch = performAction(world, p.id, 31, 30, ctx());
+    expect(ch.some((x) => x.t === 'fx' && x.kind === 'boom')).toBe(true);
+    expect(world.objects[rock.id]).toBeUndefined();
+    expect(countItem(p.inventory, 'stone')).toBeGreaterThan(0);
+    expect(world.objects[fence.id]).toBeDefined();
+    expect(world.objects[chest.id]).toBeDefined();
+    expect(world.crops[key(34, 30)]).toBeDefined();
+    expect(world.animals[hen.id]).toBeDefined();
+    expect(p.hearts).toBe(MAX_HEARTS);
+  });
+
   it('sword and bow hurt monsters, monsters hurt players, shield blocks, hearts out = carried home', () => {
     const { world, p } = setup();
     weapons(p);
