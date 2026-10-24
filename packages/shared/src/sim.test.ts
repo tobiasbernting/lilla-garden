@@ -35,7 +35,7 @@ import {
   type PlayerState,
   type SimCtx,
   type WorldState,
-} from './index.js';
+} from './index.ts';
 
 const ctx = (season: SimCtx['season'] = 'none'): SimCtx => ({ season, rnd: mulberry32(7), now: 1_000_000 });
 

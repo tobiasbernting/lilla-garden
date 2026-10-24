@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ServerMsg } from '@lilla-garden/shared';
-import { Game, type Link } from './game.js';
-import { MemoryStore } from './db/store.js';
+import type { ServerMsg } from '../../shared/src/index.ts';
+import { Game, type Link } from './game.ts';
+import { MemoryStore } from './db/store.ts';
 
 const fakeLink = (): Link & { msgs: ServerMsg[]; closed: boolean } => {
   const l = {

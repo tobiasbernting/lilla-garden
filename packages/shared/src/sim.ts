@@ -1,12 +1,12 @@
 // Authoritative world simulation. Pure functions over WorldState; no I/O.
 // The server runs this; the client reuses movement for prediction.
 
-import { ANIMALS, CROPS, ITEMS, RECIPES, item, objectDef } from './data.js';
-import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.js';
-import { SPAWN, addObject, generateWorld, inBounds, objectAt, removeObject, tileIndex } from './map.js';
-import { randInt } from './rng.js';
-import { DEFAULT_ANIMAL_NAMES, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.js';
-import type { Change, SlotRef } from './protocol.js';
+import { ANIMALS, CROPS, ITEMS, RECIPES, item, objectDef } from './data.ts';
+import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
+import { SPAWN, addObject, generateWorld, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
+import { randInt } from './rng.ts';
+import { DEFAULT_ANIMAL_NAMES, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
+import type { Change, SlotRef } from './protocol.ts';
 import type {
   AnimalState,
   Appearance,
@@ -21,7 +21,7 @@ import type {
   Terrain,
   WorldObject,
   WorldState,
-} from './types.js';
+} from './types.ts';
 import {
   CHEST_SIZE,
   DAY_LENGTH_MS,
@@ -34,7 +34,7 @@ import {
   TILE,
   WATERING_CAN_CHARGES,
   key,
-} from './types.js';
+} from './types.ts';
 
 export interface SimCtx {
   season: Season;

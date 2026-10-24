@@ -1,4 +1,4 @@
-import type { Season } from './types.js';
+import type { Season } from './types.ts';
 
 /** Gregorian Easter Sunday (Meeus/Jones/Butcher). Returns month (1-12) and day. */
 export function easterSunday(year: number): { month: number; day: number } {

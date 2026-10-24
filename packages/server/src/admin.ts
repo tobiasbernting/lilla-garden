@@ -1,5 +1,5 @@
-import { SEASONS, SEASON_NAMES, T } from '@lilla-garden/shared';
-import type { Game } from './game.js';
+import { SEASONS, SEASON_NAMES, T } from '../../shared/src/index.ts';
+import type { Game } from './game.ts';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 

@@ -1,1 +1,1 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "noEmit": true, "types": ["node"] }, "include": ["src", "drizzle.config.ts"] }
+{ "extends": "../../tsconfig.base.json", "compilerOptions": { "noEmit": true, "types": ["node"], "allowImportingTsExtensions": true, "rewriteRelativeImportExtensions": true }, "include": ["src", "drizzle.config.ts"] }

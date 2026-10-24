@@ -10,7 +10,7 @@ import type {
   Terrain,
   WorldObject,
   WorldState,
-} from './types.js';
+} from './types.ts';
 
 /** A change to the world that the server broadcasts after applying. */
 export type Change =

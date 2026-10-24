@@ -1,6 +1,6 @@
-import { Game } from './game.js';
-import { MemoryStore, PgStore } from './db/store.js';
-import { createServer, findClientDist } from './http.js';
+import { Game } from './game.ts';
+import { MemoryStore, PgStore } from './db/store.ts';
+import { createServer, findClientDist } from './http.ts';
 
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 8080);

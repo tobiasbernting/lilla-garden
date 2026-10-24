@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { isSeason, type ClientMsg, type ServerMsg } from '@lilla-garden/shared';
-import type { Game, Link } from './game.js';
-import { adminPage } from './admin.js';
+import { isSeason, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
+import type { Game, Link } from './game.ts';
+import { adminPage } from './admin.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,7 +24,7 @@ const MIME: Record<string, string> = {
 
 export function findClientDist(): string | null {
   const env = process.env.CLIENT_DIST;
-  const candidates = [env, path.resolve(here, '../../client/dist'), path.resolve(here, '../../../client/dist'), path.resolve(here, '../client')].filter(
+  const candidates = [env, path.resolve(here, '../../client/dist'), path.resolve(here, '../../../../client/dist')].filter(
     (c): c is string => !!c,
   );
   return candidates.find((c) => fs.existsSync(path.join(c, 'index.html'))) ?? null;

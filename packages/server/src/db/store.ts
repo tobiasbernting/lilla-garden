@@ -5,8 +5,8 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { generateWorld, rebuildOccupancy, type Change, type WorldState } from '@lilla-garden/shared';
-import * as s from './schema.js';
+import { generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import * as s from './schema.ts';
 
 export interface Store {
   load(): Promise<WorldState>;
@@ -47,7 +47,7 @@ export class PgStore implements Store {
   }
 
   async migrate(): Promise<void> {
-    const candidates = [path.resolve(here, '../../drizzle'), path.resolve(here, '../drizzle'), path.resolve(here, '../../../drizzle')];
+    const candidates = [path.resolve(here, '../../drizzle'), path.resolve(here, '../../../../drizzle')];
     const { existsSync } = await import('node:fs');
     const folder = process.env.MIGRATIONS_DIR ?? candidates.find((c) => existsSync(c));
     if (!folder) throw new Error('migrations folder not found');

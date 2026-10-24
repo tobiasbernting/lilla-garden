@@ -1,5 +1,5 @@
 import { integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import type { AnimalState, CropState, DropState, PlayerState, Terrain, WorldObject } from '@lilla-garden/shared';
+import type { AnimalState, CropState, DropState, PlayerState, Terrain, WorldObject } from '../../../shared/src/index.ts';
 
 /** Single row (id = 1) with the world-wide state. */
 export const world = pgTable('world', {

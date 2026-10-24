@@ -23,4 +23,4 @@ ENV CLIENT_DIST=/app/client MIGRATIONS_DIR=/app/drizzle
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/health || exit 1
 USER node
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/server/src/main.js"]

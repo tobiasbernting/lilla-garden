@@ -1,4 +1,4 @@
-import type { AnimalDef, CropDef, ItemDef, ObjectDef, RecipeDef } from './types.js';
+import type { AnimalDef, CropDef, ItemDef, ObjectDef, RecipeDef } from './types.ts';
 
 // ---------- Items ----------
 

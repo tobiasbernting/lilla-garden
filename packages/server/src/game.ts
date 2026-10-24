@@ -31,8 +31,8 @@ import {
   type ServerMsg,
   type SimCtx,
   type WorldState,
-} from '@lilla-garden/shared';
-import type { Store } from './db/store.js';
+} from '../../shared/src/index.ts';
+import type { Store } from './db/store.ts';
 
 export interface Link {
   send(msg: ServerMsg): void;
