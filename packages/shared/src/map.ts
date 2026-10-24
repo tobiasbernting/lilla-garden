@@ -131,6 +131,7 @@ export function ensureCave(world: WorldState): boolean {
 /** Clears the tiles the villagers stand on (and one around) so they are reachable. Idempotent. */
 export function ensureVillagers(world: WorldState): void {
   for (const n of Object.values(NPCS)) {
+    if (n.area && n.area !== 'farm') continue;
     for (const w of [n, ...n.routine])
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {

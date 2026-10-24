@@ -85,7 +85,8 @@ export class Minimap {
       let c: string | null = null;
       if (o.kind.startsWith('tree') || o.kind === 'bush' || o.kind === 'palm' || o.kind === 'cactus') c = '#2f6e2a';
       else if (o.kind.startsWith('rock') || o.kind === 'cave_rock' || o.kind === 'ore') c = '#7d7a73';
-      else if (o.kind === 'house') c = '#b5413a';
+      else if (o.kind === 'house' || o.kind === 'house_small') c = '#b5413a';
+      else if (o.kind === 'market' || o.kind === 'sellstall') c = '#ffffff';
       else if (o.kind === 'cave') c = '#1b1a17';
       else if (o.kind === 'cave_wall') c = o.variant === 1 ? '#f5a623' : '#3a3a40';
       else if (o.kind === 'cave_exit' || o.kind === 'door_out') c = '#8fd0f0';
@@ -115,8 +116,9 @@ export class Minimap {
     };
     const area = myArea();
     const cave = area === 'dungeon';
-    if (area === 'farm') for (const id of Object.keys(NPCS)) {
-      const n = client.snaps.npcs.get(id);
+    for (const def of Object.values(NPCS)) {
+      if ((def.area ?? 'farm') !== area) continue;
+      const n = client.snaps.npcs.get(def.id);
       if (n) dot(n.x, n.y, '#ff8ae0', 3);
     }
     for (const a of client.snaps.animals.values()) {

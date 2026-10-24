@@ -129,7 +129,7 @@ export class GameScene extends Phaser.Scene {
     for (const d of Object.values(world.drops)) this.putDrop(d);
     for (const a of Object.values(world.animals)) this.putAnimal(a);
     for (const p of Object.values(world.players)) if (p.online && (p.area ?? 'farm') === this.area) this.putPlayer(p);
-    for (const npc of this.area === 'farm' ? Object.values(NPCS) : []) {
+    for (const npc of Object.values(NPCS).filter((n) => (n.area ?? 'farm') === this.area)) {
       const texture = characterTexture(this.textures, npc.appearance, npc.outfit);
       const snap = client.snaps.npcs.get(npc.id);
       const x = snap?.x ?? npc.x * TILE + TILE / 2;

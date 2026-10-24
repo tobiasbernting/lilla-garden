@@ -18,6 +18,7 @@ import type {
   Facing,
   Inventory,
   ItemStack,
+  NpcDef,
   NpcState,
   PlayerState,
   Quest,
@@ -64,6 +65,7 @@ export const tileOf = (px: number): number => Math.floor(px / TILE);
 
 /** Current villager state, created from the routine on first use. */
 export function npcState(world: WorldState, id: string): NpcState {
+  if (!world.npcs) world.npcs = {};
   let st = world.npcs[id];
   if (!st) {
     const def = NPCS[id]!;
@@ -83,13 +85,14 @@ export const routineTarget = (def: { routine: { at: number; x: number; y: number
 
 export const isFarm = (world: WorldState): boolean => !world.area;
 
+/** Villagers who live on this map. */
+export const npcsIn = (world: WorldState): NpcDef[] => (world.area === 'dungeon' ? [] : Object.values(NPCS).filter((n) => (n.area ?? 'farm') === (world.area ?? 'farm')));
+
 export const npcAt = (world: WorldState, tx: number, ty: number) =>
-  !isFarm(world)
-    ? undefined
-    : Object.values(NPCS).find((n) => {
-        const st = npcState(world, n.id);
-        return tileOf(st.x) === tx && tileOf(st.y) === ty;
-      });
+  npcsIn(world).find((n) => {
+    const st = npcState(world, n.id);
+    return tileOf(st.x) === tx && tileOf(st.y) === ty;
+  });
 
 export const isMob = (a: AnimalState): boolean => !!ANIMALS[a.species]?.mob;
 
@@ -912,6 +915,11 @@ export function setOnline(world: WorldState, playerId: string, online: boolean):
 export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean): void {
   const p = world.players[playerId];
   if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (p.moveLock && p.moveLock > 0) {
+    // just arrived on another map: the client's old positions are meaningless; accept only nearby ones
+    if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
+    delete p.moveLock;
+  }
   // A client that just walked through a portal reports a position by the portal's exit
   for (const portal of isFarm(world) ? PORTALS : []) {
     const nearFrom = Math.hypot(p.x - (portal.from.x + 0.5) * TILE, p.y - (portal.from.y + 0.5) * TILE) <= 3 * TILE;
@@ -967,9 +975,9 @@ const NPC_SPEED = 28;
 
 /** Villagers walk their daily routine, pausing to chat when a player stands close. */
 export function tickNpcs(world: WorldState, dtMs: number): void {
-  for (const def of Object.values(NPCS)) {
+  for (const def of npcsIn(world)) {
     const st = npcState(world, def.id);
-    const wp = routineTarget(def, world.timeMs);
+    const wp = routineTarget(def, farmOf(world).timeMs);
     const tx = wp.x * TILE + TILE / 2;
     const ty = wp.y * TILE + TILE / 2;
     const dx = tx - st.x;
@@ -1059,6 +1067,9 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'sven', kind: 'fish', items: ['fish_roach', 'fish_perch', 'fish_pike'], count: [1, 3], stars: 2 },
   { npc: 'elsa', kind: 'kid', items: ['strawberry', 'carrot', 'egg', 'bread', 'hay'], count: [1, 3], stars: 1 },
   { npc: 'elsa', kind: 'flowers', items: ['fiber'], count: [3, 6], stars: 1 },
+  { npc: 'bo', kind: 'bake', items: ['wheat', 'egg', 'milk', 'honey'], count: [2, 4], stars: 2 },
+  { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem'], count: [1, 6], stars: 2 },
+  { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
 ];
 
@@ -1130,8 +1141,8 @@ export function completeQuest(world: WorldState, playerId: string, questId: stri
   const q = world.quests.find((x) => x.id === questId);
   if (!p || !q || p.questsDone.includes(q.id)) return [];
   const npc = NPCS[q.npc];
-  if (!npc) return [];
-  const st = npcState(world, npc.id);
+  if (!npc || (npc.area ?? 'farm') !== p.area) return [];
+  const st = npcState(areaOf(farmOf(world), p), npc.id);
   if (Math.abs(tileOf(p.x) - tileOf(st.x)) > REACH + 1 || Math.abs(tileOf(p.y) - tileOf(st.y)) > REACH + 1) return [];
   if (countItem(p.inventory, q.want.item) < q.want.count) return [toast(p.id, T.questNoItems)];
   const out: Change[] = [];
@@ -1207,6 +1218,7 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   p.moving = false;
   delete p.fishing;
   if (target !== farm) target.players[p.id] = p;
+  p.moveLock = 30;
   if (!p.visited) p.visited = ['farm'];
   const firstVisit = !p.visited.includes(keyStr);
   if (firstVisit) p.visited.push(keyStr);
@@ -1284,6 +1296,7 @@ export function enterCave(world: WorldState, playerId: string): Change[] {
   p.moving = false;
   delete p.fishing;
   d.players[p.id] = p;
+  p.moveLock = 30;
   return [{ t: 'areaData', to: p.id, key: 'dungeon', world: d }, playerChange(p), toast(p.id, T.enteredCave)];
 }
 
@@ -1301,6 +1314,7 @@ export function leaveCave(world: WorldState, playerId: string, knockedOut: boole
   p.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;
   p.facing = 'down';
   p.moving = false;
+  p.moveLock = 30;
   const out: Change[] = [playerChange(p)];
   if (knockedOut) out.push(toast(p.id, T.knockedOut));
   if (d && d.dungeonInfo?.cleared && !dungeonOccupied(d)) delete farm.dungeon;
@@ -1480,6 +1494,7 @@ function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Chang
     if (!areaOccupied(a)) continue;
     const local: Change[] = [];
     tickAnimals(a, dtMs, ctx, local);
+    tickNpcs(a, dtMs);
     tickDrops(a, local);
     out.push(...tagArea(local, k));
   }
@@ -1504,7 +1519,10 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickDrops(world, out);
   tickFishing(world, ctx, out);
   tickOtherAreas(world, dtMs, ctx, out);
-  for (const p of Object.values(world.players)) if (p.emote && p.emote.until < ctx.now) delete p.emote;
+  for (const p of Object.values(world.players)) {
+    if (p.emote && p.emote.until < ctx.now) delete p.emote;
+    if (p.moveLock && --p.moveLock <= 0) delete p.moveLock;
+  }
   if (world.timeMs >= DAY_LENGTH_MS) {
     world.timeMs -= DAY_LENGTH_MS;
     newDay(world, ctx, out);

@@ -28,8 +28,9 @@ export function getArt(): Art {
   return art;
 }
 
+// Textures are added once per game; animations keep references to their frames, so never remove/re-add them.
 const addCanvas = (tm: Phaser.Textures.TextureManager, key: string, canvas: HTMLCanvasElement) => {
-  if (tm.exists(key)) tm.remove(key);
+  if (tm.exists(key)) return;
   tm.addCanvas(key, canvas);
 };
 
@@ -50,8 +51,8 @@ export function registerTextures(tm: Phaser.Textures.TextureManager): void {
       for (const jul of [false, true]) {
         const key = animalKey(species, baby, jul);
         const size = ANIMAL_SIZE[species]!;
+        if (tm.exists(key)) continue;
         const sheet = animalSheet(species, baby, jul);
-        if (tm.exists(key)) tm.remove(key);
         tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: size.w, frameHeight: size.h });
       }
   }
