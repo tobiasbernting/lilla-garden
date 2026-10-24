@@ -34,7 +34,7 @@ import {
 import { portraitUrl, getArt } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
 import { net } from '../net.js';
-import { bus, client, myPlayer } from '../state.js';
+import { activeWorld, bus, client, myPlayer } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 import { PaintBoard } from './paint.ts';
@@ -559,7 +559,7 @@ export class Menus {
   // ---- animal name ----
 
   private renderName(body: HTMLElement): void {
-    const a = this.animalId !== null ? client.world?.animals[this.animalId] : undefined;
+    const a = this.animalId !== null ? activeWorld()?.animals[this.animalId] : undefined;
     if (!a) {
       this.close();
       return;

@@ -161,7 +161,7 @@ export class Hud {
     this.top.append(h('div', { class: 'chip' }, `${clock} ${fmt(T.day, { day: client.day })}`));
     if (me) this.top.append(h('div', { class: 'chip' }, h('span', { class: 'coins' }, `${me.coins} ${T.coins}`)));
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
-    if (me && me.area === 'dungeon') this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
+    if (me && (me.area === 'dungeon' || me.hearts < MAX_HEARTS)) this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
     if (me && me.area !== 'farm' && me.area !== 'dungeon') {
       const b = (client.areas[me.area]?.biome as Biome | undefined) ?? 'ang';
       this.top.append(h('div', { class: 'chip' }, `${BIOME_EMOJI[b]} ${BIOME_NAMES[b]}`));

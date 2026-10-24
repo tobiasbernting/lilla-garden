@@ -4,7 +4,7 @@ import { ANIMALS, NPCS } from './data.ts';
 import { SPECIES_NAMES } from './sv.ts';
 import { addObject, emptyWorld, inBounds, objectAt, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
-import type { Terrain, WorldState } from './types.ts';
+import type { AnimalDef, AnimalState, Terrain, WorldState } from './types.ts';
 import { MAP_H, MAP_W, TILE, key } from './types.ts';
 
 export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken' | 'by';
@@ -166,22 +166,47 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
       }
     }
   if (biome === 'by') buildVillage(world, rnd);
-  // Wild animals of this biome
-  const wild = Object.values(ANIMALS).find((a) => a.wild === biome);
-  if (wild) {
-    const n = randInt(rnd, 3, 5);
+  spawnWildAnimals(world, biome, rnd);
+  // A signpost at every arrival tile pointing home-ish (decoration)
+  for (const side of ['n', 's', 'e', 'w'] as const) {
+    const a = arrivalTile(side);
+    const sx = side === 'e' || side === 'w' ? a.x : a.x + 2;
+    const sy = side === 'n' || side === 's' ? a.y : a.y + 2;
+    tryObj(sx, sy, 'signpost');
+  }
+  return world;
+}
+
+/** Opens paths out of the farm at the middle of each edge (idempotent). */
+/** The wild species that live in a biome (predators stay out of the village). */
+export const wildSpeciesOf = (biome: Biome): AnimalDef[] =>
+  Object.values(ANIMALS).filter((a) => a.wild && a.wild.split('|').includes(biome) && !(biome === 'by' && a.predator));
+
+/**
+ * Puts the biome's wild animals into an area. With `restock`, only tops up species whose untamed
+ * count fell below their minimum (predators that were chased off, animals that were tamed).
+ * Returns the animals that were added.
+ */
+export function spawnWildAnimals(world: WorldState, biome: Biome, rnd: () => number, restock = false): AnimalState[] {
+  const added: AnimalState[] = [];
+  const T = world.terrain;
+  for (const def of wildSpeciesOf(biome)) {
+    const [min, max] = def.wildCount ?? [3, 5];
+    const have = Object.values(world.animals).filter((a) => a.species === def.species && !a.owner).length;
+    const want = restock ? Math.max(0, min - have) : randInt(rnd, min, max);
     let tries = 0;
     let placed = 0;
-    while (placed < n && tries++ < 200) {
+    while (placed < want && tries++ < 200) {
       const x = randInt(rnd, 6, MAP_W - 7);
       const y = randInt(rnd, 6, MAP_H - 7);
       const t = T[tileIndex(x, y)];
       if (t === 'water' || t === 'ice' || objectAt(world, x, y) || inEdgeGap(x, y)) continue;
+      if (Object.values(world.players).some((p) => Math.hypot(p.x - (x * TILE + 8), p.y - (y * TILE + 8)) < 8 * TILE)) continue;
       const id = world.nextId++;
-      world.animals[id] = {
+      const a: AnimalState = {
         id,
-        species: wild.species,
-        name: SPECIES_NAMES[wild.species] ?? wild.species,
+        species: def.species,
+        name: SPECIES_NAMES[def.species] ?? def.species,
         x: x * TILE + TILE / 2,
         y: y * TILE + TILE / 2,
         facing: 'down',
@@ -197,20 +222,18 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
         homeId: 0,
         waitMs: randInt(rnd, 500, 3000),
       };
+      if (def.predator) {
+        a.hp = def.predator.hp;
+        a.attackAt = 0;
+      }
+      world.animals[id] = a;
+      added.push(a);
       placed++;
     }
   }
-  // A signpost at every arrival tile pointing home-ish (decoration)
-  for (const side of ['n', 's', 'e', 'w'] as const) {
-    const a = arrivalTile(side);
-    const sx = side === 'e' || side === 'w' ? a.x : a.x + 2;
-    const sy = side === 'n' || side === 's' ? a.y : a.y + 2;
-    tryObj(sx, sy, 'signpost');
-  }
-  return world;
+  return added;
 }
 
-/** Opens paths out of the farm at the middle of each edge (idempotent). */
 export function ensureFarmExits(world: WorldState): void {
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {

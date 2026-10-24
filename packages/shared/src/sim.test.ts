@@ -35,6 +35,9 @@ import {
   equip,
   generateWorld,
   isSolidForPlayer,
+  isHostile,
+  isPetAnimal,
+  ANIMALS,
   key,
   mulberry32,
   nameAnimal,
@@ -1319,5 +1322,132 @@ describe('hästar', () => {
     expect(p.riding).toBeUndefined();
     expect(horse.y).toBeLessThan(3 * TILE);
     expect(Object.values(areaOf(world, p).animals).some((a) => a.species === 'horse')).toBe(false);
+  });
+});
+
+describe('lasso och rovdjur', () => {
+  const at = (now: number, r: number): SimCtx => ({ season: 'none', rnd: () => r, now });
+  /** Player in the area north of the farm with a lasso in hand and a wild animal two tiles to the right. */
+  function outdoors(species: string) {
+    const { world, p } = setup();
+    standAt(world, p, 32, 0);
+    travel(world, p.id, 'n');
+    const area = areaOf(world, p);
+    for (const a of Object.values(area.animals)) delete area.animals[a.id];
+    standAt(world, p, 30, 30);
+    for (let x = 28; x <= 36; x++) for (let y = 27; y <= 33; y++) clearTile(area, x, y);
+    const a = spawnMob(area, species, 32, 30);
+    a.hp = ANIMALS[species]?.predator?.hp ?? 1;
+    addItem(p.inventory, 'lasso', 1);
+    p.selected = p.inventory.findIndex((s) => s?.item === 'lasso');
+    return { world, p, area, a };
+  }
+
+  it('a lucky throw tames the animal into a pet that asks for a name', () => {
+    const { world, p, area, a } = outdoors('hare');
+    const ch = performAction(area, p.id, 31, 30, at(1_000_000, 0.1));
+    expect(ch.some((c) => c.t === 'fx' && c.kind === 'lasso')).toBe(true);
+    expect(a.owner).toBe(p.id);
+    expect(isPetAnimal(a)).toBe(true);
+    expect(ch.some((c) => c.t === 'open' && c.ui === 'nameAnimal' && c.id === a.id)).toBe(true);
+    expect(toasts(ch).some((t) => t.includes('kompis'))).toBe(true);
+    expect(p.stats.tame).toBe(1);
+    expect(p.stats.tame_species).toBe(1);
+    expect(p.achievements).toContain('tame_1');
+    // it follows its owner now: moving away makes it walk after you
+    standAt(world, p, 30, 30);
+    a.x = 36 * TILE;
+    const before = a.x;
+    tick(world, 200, at(1_000_100, 0.5));
+    expect(a.x).toBeLessThan(before);
+    // and petting it is like petting a dog, not a wild animal
+    expect(p.stats.wildpet).toBeUndefined();
+  });
+
+  it('a missed throw scares the animal away for a while', () => {
+    const { world, p, area, a } = outdoors('hare');
+    const ch = performAction(area, p.id, 31, 30, at(1_000_000, 0.95));
+    expect(a.owner).toBeUndefined();
+    expect(a.fleeUntil).toBe(1_003_000);
+    expect(toasts(ch).some((t) => t.includes('Missade'))).toBe(true);
+    const before = a.x;
+    tick(world, 200, at(1_000_100, 0.5));
+    expect(a.x).toBeGreaterThan(before); // runs away from the player on its left
+    tick(world, 200, at(1_004_000, 0.5));
+    expect(a.fleeUntil).toBeUndefined();
+  });
+
+  it('predators bite one heart with a cooldown, tamed ones do not, and fainting sends you home', () => {
+    const { world, p, area, a } = outdoors('bear');
+    a.x = p.x + TILE; // right next to the player
+    a.y = p.y;
+    expect(isHostile(a)).toBe(true);
+    tick(world, 50, at(2_000_000, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 1);
+    tick(world, 50, at(2_000_100, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 1); // still on cooldown
+    tick(world, 50, at(2_001_700, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 2);
+    // hearts grow back after a game hour outdoors (and the bear bites again)
+    tick(world, 50, at(2_001_700 + DAY_LENGTH_MS / 24 + 1, 0.5));
+    expect(p.hearts).toBe(MAX_HEARTS - 2);
+    // a tamed bear is a friend
+    a.owner = p.id;
+    p.hearts = 3;
+    delete p.healAt;
+    const quiet = tick(world, 50, at(2_100_000, 0.5));
+    expect(p.hearts).toBe(3);
+    expect(quiet.some((c) => c.t === 'fx' && c.kind === 'hit')).toBe(false);
+    expect(isHostile(a)).toBe(false);
+    // fainting: last heart lost outdoors wakes you up at home with everything you carried
+    delete a.owner;
+    a.x = p.x + TILE;
+    a.y = p.y;
+    p.hearts = 1;
+    p.healAt = 9_000_000; // no heart grows back before the bite
+    addItem(p.inventory, 'fur', 2);
+    const ch = tick(world, 50, at(2_200_000, 0.5));
+    expect(p.area).toBe('farm');
+    expect(p.hearts).toBe(MAX_HEARTS);
+    expect(countItem(p.inventory, 'fur')).toBe(2);
+    expect(toasts(ch).some((t) => t.includes('svimmade'))).toBe(true);
+  });
+
+  it('a sword hurts predators outdoors but never other animals, and a beaten predator drops fur', () => {
+    const { p, area, a } = outdoors('bear');
+    a.x = p.x + TILE;
+    a.y = p.y;
+    addItem(p.inventory, 'sword', 1);
+    p.selected = p.inventory.findIndex((s) => s?.item === 'sword');
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    expect(a.hp).toBe(3);
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    expect(area.animals[a.id]).toBeUndefined();
+    expect(Object.values(area.drops).some((d) => d.item === 'fur')).toBe(true);
+    expect(p.stats.predators).toBe(1);
+    const hare = spawnMob(area, 'hare', 31, 30);
+    performAction(area, p.id, 31, 30, at(3_000_000, 0.5));
+    expect(area.animals[hare.id]).toBeDefined();
+  });
+
+  it('tamed animals come home with you and areas get their wild animals back the next day', () => {
+    const { world, p, area, a } = outdoors('wolf');
+    performAction(area, p.id, 31, 30, at(1_000_000, 0.1));
+    expect(a.owner).toBe(p.id);
+    standAt(world, p, 32, 63);
+    const ch = travel(world, p.id, 's');
+    expect(p.area).toBe('farm');
+    expect(Object.values(area.animals).some((x) => x.species === 'wolf')).toBe(false);
+    const home = Object.values(world.animals).find((x) => x.species === 'wolf')!;
+    expect(home).toBeDefined();
+    expect(home.owner).toBe(p.id);
+    expect(ch.some((c) => c.t === 'animal' && c.animal === null && c.area === 'a:0,-1')).toBe(true);
+    expect(ch.some((c) => c.t === 'animal' && c.animal?.species === 'wolf' && c.area === undefined)).toBe(true);
+    // the emptied area is restocked with its own wild animals at dawn
+    const before = Object.keys(area.animals).length;
+    newDay(world, ctx());
+    expect(Object.keys(area.animals).length).toBeGreaterThan(before);
+    expect(Object.values(area.animals).every((x) => ANIMALS[x.species]?.wild?.split('|').includes(area.biome!))).toBe(true);
   });
 });

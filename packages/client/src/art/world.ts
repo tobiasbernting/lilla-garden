@@ -970,9 +970,13 @@ export function drawFx(): Record<string, Px[]> {
     return p;
   };
   const arrow = new Px(12, 3).rect(0, 1, 10, 1, WOOD_L).rect(9, 0, 3, 3, '#d8d8d8').px(11, 1, '#ffffff').rect(0, 0, 2, 3, '#e04a2a');
+  const lasso = new Px(12, 12).circle(6, 6, 5.5, WOOD_L).circle(6, 6, 4.5, WOOD_D);
+  lasso.ctx.clearRect(3, 3, 6, 6);
+  lasso.rect(5, 9, 2, 3, WOOD_L);
   return {
     hit: [hit],
     arrow: [arrow],
+    lasso: [lasso],
     rocket: [rocket],
     smoke: [smoke(0), smoke(1)],
     boom: [boom(0), boom(1), boom(2)],
