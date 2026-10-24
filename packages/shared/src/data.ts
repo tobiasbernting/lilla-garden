@@ -307,6 +307,8 @@ built('clock', { solid: false, flat: true });
 built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] });
 // Cave
 addO(O('cave', { w: 2, h: 2, interact: 'cave', breakWith: undefined }));
+addO(O('bathhouse', { w: 3, h: 2, interact: 'bath', breakWith: undefined }));
+addO(O('bath_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_wall', { breakWith: undefined }));
 addO(O('cave_torch', { solid: false, breakWith: undefined, light: true }));
@@ -650,6 +652,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('ride_25', 'ride', 25, 2, 'stall'),
   A('truffle_1', 'truffle', 1, 1, 'truffle'),
   A('truffle_20', 'truffle', 20, 2, 'animal_pig'),
+  A('swim_1', 'swim', 1, 1, 'shell'),
+  A('swim_25', 'swim', 25, 2, 'shell'),
 ];
 
 /** Fish and how likely they bite (weights). */

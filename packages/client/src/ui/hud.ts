@@ -1,5 +1,5 @@
 // HUD: top chips, hotbar, toasts, touch controls.
-import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
+import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, isBathKey, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
 import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
@@ -163,7 +163,8 @@ export class Hud {
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
     if (me && me.boostUntil !== undefined && me.boostUntil > serverNow()) this.top.append(h('div', { class: 'chip', title: T.pizzaPower }, '🍕💨'));
     if (me && me.area === 'dungeon') this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
-    if (me && me.area !== 'farm' && me.area !== 'dungeon') {
+    if (me && isBathKey(me.area)) this.top.append(h('div', { class: 'chip' }, `🏊 ${T.bathhouseName}`));
+    else if (me && me.area !== 'farm' && me.area !== 'dungeon') {
       const b = (client.areas[me.area]?.biome as Biome | undefined) ?? 'ang';
       this.top.append(h('div', { class: 'chip' }, `${BIOME_EMOJI[b]} ${BIOME_NAMES[b]}`));
     }

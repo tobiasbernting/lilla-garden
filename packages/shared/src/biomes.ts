@@ -2,6 +2,7 @@
 // Walking off an edge of one area puts you on the opposite edge of the next.
 import { ANIMALS, NPCS } from './data.ts';
 import { SPECIES_NAMES } from './sv.ts';
+import { ensureBathhouse } from './bath.ts';
 import { addObject, emptyWorld, inBounds, objectAt, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import type { Terrain, WorldState } from './types.ts';
@@ -306,6 +307,7 @@ function buildVillage(world: WorldState, rnd: () => number): void {
     addObject(world, 'flowerbox', x, y);
   addObject(world, 'bench', cx - 3, cy + 2);
   addObject(world, 'bench', cx + 2, cy + 2);
+  ensureBathhouse(world);
   // villagers must be able to stand on their spots
   for (const n of Object.values(NPCS)) {
     if (n.area !== world.area) continue;

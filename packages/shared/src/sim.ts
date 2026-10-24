@@ -4,6 +4,7 @@
 import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
 import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, type Biome } from './biomes.ts';
+import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -122,7 +123,7 @@ export function applyPortal(p: { x: number; y: number; facing: Facing }, world?:
 export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
   const t = world.terrain[tileIndex(tx, ty)];
-  if (t === 'water' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields
+  if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields (and out of the pool)
   if (world.crops[key(tx, ty)]) return true;
   if (npcAt(world, tx, ty) || portalAt(tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
@@ -182,6 +183,7 @@ export function stepPlayer(
   }
   const ux = dx / len;
   const uy = dy / len;
+  if (inPool(world, p)) speedMul *= SWIM_SPEED_MUL;
   const dist = (PLAYER_SPEED * speedMul * dtMs) / 1000;
   const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, p.x + ux * dist, p.y + uy * dist);
   p.moving = r.x !== p.x || r.y !== p.y;
@@ -190,6 +192,9 @@ export function stepPlayer(
   p.facing = Math.abs(ux) > Math.abs(uy) ? (ux > 0 ? 'right' : 'left') : uy > 0 ? 'down' : 'up';
   applyPortal(p, world);
 }
+
+/** Standing in the bath house pool? */
+export const inPool = (world: WorldState, p: { x: number; y: number }): boolean => world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] === 'pool';
 
 /** The tile in front of the player (for the context action button). */
 export function facingTile(p: { x: number; y: number; facing: Facing }): { tx: number; ty: number } {
@@ -261,7 +266,7 @@ export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.sele
 
 const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
 const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom'): Change => ({
+const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -673,7 +678,12 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
     case 'cave':
       out.push(...enterCave(world, p.id));
       return;
+    case 'bath':
+      out.push(...enterBath(world, p.id));
+      return;
     case 'exit':
+      if (isBathKey(world.area)) out.push(...leaveBath(world, p.id));
+      return;
     case 'treasure':
       return;
     case 'water':
@@ -847,6 +857,10 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
   }
   if (def.category === 'placeable' && def.places) {
     const floor = FLOOR_ITEMS[def.places];
+    if (terrain === 'pool') {
+      out.push(toast(p.id, T.cantPlaceHere));
+      return;
+    }
     if (floor) {
       if (terrain === 'water' || terrain === floor) return;
       if ((terrain === 'soil' || terrain === 'soil_wet') && world.crops[key(tx, ty)]) return;
@@ -1227,7 +1241,7 @@ export function tickNpcs(world: WorldState, dtMs: number): void {
 const isSolidForNpc = (world: WorldState, tx: number, ty: number): boolean => {
   if (!inBounds(tx, ty)) return true;
   const t = world.terrain[tileIndex(tx, ty)];
-  if (t === 'water' || t === 'soil' || t === 'soil_wet') return true;
+  if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true;
   if (world.crops[key(tx, ty)] || portalAt(tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
   return !!obj && objectDef(obj.kind).solid;
@@ -1385,9 +1399,14 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
   if (!farm.areas) farm.areas = {};
   let a = farm.areas[keyStr];
   if (!a) {
-    const c = areaCoords(keyStr);
-    if (!c) return null;
-    a = generateArea(c.ax, c.ay);
+    if (isBathKey(keyStr)) {
+      if (!getArea(farm, villageOfBath(keyStr))) return null;
+      a = generateBath(villageOfBath(keyStr));
+    } else {
+      const c = areaCoords(keyStr);
+      if (!c) return null;
+      a = generateArea(c.ax, c.ay);
+    }
     farm.areas[keyStr] = a;
   }
   linkToFarm(a, farm);
@@ -1396,6 +1415,7 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
 
 export const areaName = (keyStr: string, world?: WorldState): string => {
   if (keyStr === 'farm' || keyStr === 'dungeon') return BIOME_NAMES[keyStr];
+  if (isBathKey(keyStr)) return T.bathhouseName;
   const a = world ? getArea(world, keyStr) : null;
   return BIOME_NAMES[(a?.biome as Biome) ?? 'ang'];
 };
@@ -1748,8 +1768,64 @@ function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Chang
     tickAnimals(a, dtMs, ctx, local);
     tickNpcs(a, dtMs);
     tickDrops(a, local);
+    if (isBathKey(k)) tickBath(a, local, out);
     out.push(...tagArea(local, k));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Badhuset
+// ---------------------------------------------------------------------------
+
+/** Walks into the bath house from the village square. */
+export function enterBath(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon' || p.area === 'farm' || isBathKey(p.area)) return [];
+  const out: Change[] = [];
+  if (!placeIn(farm, p, bathKey(p.area), BATH_EXIT.x, BATH_EXIT.y - 1, 'up', out)) return [];
+  out.push(toast(p.id, T.enteredBath));
+  return out;
+}
+
+/** Back out through the door to the village. */
+export function leaveBath(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !isBathKey(p.area)) return [];
+  const villageKey = villageOfBath(p.area);
+  const village = getArea(farm, villageKey);
+  if (!village) return [];
+  const door = bathhouseDoorTile(village);
+  const out: Change[] = [];
+  delete p.swimming;
+  placeIn(farm, p, villageKey, door.x, door.y, 'down', out);
+  return out;
+}
+
+/** Splashes when someone jumps in, counts swims, and lets players walk out through the door. */
+function tickBath(bath: WorldState, local: Change[], out: Change[]): void {
+  for (const p of Object.values(bath.players)) {
+    if (!p.online) continue;
+    if (p.moveLock) continue;
+    const tx = tileOf(p.x);
+    const ty = tileOf(p.y);
+    if (tx === BATH_EXIT.x && ty === BATH_EXIT.y) {
+      out.push(...leaveBath(bath, p.id));
+      continue;
+    }
+    const swimming = inPool(bath, p);
+    if (swimming && !p.swimming) {
+      p.swimming = true;
+      local.push(fx(tx, ty, 'splash'));
+      bump(p, 'swim', 1, out);
+      out.push(playerChange(p));
+    } else if (!swimming && p.swimming) {
+      delete p.swimming;
+      out.push(playerChange(p));
+    }
+  }
+  void BATH_POOL;
 }
 
 // ---------------------------------------------------------------------------

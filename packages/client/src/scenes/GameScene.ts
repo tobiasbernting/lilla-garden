@@ -27,6 +27,9 @@ import {
   stepPlayer,
   RIDE_SPEED_MUL,
   BOOST_SPEED_MUL,
+  BATH_ROOM,
+  inPool,
+  isBathKey,
   tileOf,
   type AnimalState,
   type Change,
@@ -36,7 +39,7 @@ import {
   type WorldObject,
 } from '@lilla-garden/shared';
 import { animalKey, ANIMAL_SIZE } from '../art/animals.js';
-import { dirOf, frameIndex, type Dir } from '../art/characters.js';
+import { CHAR_H, CHAR_W, dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
 import { EMOTE_GLYPH, PAINT_COLORS } from '../art/world.js';
 import { HD, NEW_ART, R } from '../art/style.ts';
@@ -57,6 +60,8 @@ interface Actor {
   texture: string;
   x: number;
   y: number;
+  /** Shown while swimming in the bath house pool. */
+  ripple?: Phaser.GameObjects.Image;
 }
 
 export interface InputSource {
@@ -89,6 +94,9 @@ export class GameScene extends Phaser.Scene {
   private npcs = new Map<string, Actor>();
   private inside = false;
   private roomMask!: Phaser.GameObjects.Image;
+  private bathMask!: Phaser.GameObjects.Image;
+  /** Inside a bath house (its own small map, dark outside the room). */
+  private bath = false;
   private animals = new Map<number, Actor>();
   private cursor!: Phaser.GameObjects.Image;
   private night!: Phaser.GameObjects.RenderTexture;
@@ -175,11 +183,14 @@ export class GameScene extends Phaser.Scene {
       this.textures.addCanvas('fx-white', c);
     }
     this.roomMask = this.make.image({ key: 'fx-white', add: false }).setOrigin(0).setDisplaySize((INTERIOR.w + 2) * TILE, (INTERIOR.h + 2) * TILE);
+    this.bathMask = this.make.image({ key: 'fx-white', add: false }).setOrigin(0).setDisplaySize(BATH_ROOM.w * TILE, (BATH_ROOM.h + 1) * TILE); // the room incl. the wall caps above it
     this.inside = false;
+    this.bath = isBathKey(this.area);
     this.applySeason();
 
     // --- camera ---
     if (this.area === 'dungeon') this.cameras.main.setBounds(0, 0, DUNGEON_W * TILE, DUNGEON_H * TILE);
+    else if (this.bath) this.cameras.main.setBounds((BATH_ROOM.x - 2) * TILE, (BATH_ROOM.y - 3) * TILE, (BATH_ROOM.w + 4) * TILE, (BATH_ROOM.h + 5) * TILE);
     else this.cameras.main.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE);
     this.cameras.main.setRoundPixels(!HD);
     this.cameras.main.setZoom(R);
@@ -233,8 +244,9 @@ export class GameScene extends Phaser.Scene {
     const t = this.world.terrain[y * MAP_W + x]!;
     if (this.area === 'dungeon') return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
     const snowy = client.season === 'jul';
-    if (!art.terrain.edges) return art.terrain.index(t, x, y, snowy, 0, t === 'water' ? frame : 0);
+    if (!art.terrain.edges) return art.terrain.index(t, x, y, snowy, 0, t === 'water' || t === 'pool' ? frame : 0);
     if (t === 'water') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'water' || n === undefined), frame);
+    if (t === 'pool') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'pool'), frame);
     if (t === 'soil' || t === 'soil_wet') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'soil' || n === 'soil_wet' || n === undefined));
     return art.terrain.index(t, x, y, snowy);
   }
@@ -245,7 +257,8 @@ export class GameScene extends Phaser.Scene {
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
         this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
-        if (this.area !== 'dungeon' && world.terrain[y * MAP_W + x] === 'water') this.waterTiles.push([x, y]);
+        const tt = world.terrain[y * MAP_W + x];
+        if (this.area !== 'dungeon' && (tt === 'water' || tt === 'pool')) this.waterTiles.push([x, y]);
       }
   }
 
@@ -254,7 +267,7 @@ export class GameScene extends Phaser.Scene {
     const t = world.terrain[y * MAP_W + x]!;
     this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
     this.waterTiles = this.waterTiles.filter(([wx, wy]) => wx !== x || wy !== y);
-    if (t === 'water') this.waterTiles.push([x, y]);
+    if (t === 'water' || t === 'pool') this.waterTiles.push([x, y]);
     // neighbours' edges change too
     if (getArt().terrain.edges) for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) if (x + dx >= 0 && y + dy >= 0 && x + dx < MAP_W && y + dy < MAP_H) this.layer.putTileAt(this.tileIndexFor(x + dx, y + dy, this.waterFrame), x + dx, y + dy);
   }
@@ -411,6 +424,7 @@ export class GameScene extends Phaser.Scene {
     if (!a) return;
     a.sprite.destroy();
     a.shadow.destroy();
+    a.ripple?.destroy();
     a.label.remove();
     a.bubble?.remove();
     this.players.delete(id);
@@ -639,6 +653,9 @@ export class GameScene extends Phaser.Scene {
       } else if (kind === 'poof') {
         img.setAlpha(0.9);
         this.tweens.add({ targets: img, scale: 1.8 * S, alpha: 0, duration: 350, onComplete: () => img.destroy() });
+      } else if (kind === 'splash') {
+        img.setPosition(x + ox, y + 2).setScale(0.6 * S);
+        this.tweens.add({ targets: img, scale: 1.3 * S, y: y - 8, alpha: 0, duration: 380, onComplete: () => img.destroy() });
       } else if (kind === 'water' || kind === 'chop') {
         this.tweens.add({ targets: img, y: y + 6, x: img.x + (Math.random() - 0.5) * 10, alpha: 0, duration: 350 + i * 60, onComplete: () => img.destroy() });
       } else {
@@ -727,6 +744,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       this.placeActor(actor, p.facing, p.moving, true, p.riding !== undefined);
+      this.updateSwim(actor, this.bath && inPool(world, actor));
       this.updateBubble(actor, p);
     }
     for (const [id, actor] of this.animals) {
@@ -803,6 +821,23 @@ export class GameScene extends Phaser.Scene {
 
     // --- night ---
     this.drawNight();
+  }
+
+  /** Swimming: only the upper body shows above the water, with a ripple ring around it. */
+  private updateSwim(actor: Actor, swimming: boolean): void {
+    if (swimming) {
+      actor.sprite.setCrop(0, 0, CHAR_W * R, 15 * R);
+      actor.sprite.y += 7;
+      actor.shadow.setVisible(false);
+      if (!actor.ripple) actor.ripple = this.add.image(actor.x, actor.y, 'fx-ripple-0').setScale(S).setAlpha(0.9);
+      actor.ripple.setPosition(Math.round(actor.x), Math.round(actor.y) + 3).setDepth(actor.y + 3).setTexture(`fx-ripple-${this.waterFrame}`);
+    } else {
+      if (actor.sprite.isCropped) actor.sprite.setCrop();
+      if (actor.ripple) {
+        actor.ripple.destroy();
+        actor.ripple = undefined;
+      }
+    }
   }
 
   private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean, riding = false): void {
@@ -935,7 +970,7 @@ export class GameScene extends Phaser.Scene {
   private drawNight(): void {
     const amount = this.area === 'dungeon' ? 0.82 : nightAmount(client.timeMs);
     this.night.clear();
-    if (NEW_ART && this.area !== 'dungeon' && !this.inside) {
+    if (NEW_ART && this.area !== 'dungeon' && !this.inside && !this.bath) {
       const f = client.timeMs / DAY_LENGTH_MS;
       // golden morning light and a warm sunset that fades into the blue night
       if (f < 0.12) this.night.fill(0xffc070, 0.16 * (1 - f / 0.12));
@@ -945,6 +980,12 @@ export class GameScene extends Phaser.Scene {
       const cam = this.cameras.main;
       this.night.fill(0x000000, 1);
       this.night.erase(this.roomMask, (INTERIOR.x - 1) * TILE - cam.worldView.x, (INTERIOR.y - 1) * TILE - cam.worldView.y);
+      return;
+    }
+    if (this.bath) {
+      const cam = this.cameras.main;
+      this.night.fill(0x000000, 1);
+      this.night.erase(this.bathMask, BATH_ROOM.x * TILE - cam.worldView.x, (BATH_ROOM.y - 1) * TILE - cam.worldView.y);
       return;
     }
     if (amount <= 0.01) return;

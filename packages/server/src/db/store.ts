@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureCave, ensureFarmExits, ensureInterior, ensurePizzeria, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureFarmExits, ensureInterior, ensurePizzeria, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -91,6 +91,7 @@ export class PgStore implements Store {
     for (const p of await this.db.select().from(s.players)) {
       world.players[p.id] = { ...p.data, questsDone: p.data.questsDone ?? [], stars: p.data.stars ?? 0, stats: p.data.stats ?? {}, achievements: p.data.achievements ?? [], area: p.data.area && p.data.area !== 'dungeon' ? p.data.area : 'farm', visited: p.data.visited ?? ['farm'], hearts: MAX_HEARTS, online: false, moving: false };
       delete world.players[p.id]!.riding; // horses are re-mounted after a restart
+      delete world.players[p.id]!.swimming;
       if (p.data.area === 'dungeon') {
         world.players[p.id]!.x = CAVE_EXIT_TILE.x * TILE + TILE / 2;
         world.players[p.id]!.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;
@@ -112,6 +113,12 @@ export class PgStore implements Store {
       world.areas[row.key] = a;
     }
     if (Object.keys(world.areas).length) console.log(`loaded ${Object.keys(world.areas).length} explored areas`);
+    // Villages saved before the bath house existed get one
+    for (const [k, a] of Object.entries(world.areas))
+      if (ensureBathhouse(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`added the bath house to ${k}`);
+      }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers
     const before = Object.keys(world.objects).length;
     if (ensureInterior(world)) console.log('added the farmhouse interior to the saved world');

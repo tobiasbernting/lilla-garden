@@ -11,6 +11,13 @@ import {
   MAX_HEARTS,
   applyMove,
   areaOf,
+  getArea,
+  BATH_EXIT,
+  BATH_POOL,
+  SWIM_SPEED_MUL,
+  PLAYER_SPEED,
+  inPool,
+  ensureBathhouse,
   arrivalTile,
   biomeAt,
   generateArea,
@@ -1412,5 +1419,80 @@ describe('grisar', () => {
     cook(world, p.id, 'truffle_pasta');
     expect(countItem(p.inventory, 'truffle_pasta')).toBe(1);
     expect(countItem(p.inventory, 'truffle')).toBe(0);
+  });
+});
+
+describe('badhuset', () => {
+  const toVillage = () => {
+    const { world, p } = setup();
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    const village = areaOf(world, p);
+    expect(village.biome).toBe('by');
+    return { world, p, village };
+  };
+
+  it('every village has a bath house, also villages saved before it existed', () => {
+    const { village } = toVillage();
+    const bath = Object.values(village.objects).filter((o) => o.kind === 'bathhouse');
+    expect(bath).toHaveLength(1);
+    // a village without one gets one on load
+    delete village.objects[bath[0]!.id];
+    expect(ensureBathhouse(village)).toBe(true);
+    expect(ensureBathhouse(village)).toBe(false);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'bathhouse')).toHaveLength(1);
+  });
+
+  it('enter, swim slowly, earn the badge and walk out again', () => {
+    const { world, p, village } = toVillage();
+    const bath = Object.values(village.objects).find((o) => o.kind === 'bathhouse')!;
+    standAt(world, p, bath.x + 1, bath.y + 2);
+    p.facing = 'up';
+    const ch = performAction(village, p.id, bath.x + 1, bath.y + 1, ctx());
+    expect(p.area).toBe('bath:a:1,0');
+    expect(ch.some((c) => c.t === 'areaData' && c.key === 'bath:a:1,0')).toBe(true);
+    const inside = areaOf(world, p);
+    expect(inside).toBe(getArea(world, 'bath:a:1,0'));
+    expect(inside.terrain.filter((t) => t === 'pool')).toHaveLength(BATH_POOL.w * BATH_POOL.h);
+    expect(Math.floor(p.y / TILE)).toBe(BATH_EXIT.y - 1);
+    expect(() => JSON.stringify(ch)).not.toThrow();
+    // the pool is walkable but slow
+    const px = BATH_POOL.x + 2;
+    const py = BATH_POOL.y + 2;
+    expect(isSolidForPlayer(inside, px, py)).toBe(false);
+    standAt(world, p, px, py);
+    expect(inPool(inside, p)).toBe(true);
+    const x0 = p.x;
+    stepPlayer(inside, p, 1, 0, 1000);
+    expect(p.x - x0).toBeCloseTo(PLAYER_SPEED * SWIM_SPEED_MUL, 0);
+    // the server tick notices the swimmer: splash, badge, flag
+    delete p.moveLock;
+    const t1 = tick(world, 50, ctx());
+    expect(p.swimming).toBe(true);
+    expect(t1.some((c) => c.t === 'fx' && c.kind === 'splash' && c.area === 'bath:a:1,0')).toBe(true);
+    expect(p.achievements).toContain('swim_1');
+    expect(p.stats?.swim).toBe(1);
+    // out of the pool
+    standAt(world, p, BATH_EXIT.x, BATH_EXIT.y - 1);
+    tick(world, 50, ctx());
+    expect(p.swimming).toBeUndefined();
+    // the exit door takes you back to the village square
+    performAction(inside, p.id, BATH_EXIT.x, BATH_EXIT.y, ctx());
+    expect(p.area).toBe('a:1,0');
+    expect(Math.floor(p.x / TILE)).toBe(bath.x + 1);
+    expect(Math.floor(p.y / TILE)).toBe(bath.y + 2);
+    expect(Object.keys(inside.players)).toHaveLength(0);
+    // stepping on the door tile also walks you out
+    performAction(village, p.id, bath.x + 1, bath.y + 1, ctx());
+    expect(p.area).toBe('bath:a:1,0');
+    delete p.moveLock;
+    standAt(world, p, BATH_EXIT.x, BATH_EXIT.y);
+    tick(world, 50, ctx());
+    expect(p.area).toBe('a:1,0');
+    // and home works from inside too
+    performAction(village, p.id, bath.x + 1, bath.y + 1, ctx());
+    teleport(world, p.id, 'farm');
+    expect(p.area).toBe('farm');
   });
 });
