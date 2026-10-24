@@ -1,7 +1,7 @@
 // HUD: top chips, hotbar, toasts, touch controls.
 import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
-import { NEW_ART, setArtStyle } from '../art/style.ts';
+import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
 import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
@@ -77,8 +77,10 @@ export class Hud {
   }
 
   private artBtn(): HTMLElement {
-    const b = h('div', { class: 'round small', title: NEW_ART ? 'Klassisk grafik' : 'Ny grafik (prototyp)' }, NEW_ART ? '🎨' : '✨');
-    onTap(b, () => setArtStyle(!NEW_ART));
+    const next = nextArtStyle(ART_STYLE);
+    const label: Record<string, string> = { klassisk: 'Klassisk grafik', ny: 'Ny pixelgrafik', hd: 'HD-grafik (prototyp)' };
+    const b = h('div', { class: 'round small', title: `Byt till: ${label[next]}` }, ART_STYLE === 'klassisk' ? '✨' : ART_STYLE === 'ny' ? '🖼️' : '🎨');
+    onTap(b, () => setArtStyle(next));
     return b;
   }
 

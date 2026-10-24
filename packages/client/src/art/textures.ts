@@ -3,8 +3,10 @@ import Phaser from 'phaser';
 import type { Appearance, Outfit } from '@lilla-garden/shared';
 import { animalKey, animalSheet, ANIMAL_SIZE } from './animals.js';
 import { CHAR_H, CHAR_W, drawCharacterSheet, lookKey, lookOf, portrait } from './characters.js';
+import { drawTerrainTilesHD, hdFx, hdObjects, upscale } from './hd.ts';
 import { drawIcons } from './icons.js';
 import type { Px } from './px.js';
+import { HD, R } from './style.ts';
 import { drawCrops, drawFx, drawObjects, drawTerrainTiles, type ObjectArt, type TerrainTiles } from './world.js';
 
 export interface Art {
@@ -24,6 +26,15 @@ export function getArt(): Art {
   const icons = drawIcons(objects);
   const iconUrl: Record<string, string> = {};
   for (const [k, p] of Object.entries(icons)) iconUrl[k] = p.dataUrl();
+  if (HD) {
+    // HD: smooth art at R× resolution; things without HD art are upscaled pixel art
+    const crops: Record<string, Px[]> = {};
+    for (const [k, frames] of Object.entries(drawCrops())) crops[k] = frames.map(upscale);
+    const iconsHd: Record<string, Px> = {};
+    for (const [k, px] of Object.entries(icons)) iconsHd[k] = upscale(px);
+    art = { terrain: drawTerrainTilesHD(), objects: hdObjects(objects), crops, fx: hdFx(drawFx()), icons: iconsHd, iconUrl };
+    return art;
+  }
   art = { terrain: drawTerrainTiles(), objects, crops: drawCrops(), fx: drawFx(), icons, iconUrl };
   return art;
 }
@@ -52,8 +63,8 @@ export function registerTextures(tm: Phaser.Textures.TextureManager): void {
         const key = animalKey(species, baby, jul);
         const size = ANIMAL_SIZE[species]!;
         if (tm.exists(key)) continue;
-        const sheet = animalSheet(species, baby, jul);
-        tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: size.w, frameHeight: size.h });
+        const sheet = HD ? upscale(animalSheet(species, baby, jul)).canvas : animalSheet(species, baby, jul);
+        tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: size.w * R, frameHeight: size.h * R });
       }
   }
 }
@@ -64,7 +75,7 @@ export function characterTexture(tm: Phaser.Textures.TextureManager, appearance:
   const key = `char-${lookKey(look)}`;
   if (!tm.exists(key)) {
     const sheet = drawCharacterSheet(look);
-    tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: CHAR_W, frameHeight: CHAR_H });
+    tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: CHAR_W * R, frameHeight: CHAR_H * R });
   }
   return key;
 }

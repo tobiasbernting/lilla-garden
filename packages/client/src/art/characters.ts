@@ -2,7 +2,8 @@
 // Directions: down, up, right (left is right flipped). Frames: 0 stand, 1/2 walk.
 import { ITEMS, type Appearance, type Facing, type Outfit } from '@lilla-garden/shared';
 import { Px, shade } from './px.js';
-import { NEW_ART } from './style.ts';
+import { drawCharacterHD } from './hd.ts';
+import { HD, NEW_ART, R } from './style.ts';
 import { OUTLINE } from './world.js';
 
 export type Dir = 'down' | 'up' | 'right';
@@ -224,9 +225,9 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
 
 /** Sprite sheet of 9 frames (3 dirs x 3 frames). */
 export function drawCharacterSheet(l: Look): HTMLCanvasElement {
-  const sheet = new Px(CHAR_W * 9, CHAR_H);
+  const sheet = new Px(CHAR_W * 9 * R, CHAR_H * R);
   DIRS.forEach((dir, di) => {
-    for (let f = 0; f < 3; f++) sheet.blit(drawCharacter(l, dir, f), (di * 3 + f) * CHAR_W, 0);
+    for (let f = 0; f < 3; f++) sheet.blit(HD ? drawCharacterHD(l, dir, f) : drawCharacter(l, dir, f), (di * 3 + f) * CHAR_W * R, 0);
   });
   return sheet.canvas;
 }
@@ -235,6 +236,13 @@ export const frameIndex = (dir: Dir, frame: number): number => DIRS.indexOf(dir)
 
 /** Portrait data URL (down-facing, scaled). */
 export function portrait(l: Look, scale = 4): string {
+  if (HD) {
+    const f = drawCharacterHD(l, 'down', 0);
+    const p = new Px(CHAR_W * scale, CHAR_H * scale);
+    p.ctx.imageSmoothingEnabled = true;
+    p.ctx.drawImage(f.canvas, 0, 0, CHAR_W * scale, CHAR_H * scale);
+    return p.dataUrl();
+  }
   const f = drawCharacter(l, 'down', 0);
   const p = new Px(CHAR_W * scale, CHAR_H * scale).blitScaled(f, 0, 0, CHAR_W * scale, CHAR_H * scale);
   return p.dataUrl();
