@@ -21,6 +21,12 @@ export class Px {
     return this;
   }
 
+  /** Makes a box transparent again. */
+  clear(x: number, y: number, w: number, h: number): this {
+    this.ctx.clearRect(x, y, w, h);
+    return this;
+  }
+
   rect(x: number, y: number, w: number, h: number, c: string): this {
     this.ctx.fillStyle = c;
     this.ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));

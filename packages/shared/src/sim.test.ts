@@ -324,6 +324,94 @@ describe('resources and building', () => {
   });
 });
 
+describe('own house and paint', () => {
+  it('places walls, windows and a passable door; floor paints the ground', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    for (const [x, y] of [[21, 19], [21, 20], [21, 21], [19, 20]] as const) clearTile(world, x, y);
+    addItem(p.inventory, 'wood', 10);
+    addItem(p.inventory, 'stone', 2);
+    craft(world, p.id, 'wall_wood');
+    craft(world, p.id, 'window');
+    craft(world, p.id, 'door');
+    expect(countItem(p.inventory, 'wall_wood')).toBe(2);
+    select(p, 'wall_wood');
+    performAction(world, p.id, 21, 19, ctx());
+    select(p, 'window');
+    performAction(world, p.id, 21, 20, ctx());
+    select(p, 'door');
+    performAction(world, p.id, 21, 21, ctx());
+    expect(objectAt(world, 21, 19)?.kind).toBe('wall_wood');
+    expect(objectAt(world, 21, 20)?.kind).toBe('window');
+    expect(objectAt(world, 21, 21)?.kind).toBe('door');
+    expect(isSolidForPlayer(world, 21, 19)).toBe(true);
+    expect(isSolidForPlayer(world, 21, 20)).toBe(true);
+    expect(isSolidForPlayer(world, 21, 21)).toBe(false);
+    expect(p.stats?.walls).toBe(3);
+    // floor planks paint the ground; the hammer takes them back
+    addItem(p.inventory, 'floor_wood', 2);
+    select(p, 'floor_wood');
+    performAction(world, p.id, 19, 20, ctx());
+    expect(world.terrain[tileIndex(19, 20)]).toBe('floor_wood');
+    expect(countItem(p.inventory, 'floor_wood')).toBe(1);
+    select(p, 'hammer');
+    performAction(world, p.id, 19, 20, ctx());
+    expect(world.terrain[tileIndex(19, 20)]).toBe('grass');
+    expect(countItem(p.inventory, 'floor_wood')).toBe(2);
+  });
+
+  it('allows furniture on wooden floor outside the farmhouse', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    clearTile(world, 21, 21);
+    world.terrain[tileIndex(21, 20)] = 'floor_wood';
+    world.terrain[tileIndex(21, 21)] = 'floor_wood';
+    addItem(p.inventory, 'bed', 1);
+    select(p, 'bed');
+    performAction(world, p.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)?.kind).toBe('bed');
+    expect(objectAt(world, 21, 21)?.kind).toBe('bed');
+  });
+
+  it('paints the farmhouse, and a wall piece together with everything connected to it', () => {
+    const { world, p } = setup();
+    standAt(world, p, 20, 20);
+    for (const [x, y] of [[21, 19], [21, 20], [21, 21], [19, 20], [20, 19]] as const) clearTile(world, x, y);
+    addItem(p.inventory, 'wall_wood', 2);
+    addItem(p.inventory, 'door', 1);
+    addItem(p.inventory, 'paint_blue', 2);
+    select(p, 'wall_wood');
+    performAction(world, p.id, 21, 19, ctx());
+    performAction(world, p.id, 19, 20, ctx()); // not connected
+    select(p, 'door');
+    performAction(world, p.id, 21, 20, ctx());
+    select(p, 'paint_blue');
+    const ch = performAction(world, p.id, 21, 19, ctx());
+    expect(objectAt(world, 21, 19)?.variant).toBe(3);
+    expect(objectAt(world, 21, 20)?.variant).toBe(3);
+    expect(objectAt(world, 19, 20)?.variant).toBeUndefined();
+    expect(countItem(p.inventory, 'paint_blue')).toBe(1);
+    expect(toasts(ch).some((t) => t.includes('målat'))).toBe(true);
+    expect(p.stats?.painted).toBe(1);
+    // the farmhouse
+    const house = Object.values(world.objects).find((o) => o.kind === 'house')!;
+    standAt(world, p, house.x + 2, house.y + 4);
+    performAction(world, p.id, house.x + 2, house.y + 3, ctx());
+    expect(house.variant).toBe(3);
+    expect(countItem(p.inventory, 'paint_blue')).toBe(0);
+    // paint on something else just says no
+    addItem(p.inventory, 'paint_red', 1);
+    select(p, 'paint_red');
+    standAt(world, p, 20, 20);
+    const rock = addObject(world, 'rock', 20, 19)!;
+    const ch2 = performAction(world, p.id, 20, 19, ctx());
+    expect(world.objects[rock.id]).toBeDefined();
+    expect(toasts(ch2).length).toBe(1);
+    expect(countItem(p.inventory, 'paint_red')).toBe(1);
+  });
+});
+
 describe('economy', () => {
   it('buys seeds, refuses when poor, sells crops', () => {
     const { world, p } = setup();

@@ -3,7 +3,7 @@ import { ITEMS, type ItemDef } from '@lilla-garden/shared';
 import { drawAnimal } from './animals.js';
 import { drawCharacter } from './characters.js';
 import { Px, shade } from './px.js';
-import { OUTLINE, type ObjectArt } from './world.js';
+import { OUTLINE, PAINT_COLORS, type ObjectArt } from './world.js';
 
 const WOOD = '#9a6a3a';
 const WOOD_D = '#6f4a26';
@@ -257,6 +257,16 @@ export function drawIcons(objects: Record<string, ObjectArt>): Record<string, Px
         p = new Px(16, 16).rect(2, 2, 12, 12, '#ff00ff');
     }
     icons[d.id] = p;
+  }
+  // paint buckets
+  for (const d of Object.values(ITEMS)) {
+    if (d.paint === undefined) continue;
+    const c = PAINT_COLORS[d.paint] ?? '#ff00ff';
+    const p = new Px(16, 16).rect(3, 5, 10, 9, STEEL).rect(3, 5, 10, 1, '#dfe2e8').rect(3, 13, 10, 1, STEEL_D);
+    p.rect(4, 6, 8, 4, c).rect(4, 6, 8, 1, shade(c, 1.2));
+    p.line(4, 4, 8, 1, STEEL_D).line(8, 1, 12, 4, STEEL_D);
+    p.rect(9, 10, 2, 4, c).rect(10, 13, 2, 2, c);
+    icons[d.id] = p.outline(OUTLINE);
   }
   // floor/path items have no object art: draw tiles
   const floorTile = (base: string, line: string) => new Px(16, 16).rect(1, 3, 14, 10, base).rect(1, 3, 14, 1, shade(base, 1.2)).rect(1, 7, 14, 1, line).rect(7, 3, 1, 4, line).rect(4, 8, 1, 5, line).outline(OUTLINE);

@@ -2,7 +2,7 @@
 // Every function draws in *virtual* pixels (16 per tile) on a canvas that is R times larger.
 import { Px, hash2, shade } from './px.js';
 import { R } from './style.ts';
-import type { ObjectArt, TerrainTiles } from './world.js';
+import { PAINT_COLORS, type ObjectArt, type TerrainTiles } from './world.js';
 import type { Terrain } from '@lilla-garden/shared';
 
 type Ctx = CanvasRenderingContext2D;
@@ -457,13 +457,13 @@ function gateHD(vertical: boolean): Px {
   return p;
 }
 
-function houseHD(): Px {
+function houseHD(wall = '', trimC = '#7a5230'): Px {
   const p = hd(80, 84);
   const ctx = p.ctx;
   // ground shadow
   softShadow(ctx, 40, 82, 42, 4, 0.35);
   // walls
-  ctx.fillStyle = lin(ctx, 0, 34, 0, 84, [[0, '#f3e8cf'], [1, '#d8c8a2']]);
+  ctx.fillStyle = wall ? lin(ctx, 0, 34, 0, 84, [[0, shade(wall, 1.1)], [1, shade(wall, 0.85)]]) : lin(ctx, 0, 34, 0, 84, [[0, '#f3e8cf'], [1, '#d8c8a2']]);
   ctx.fillRect(2, 34, 76, 49);
   for (let x = 8; x < 78; x += 6) {
     ctx.fillStyle = 'rgba(120,90,50,0.12)';
@@ -497,7 +497,7 @@ function houseHD(): Px {
   ellipse(ctx, 44, 73, 1.2, 1.2, '#f2d35a');
   // windows
   for (const wx of [10, 60]) {
-    fillRR(ctx, wx - 1.5, 42.5, 15, 14, 1.5, '#7a5230');
+    fillRR(ctx, wx - 1.5, 42.5, 15, 14, 1.5, trimC);
     ctx.fillStyle = lin(ctx, wx, 44, wx + 12, 55, [[0, '#bfeaff'], [0.5, '#8fd0f0'], [1, '#5fa8d8']]);
     ctx.fillRect(wx, 44, 12, 11);
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
@@ -507,10 +507,10 @@ function houseHD(): Px {
     ctx.lineTo(wx, 50);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#7a5230';
+    ctx.fillStyle = trimC;
     ctx.fillRect(wx + 5.4, 44, 1.2, 11);
     ctx.fillRect(wx, 49, 12, 1);
-    fillRR(ctx, wx - 2.5, 56, 17, 2.5, 1, '#8f6a3a');
+    fillRR(ctx, wx - 2.5, 56, 17, 2.5, 1, trimC === '#7a5230' ? '#8f6a3a' : trimC);
     // flower box
     fillRR(ctx, wx - 1, 57.5, 14, 3.5, 1, lin(ctx, 0, 57, 0, 61, [[0, '#b8844a'], [1, '#7a5230']]));
     for (let i = 0; i < 4; i++) ellipse(ctx, wx + 1 + i * 3.5, 57, 1.3, 1.3, ['#e8502a', '#f5d94a', '#e87ab8', '#ffffff'][i]!);
@@ -577,7 +577,12 @@ export function hdObjects(base: Record<string, ObjectArt>): Record<string, Objec
   set('stump', [stumpHD()]);
   set('fence', Array.from({ length: 16 }, (_, m) => fenceHD(m)));
   set('gate', [gateHD(false), gateHD(true)]);
-  set('house', [houseHD()], 0, -20);
+  set(
+    'house',
+    PAINT_COLORS.map((c) => houseHD(c, c ? '#f4f2ec' : '#7a5230')),
+    0,
+    -20,
+  );
   set('chest', [chestHD()]);
   set('start_chest', [chestHD()]);
   set('flower', [0, 1, 2, 3].map((v) => flowerHD(v)));

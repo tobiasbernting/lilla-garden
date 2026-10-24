@@ -393,24 +393,85 @@ const gate = (vertical: boolean): Px => {
   return p.outline(OUTLINE);
 };
 
-const wall = (stone: boolean): Px => {
-  const p = new Px(16, 24);
+/** Paint colours; index 0 = unpainted (natural wood / stone / the farmhouse's cream). */
+export const PAINT_COLORS = ['', '#c9433c', '#f0d060', '#6a9fd8', '#7fb86a', '#f4f2ec', '#f0a8c8'];
+
+const wallColor = (stone: boolean, colour: number): string => PAINT_COLORS[colour] || (stone ? STONE : WOOD);
+
+/** Face texture of a wall piece: vertical planks (wood) or stone blocks. */
+const wallFace = (p: Px, x: number, y: number, w: number, h: number, stone: boolean, col: string, painted: boolean) => {
+  const dark = shade(col, painted ? 0.82 : 0.72);
+  p.rect(x, y, w, h, col);
   if (stone) {
-    p.rect(0, 0, 16, 24, STONE);
-    for (let y = 0; y < 24; y += 4) {
-      p.rect(0, y, 16, 1, STONE_D);
-      for (let x = (y / 4) % 2 === 0 ? 0 : 4; x < 16; x += 8) p.rect(x, y, 1, 4, STONE_D);
+    for (let yy = y; yy < y + h; yy += 4) {
+      p.rect(x, yy, w, 1, dark);
+      for (let xx = x + (((yy - y) / 4) % 2 === 0 ? 0 : 4); xx < x + w; xx += 8) p.rect(xx, yy, 1, Math.min(4, y + h - yy), dark);
     }
   } else {
-    p.rect(0, 0, 16, 24, WOOD);
-    for (let x = 0; x < 16; x += 4) p.rect(x, 0, 1, 24, WOOD_D);
-    p.rect(0, 0, 16, 1, WOOD_L);
+    for (let xx = x + 1; xx < x + w; xx += 4) p.rect(xx, y, 1, h, dark);
+  }
+};
+
+/**
+ * Wall piece (16×24, drawn 8px above its tile) for a neighbour mask: bit 1 = up, 2 = right, 4 = down, 8 = left.
+ * Horizontal runs show the wall's face; vertical runs a thin top-down strip; both have a light cap on top.
+ */
+const wallPiece = (stone: boolean, colour: number, mask: number): Px => {
+  const p = new Px(16, 24);
+  const col = wallColor(stone, colour);
+  const painted = colour > 0;
+  const cap = shade(col, 1.25);
+  const up = mask & 1;
+  const right = mask & 2;
+  const down = mask & 4;
+  const left = mask & 8;
+  const horizontal = left || right;
+  const vertical = up || down;
+  if (vertical) {
+    const y0 = up ? 0 : 6;
+    const y1 = down ? 24 : 22;
+    wallFace(p, 5, y0, 6, y1 - y0, stone, col, painted);
+    p.rect(5, y0, 6, 1, cap).rect(5, y0, 1, y1 - y0, cap);
+  }
+  if (horizontal || !vertical) {
+    const x0 = left ? 0 : vertical ? 5 : 3;
+    const x1 = right ? 16 : vertical ? 11 : 13;
+    wallFace(p, x0, 8, x1 - x0, 16, stone, col, painted);
+    p.rect(x0, 6, x1 - x0, 2, cap).rect(x0, 8, x1 - x0, 1, shade(col, 1.1));
   }
   return p.outline(OUTLINE);
 };
 
-const door = (): Px => {
-  const p = new Px(16, 24).rect(1, 0, 14, 24, WOOD).rect(1, 0, 14, 1, WOOD_L).rect(3, 2, 10, 20, WOOD_D).rect(4, 3, 8, 18, WOOD).rect(11, 12, 2, 2, '#f2d35a');
+/** A wall piece with a window; `vertical` when it sits in a vertical run. */
+const windowPiece = (colour: number, vertical: boolean): Px => {
+  const p = wallPiece(false, colour, vertical ? 5 : 10);
+  const frame = colour > 0 ? '#f4f2ec' : '#7a5230';
+  if (vertical) {
+    p.rect(6, 9, 4, 6, '#8fd0f0').rect(6, 12, 4, 1, frame).box(5, 8, 6, 8, frame);
+  } else {
+    p.rect(4, 11, 8, 8, '#8fd0f0').rect(7, 11, 2, 8, frame).rect(4, 14, 8, 1, frame).box(3, 10, 10, 10, frame);
+    p.rect(4, 20, 2, 2, '#e8502a').rect(10, 20, 2, 2, '#f5d94a');
+  }
+  return p;
+};
+
+/** A door in a wall; swings open when someone is near. */
+const doorPiece = (colour: number, vertical: boolean, open: boolean): Px => {
+  const p = new Px(16, 24);
+  const col = wallColor(false, colour);
+  const cap = shade(col, 1.25);
+  if (vertical) {
+    wallFace(p, 5, 0, 6, 24, false, col, colour > 0);
+    p.rect(5, 0, 6, 1, cap).rect(5, 0, 1, 24, cap);
+    if (open) p.clear(4, 6, 8, 12).rect(11, 5, 2, 7, WOOD_D).rect(11, 12, 2, 7, WOOD);
+    else p.rect(4, 6, 8, 12, WOOD_D).rect(5, 7, 6, 10, WOOD).rect(9, 11, 1, 2, '#f2d35a');
+  } else {
+    wallFace(p, 0, 8, 16, 16, false, col, colour > 0);
+    p.rect(0, 6, 16, 2, cap).rect(0, 8, 16, 1, shade(col, 1.1));
+    p.rect(3, 9, 10, 15, WOOD_D);
+    if (open) p.rect(4, 10, 8, 14, '#2a2420').rect(12, 10, 2, 14, WOOD).rect(12, 10, 2, 1, WOOD_L);
+    else p.rect(4, 10, 8, 14, WOOD).rect(5, 11, 6, 12, WOOD_D).rect(6, 12, 4, 10, WOOD).rect(10, 17, 1, 2, '#f2d35a');
+  }
   return p.outline(OUTLINE);
 };
 
@@ -493,11 +554,13 @@ const building = (w: number, h: number, wallC: string, roofC: string, door = tru
   return p.outline(OUTLINE);
 };
 
-const house = (): Px => {
+const house = (colour = 0): Px => {
   const p = new Px(80, 84);
+  const wallC = PAINT_COLORS[colour] || '#e8dcc0';
+  const trim = colour > 0 ? '#f4f2ec' : '#7a5230';
   // walls
-  p.rect(2, 34, 76, 49, '#e8dcc0').rect(2, 34, 76, 1, '#f5efe0');
-  for (let x = 2; x < 78; x += 6) p.rect(x, 34, 1, 49, '#d4c7a8');
+  p.rect(2, 34, 76, 49, wallC).rect(2, 34, 76, 1, shade(wallC, 1.15));
+  for (let x = 2; x < 78; x += 6) p.rect(x, 34, 1, 49, shade(wallC, 0.9));
   // roof (Swedish red)
   for (let y = 0; y < 36; y++) {
     const inset = Math.max(0, Math.round(((35 - y) / 35) * 30));
@@ -509,7 +572,7 @@ const house = (): Px => {
   // door
   p.rect(35, 60, 12, 23, WOOD_D).rect(36, 61, 10, 22, WOOD).rect(44, 72, 2, 2, '#f2d35a');
   // windows
-  for (const wx of [10, 60]) p.rect(wx, 44, 12, 11, '#8fd0f0').rect(wx + 5, 44, 2, 11, WOOD_D).rect(wx, 49, 12, 1, WOOD_D).box(wx - 1, 43, 14, 13, '#7a5230').rect(wx - 2, 56, 16, 2, '#7a5230');
+  for (const wx of [10, 60]) p.rect(wx, 44, 12, 11, '#8fd0f0').rect(wx + 5, 44, 2, 11, WOOD_D).rect(wx, 49, 12, 1, WOOD_D).box(wx - 1, 43, 14, 13, trim).rect(wx - 2, 56, 16, 2, trim);
   // flower pots under windows
   for (const wx of [10, 60]) p.rect(wx + 2, 58, 2, 2, '#e8502a').rect(wx + 7, 58, 2, 2, '#f5d94a');
   return p.outline(OUTLINE);
@@ -631,9 +694,12 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('wild_flower_mid', [flower(0, true), flower(1, true), flower(2, true)]);
   set('fence', Array.from({ length: 16 }, (_, m) => fence(m)));
   set('gate', [gate(false), gate(true)]);
-  set('wall_wood', [wall(false)], 0, -8);
-  set('wall_stone', [wall(true)], 0, -8);
-  set('door', [door()], 0, -8);
+  // wall pieces: frame = colour * 16 + neighbour mask; windows: colour * 2 + vertical; doors: colour * 4 + vertical * 2 + open
+  const colours = PAINT_COLORS.map((_, i) => i);
+  set('wall_wood', colours.flatMap((c) => Array.from({ length: 16 }, (_, m) => wallPiece(false, c, m))), 0, -8);
+  set('wall_stone', colours.flatMap((c) => Array.from({ length: 16 }, (_, m) => wallPiece(true, c, m))), 0, -8);
+  set('window', colours.flatMap((c) => [windowPiece(c, false), windowPiece(c, true)]), 0, -8);
+  set('door', colours.flatMap((c) => [doorPiece(c, false, false), doorPiece(c, false, true), doorPiece(c, true, false), doorPiece(c, true, true)]), 0, -8);
   set('chest', [chest()]);
   set('start_chest', [chest()]);
   set('trough', [trough()]);
@@ -649,7 +715,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('hutch', [building(16, 20, '#c58f55', '#7a5230', true, { roofH: 7 })], 0, -4);
   set('sheepfold', [building(32, 36, '#c9c6bd', '#6f6c66', true, { windows: 2, roofH: 14 })], 0, -4);
   set('barn', [building(48, 44, '#b5413a', '#6f4a26', true, { windows: 2, roofH: 18 })], 0, -12);
-  set('house', [house()], 0, -20);
+  set('house', PAINT_COLORS.map((_, i) => house(i)), 0, -20);
   set('mailbox', [mailbox()], 0, -8);
   set('sellbox', [sellbox()]);
   set('wardrobe', [wardrobe()], 0, -8);

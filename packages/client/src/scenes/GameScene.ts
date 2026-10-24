@@ -1,6 +1,7 @@
 // The farm: tilemap, sprites, prediction, interpolation, night, effects.
 import Phaser from 'phaser';
 import {
+  WALL_KINDS,
   ANIMALS,
   CROPS,
   DAY_LENGTH_MS,
@@ -35,7 +36,7 @@ import {
 import { animalKey, ANIMAL_SIZE } from '../art/animals.js';
 import { dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
-import { EMOTE_GLYPH } from '../art/world.js';
+import { EMOTE_GLYPH, PAINT_COLORS } from '../art/world.js';
 import { HD, NEW_ART, R } from '../art/style.ts';
 import { paintingTexture } from '../art/painting.ts';
 import { net } from '../net.js';
@@ -74,6 +75,8 @@ export class GameScene extends Phaser.Scene {
   private waterFrame = 0;
   private objects = new Map<number, Phaser.GameObjects.Image>();
   private objectShadows = new Map<number, Phaser.GameObjects.Image>();
+  private doorIds = new Set<number>();
+  private doorOpen = new Map<number, boolean>();
   private crops = new Map<string, Phaser.GameObjects.Image>();
   private drops = new Map<number, Phaser.GameObjects.Image>();
   private players = new Map<string, Actor>();
@@ -112,6 +115,8 @@ export class GameScene extends Phaser.Scene {
     // A restart keeps class fields: drop everything that belonged to the previous scene
     this.objects.clear();
     this.objectShadows.clear();
+    this.doorIds.clear();
+    this.doorOpen.clear();
     this.crops.clear();
     this.drops.clear();
     this.players.clear();
@@ -268,21 +273,52 @@ export class GameScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ sprites
 
-  /** Neighbour mask for fences: 1 up, 2 right, 4 down, 8 left. */
-  private fenceMask(x: number, y: number): number {
-    const isFence = (tx: number, ty: number) => {
+  /** Neighbour mask (1 up, 2 right, 4 down, 8 left) over tiles whose object passes `linked`. */
+  private linkMask(x: number, y: number, linked: (kind: string) => boolean): number {
+    const is = (tx: number, ty: number) => {
       const id = this.world.occupancy[`${tx},${ty}`];
       const k = id === undefined ? undefined : this.world.objects[id]?.kind;
-      return k === 'fence' || k === 'gate';
+      return k !== undefined && linked(k);
     };
-    return (isFence(x, y - 1) ? 1 : 0) | (isFence(x + 1, y) ? 2 : 0) | (isFence(x, y + 1) ? 4 : 0) | (isFence(x - 1, y) ? 8 : 0);
+    return (is(x, y - 1) ? 1 : 0) | (is(x + 1, y) ? 2 : 0) | (is(x, y + 1) ? 4 : 0) | (is(x - 1, y) ? 8 : 0);
   }
 
+  private fenceMask(x: number, y: number): number {
+    return this.linkMask(x, y, (k) => k === 'fence' || k === 'gate');
+  }
+
+  private wallMask(x: number, y: number): number {
+    return this.linkMask(x, y, (k) => WALL_KINDS.has(k));
+  }
+
+  /** Redraws fences and wall pieces next to a tile so they connect up. */
   private refreshFenceNeighbours(x: number, y: number): void {
     for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
       const id = this.world.occupancy[`${x + dx},${y + dy}`];
       const o = id === undefined ? undefined : this.world.objects[id];
-      if (o && (o.kind === 'fence' || o.kind === 'gate')) this.putObject(o, false);
+      if (o && (o.kind === 'fence' || o.kind === 'gate' || WALL_KINDS.has(o.kind))) this.putObject(o, false);
+    }
+  }
+
+  /** Doors swing open while a player or villager stands on or next to them. */
+  private doorIsOpen(o: WorldObject): boolean {
+    const cx = o.x * TILE + TILE / 2;
+    const cy = o.y * TILE + TILE / 2;
+    const near = (a: { x: number; y: number }) => Math.abs(a.x - cx) < TILE * 1.2 && Math.abs(a.y - cy) < TILE * 1.2;
+    for (const a of this.players.values()) if (near(a)) return true;
+    for (const a of this.npcs.values()) if (near(a)) return true;
+    return false;
+  }
+
+  private updateDoors(): void {
+    for (const id of this.doorIds) {
+      const o = this.world.objects[id];
+      if (!o) {
+        this.doorIds.delete(id);
+        continue;
+      }
+      const open = this.doorIsOpen(o);
+      if (this.doorOpen.get(id) !== open) this.putObject(o, false);
     }
   }
 
@@ -292,12 +328,25 @@ export class GameScene extends Phaser.Scene {
     this.objects.get(o.id)?.destroy();
     if (!art) return;
     let variant = (o.variant ?? 0) % art.frames.length;
+    const isWall = WALL_KINDS.has(o.kind);
     if (o.kind === 'fence') variant = this.fenceMask(o.x, o.y);
     else if (o.kind === 'gate') {
       const m = this.fenceMask(o.x, o.y);
       variant = m & 5 && !(m & 10) ? 1 : 0;
-    }
-    if (refresh && (o.kind === 'fence' || o.kind === 'gate')) this.refreshFenceNeighbours(o.x, o.y);
+    } else if (isWall) {
+      // painted colour in o.variant; orientation from the neighbours
+      const colour = (o.variant ?? 0) % PAINT_COLORS.length;
+      const m = this.wallMask(o.x, o.y);
+      const vertical = m & 5 && !(m & 10) ? 1 : 0;
+      if (o.kind === 'window') variant = colour * 2 + vertical;
+      else if (o.kind === 'door') {
+        const open = this.doorIsOpen(o);
+        this.doorIds.add(o.id);
+        this.doorOpen.set(o.id, open);
+        variant = colour * 4 + vertical * 2 + (open ? 1 : 0);
+      } else variant = colour * 16 + m;
+    } else if (o.kind === 'house') variant = (o.variant ?? 0) % art.frames.length;
+    if (refresh && (o.kind === 'fence' || o.kind === 'gate' || isWall)) this.refreshFenceNeighbours(o.x, o.y);
     const img =
       o.kind === 'painting' && o.data !== undefined
         ? this.add.image(o.x * TILE - 2, o.y * TILE - 8, paintingTexture(this.textures, o.data)).setOrigin(0).setScale(S)
@@ -434,6 +483,8 @@ export class GameScene extends Phaser.Scene {
           this.objects.delete(c.id);
           this.objectShadows.get(c.id)?.destroy();
           this.objectShadows.delete(c.id);
+          this.doorIds.delete(c.id);
+          this.doorOpen.delete(c.id);
           if (gone) this.refreshFenceNeighbours(Math.round(gone.x / TILE), Math.round(gone.y / TILE));
         }
         break;
@@ -735,6 +786,8 @@ export class GameScene extends Phaser.Scene {
       actor.label.style.display = near ? '' : 'none';
       if (near) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 18 - sy) * zoom);
     }
+
+    this.updateDoors();
 
     // --- night ---
     this.drawNight();
