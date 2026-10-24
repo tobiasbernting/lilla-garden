@@ -2,6 +2,7 @@
 // Directions: down, up, right (left is right flipped). Frames: 0 stand, 1/2 walk.
 import { ITEMS, type Appearance, type Facing, type Outfit } from '@lilla-garden/shared';
 import { Px, shade } from './px.js';
+import { NEW_ART } from './style.ts';
 import { OUTLINE } from './world.js';
 
 export type Dir = 'down' | 'up' | 'right';
@@ -211,7 +212,14 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
         break;
     }
   }
-  return p.outline(OUTLINE);
+  if (NEW_ART) {
+    // soft shading: darker right edge of torso and head, hair highlight, eye shine
+    p.rect(12, 10 + bob, 1, 7, shade(shirtC, 0.72));
+    p.rect(11, 2 + bob, 1, 7, shade(l.skin, 0.85));
+    if (style !== 'bald') p.rect(hx + 1, hy - 1, 3, 1, shade(l.hair, 1.35));
+    if (dir === 'down') p.px(hx + 2, hy + 4, '#ffffff').px(hx + 6, hy + 4, '#ffffff');
+  }
+  return p.outline(NEW_ART ? '#2a2420' : OUTLINE);
 }
 
 /** Sprite sheet of 9 frames (3 dirs x 3 frames). */

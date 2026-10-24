@@ -1,6 +1,7 @@
 // HUD: top chips, hotbar, toasts, touch controls.
 import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
+import { NEW_ART, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
 import { net } from '../net.js';
 import type { GameScene } from '../scenes/GameScene.js';
@@ -57,7 +58,7 @@ export class Hud {
       setRun(true);
     });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) run.addEventListener(ev, () => setRun(false));
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), this.fullscreenBtn());
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('🧭', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), this.fullscreenBtn(), this.artBtn());
     this.minimap = new Minimap();
     document.addEventListener('lilla:minimap', () => this.minimap.toggle());
     this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act, run, this.minimap.el);
@@ -73,6 +74,12 @@ export class Hud {
     bus.on('day', () => this.renderTop());
     bus.on('toast', (text) => this.toast(text));
     this.render();
+  }
+
+  private artBtn(): HTMLElement {
+    const b = h('div', { class: 'round small', title: NEW_ART ? 'Klassisk grafik' : 'Ny grafik (prototyp)' }, NEW_ART ? '🎨' : '✨');
+    onTap(b, () => setArtStyle(!NEW_ART));
+    return b;
   }
 
   private fullscreenBtn(): HTMLElement {
