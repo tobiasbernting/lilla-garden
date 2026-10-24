@@ -553,8 +553,10 @@ describe('house, villagers, fishing', () => {
 
   it('villagers offer daily quests that reward coins and stars', () => {
     const { world, p } = setup();
+    world.timeMs = 1000; // morning: everyone at their first spot
     tick(world, 50, ctx());
-    expect(world.quests.length).toBeGreaterThanOrEqual(5);
+    expect(world.quests.length).toBeGreaterThanOrEqual(8);
+    expect(world.quests.filter((q) => q.npc === 'elsa').length).toBe(3);
     const greta = world.quests.filter((q) => q.npc === 'greta');
     expect(greta.length).toBe(2);
     const q = greta[0]!;

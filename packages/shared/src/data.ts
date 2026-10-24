@@ -344,8 +344,8 @@ export const NPCS: Record<string, NpcDef> = {
     routine: [
       { at: 0, x: 20, y: 13 }, // morning by the path
       { at: 0.25, x: 26, y: 22 }, // a stroll past the fields
-      { at: 0.45, x: 35, y: 33 }, // visiting Sven by the pond
-      { at: 0.65, x: 20, y: 13 }, // back for the evening
+      { at: 0.45, x: 36, y: 35 }, // visiting Sven by the pond
+      { at: 0.7, x: 20, y: 13 }, // back for the evening
     ],
   },
   sven: {
@@ -358,13 +358,51 @@ export const NPCS: Record<string, NpcDef> = {
     greeting: ['Hallå där! Fiskarna nappar bra idag.', 'Vet du att det finns en guldfisk i dammen?', 'Stå stilla vid vattnet och vänta på napp.'],
     routine: [
       { at: 0, x: 37, y: 36 }, // north-west shore
-      { at: 0.3, x: 45, y: 33 }, // around the north side
-      { at: 0.4, x: 53, y: 37 }, // east shore
-      { at: 0.55, x: 53, y: 45 },
-      { at: 0.65, x: 44, y: 47 }, // south shore
-      { at: 0.8, x: 35, y: 42 },
-      { at: 0.9, x: 37, y: 36 },
+      { at: 0.12, x: 45, y: 33 }, // around the north side
+      { at: 0.24, x: 53, y: 37 }, // east shore
+      { at: 0.36, x: 53, y: 45 },
+      { at: 0.44, x: 44, y: 47 }, // south shore
+      { at: 0.5, x: 35, y: 42 },
+      { at: 0.55, x: 37, y: 36 }, // back where Greta comes visiting
     ],
+  },
+  elsa: {
+    id: 'elsa',
+    name: 'Lilla Elsa',
+    x: 6,
+    y: 20,
+    appearance: { skin: '#f7d7c0', hair: '#f2d16b', hairStyle: 'ponytail' },
+    outfit: { shirt: 'shirt_pink', pants: 'pants_skirt_blue', shoes: 'shoes_red' },
+    greeting: ['Hej! Vill du leka?', 'Jag letar efter blommor. Har du sett några?', 'Min kanin heter Snövit. Fast hon bor hemma.', 'Jag kan springa jättefort!'],
+    routine: [
+      { at: 0, x: 6, y: 20 }, // by the forest edge, picking flowers
+      { at: 0.2, x: 18, y: 16 }, // comes to look at the farm
+      { at: 0.4, x: 30, y: 44 }, // plays by the pond's south side
+      { at: 0.6, x: 24, y: 30 }, // the meadow
+      { at: 0.8, x: 6, y: 20 }, // home for the evening
+    ],
+  },
+};
+
+/** Context lines villagers say in their speech bubbles. {name} is the player's name. */
+export const NPC_LINES: Record<string, { morning: string[]; day: string[]; evening: string[]; meet: string[] }> = {
+  greta: {
+    morning: ['God morgon, {name}!', 'Vilken fin morgon!'],
+    day: ['Hej {name}!', 'Så flitigt du jobbar!', 'Har du sett mina blomlådor?'],
+    evening: ['God kväll, {name}.', 'Nu blir det snart mörkt.'],
+    meet: ['Hej Sven! Nappar det?', 'Hej Elsa, var är dina föräldrar?', 'Vilket väder!'],
+  },
+  sven: {
+    morning: ['Morrn! Fiskarna är pigga nu.', 'God morgon, {name}!'],
+    day: ['Hallå {name}!', 'Stå still så nappar det.', 'Gäddan är lurig.'],
+    evening: ['Kvällen är bäst för fiske.', 'God kväll, {name}!'],
+    meet: ['Hej Greta! Vill du ha fisk?', 'Hej Elsa! Inte för nära vattnet.', 'Fint väder för fiske!'],
+  },
+  elsa: {
+    morning: ['God morgon! Jag är redan vaken!', 'Titta, en fjäril!'],
+    day: ['Hej {name}! Kom och lek!', 'Ska vi plocka blommor?', 'Jag har hittat en fin sten.'],
+    evening: ['Jag måste hem snart…', 'Natti natti, {name}!'],
+    meet: ['Hej tant Greta!', 'Hej Sven! Får jag se fisken?', 'Jag vann!'],
   },
 };
 

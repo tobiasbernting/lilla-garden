@@ -3,7 +3,10 @@ import Phaser from 'phaser';
 import {
   ANIMALS,
   CROPS,
+  DAY_LENGTH_MS,
   INTERIOR,
+  NPC_LINES,
+  countItem,
   MAP_H,
   MAP_W,
   NPCS,
@@ -551,6 +554,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.placeActor(actor, snap.facing, snap.moving, true);
       } else this.placeActor(actor, 'down', false, true);
+      this.updateNpcTalk(id, actor, me);
     }
 
     // --- cursor ---
@@ -566,7 +570,8 @@ export class GameScene extends Phaser.Scene {
     for (const actor of this.npcs.values()) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 24 - sy) * zoom);
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
-      const near = a && Math.hypot(a.x - me.x, a.y - me.y) < 40;
+      const onOwner = a?.owner && Math.hypot(a.x - me.x, a.y - me.y) < 14; // pet sitting at its owner's feet
+      const near = a && !onOwner && Math.hypot(a.x - me.x, a.y - me.y) < 40;
       actor.label.style.display = near ? '' : 'none';
       if (near) this.placeLabel(actor.label, (actor.x - sx) * zoom, (actor.y - 18 - sy) * zoom);
     }
@@ -605,10 +610,72 @@ export class GameScene extends Phaser.Scene {
     el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
   }
 
+  private talk = new Map<string, { partner: string | null; until: number; text: string; cooldownUntil: number }>();
+
+  /** Speech bubbles: greet a player who comes close, chat with another villager, or show a quest marker. */
+  private updateNpcTalk(id: string, actor: Actor, me: PlayerState): void {
+    const now = performance.now();
+    let st = this.talk.get(id);
+    if (!st) {
+      st = { partner: null, until: 0, text: '', cooldownUntil: 0 };
+      this.talk.set(id, st);
+    }
+    const world = client.world!;
+    // Who is close: the local player, or another villager?
+    const near = Math.hypot(me.x - actor.x, me.y - actor.y) < 2.5 * TILE ? me.id : null;
+    let npcNear: string | null = null;
+    if (!near) {
+      for (const [oid, other] of this.npcs) {
+        if (oid === id) continue;
+        if (Math.hypot(other.x - actor.x, other.y - actor.y) < 2.2 * TILE) npcNear = oid;
+      }
+    }
+    const partner = near ?? npcNear;
+    if (partner && partner !== st.partner && now > st.cooldownUntil) {
+      // A new encounter: pick a line
+      const lines = NPC_LINES[id];
+      const f = client.timeMs / DAY_LENGTH_MS;
+      let pool: string[] = [];
+      if (near) pool = (f < 0.25 ? lines?.morning : f > 0.65 ? lines?.evening : lines?.day) ?? [];
+      else pool = lines?.meet ?? [];
+      if (pool.length) {
+        st.text = pool[Math.floor(Math.random() * pool.length)]!.replace('{name}', me.name);
+        st.until = now + 3500 + (npcNear ? Math.random() * 2000 : 0);
+      }
+      st.partner = partner;
+      st.cooldownUntil = now + 8000;
+    }
+    if (!partner) st.partner = null;
+
+    const quests = world.quests.filter((q) => q.npc === id && !me.questsDone.includes(q.id));
+    const canHandIn = quests.some((q) => countItem(me.inventory, q.want.item) >= q.want.count);
+    let text = '';
+    let cls = 'bubble';
+    if (now < st.until) text = st.text;
+    else if (canHandIn) {
+      text = '❗';
+      cls = 'bubble marker';
+    } else if (quests.length) {
+      text = '?';
+      cls = 'bubble marker';
+    }
+    if (text) {
+      if (!actor.bubble) actor.bubble = this.makeLabel(text, cls);
+      actor.bubble.className = `label ${cls}`;
+      actor.bubble.textContent = text;
+      const cam = this.cameras.main;
+      const zoom = this.scale.zoom;
+      this.placeLabel(actor.bubble, (actor.x - cam.scrollX) * zoom, (actor.y - 34 - cam.scrollY) * zoom);
+    } else if (actor.bubble) {
+      actor.bubble.remove();
+      actor.bubble = undefined;
+    }
+  }
+
   private updateBubble(actor: Actor, p: PlayerState): void {
     const active = p.emote && p.emote.until > serverNow();
     if (active && !actor.bubble) {
-      actor.bubble = this.makeLabel(EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id, 'bubble');
+      actor.bubble = this.makeLabel(EMOTE_GLYPH[p.emote!.id] ?? p.emote!.id, 'bubble emote');
     } else if (!active && actor.bubble) {
       actor.bubble.remove();
       actor.bubble = undefined;
