@@ -3,8 +3,9 @@
 
 import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
-import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
+import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
+import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -39,6 +40,7 @@ import {
   PLAYER_SPEED,
   START_COINS,
   TILE,
+  RIDE_SPEED_MUL,
   WATERING_CAN_CHARGES,
   key,
 } from './types.ts';
@@ -114,10 +116,29 @@ export const isPetAnimal = (a: AnimalState): boolean => {
   return !!def && (!!def.pet || (!!def.wild && !!a.owner));
 };
 
+/** Cars, mopeds (and city traffic): parked where they stand, driven like a horse. */
+
+/** Maps you may drive or ride in: any overworld map, not the cave, the bath house or indoors. */
+const canRideIn = (world: WorldState, tx: number, ty: number): boolean =>
+  world.area !== 'dungeon' && !isBathKey(world.area) && !(isFarm(world) && inInterior(tx, ty));
+
+/** Speed multiplier while riding or driving: horses are steady, vehicles love roads and hate mud. */
+export function rideSpeedMul(world: WorldState, p: { x: number; y: number; riding?: number }): number {
+  if (p.riding === undefined) return 1;
+  const a = world.animals[p.riding];
+  if (!a) return 1;
+  const v = ANIMALS[a.species]?.vehicle;
+  if (!v) return RIDE_SPEED_MUL;
+  const t = world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] as string | undefined;
+  const ground = t === 'road' || t === 'crossing' ? 1.3 : t === 'soil' || t === 'soil_wet' || t === 'sand' || t === 'gravel' ? 0.7 : 1;
+  return (v.ride ?? RIDE_SPEED_MUL) * ground;
+}
+
 export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
   if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
   if (npcAt(world, tx, ty)) return true;
+  if (vehicleBlocks(world, tx, ty)) return true;
   if (world.area === 'dungeon') {
     for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return true;
   } else if (isFarm(world) && portalAt(tx, ty)) return false;
@@ -282,7 +303,7 @@ export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.sele
 
 const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
 const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash'): Change => ({
+const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash' | 'honk'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -419,9 +440,10 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   }
   // 0c. Outside the cave, sword and bow only work on wild predators
   const pointedObject = objectAt(world, tx, ty);
-  const canOpen = !!pointedObject && !!objectDef(pointedObject.kind).interact;
+  const pointedAnimal = animalAt(world, tx, ty);
+  const canOpen = (!!pointedObject && !!objectDef(pointedObject.kind).interact) || (!!pointedAnimal && !isHostile(pointedAnimal));
   if (world.area !== 'dungeon' && (tool === 'sword' || tool === 'bow') && !canOpen) {
-    // (pointing at a door, chest or the cave mouth still opens it, whatever you hold)
+    // (pointing at a door, chest, the cave mouth, your horse or a friendly animal still works, whatever you hold)
     const target = animalAt(world, tx, ty);
     if (tool === 'sword') {
       if (target && isHostile(target)) attackMob(world, p, target, 2, ctx, out);
@@ -566,8 +588,17 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
   const aty = tileOf(a.y);
   const name = animalDisplayName(a);
   const heldDef = held ? item(held.item) : null;
+  if (a.route !== undefined) {
+    // city traffic: you cannot take the bus driver's seat, but you may honk
+    out.push(fx(atx, aty, 'honk'), toast(p.id, fmt(T.vehicleHonk, { name })));
+    return;
+  }
   if (riderOf(world, a)) {
     out.push(toast(p.id, fmt(T.horseBusy, { name })));
+    return;
+  }
+  if (isVehicle(a)) {
+    mount(world, p, a, out);
     return;
   }
   if (held?.item === 'hay' && !ANIMALS[a.species]?.wild) {
@@ -640,10 +671,11 @@ function mount(world: WorldState, p: PlayerState, a: AnimalState, out: Change[])
     return;
   }
   if (a.owner && a.owner !== p.id) {
-    out.push(toast(p.id, fmt(T.notYourHorse, { name, owner: world.players[a.owner]?.name ?? '?' })));
+    out.push(toast(p.id, fmt(T.notYourHorse, { name, owner: farmOf(world).players[a.owner]?.name ?? '?' })));
     return;
   }
-  if (!isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
+  const vehicle = isVehicle(a);
+  if (vehicle ? !canRideIn(world, tileOf(p.x), tileOf(p.y)) : !isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
     out.push(toast(p.id, T.notNow));
     return;
   }
@@ -655,41 +687,61 @@ function mount(world: WorldState, p: PlayerState, a: AnimalState, out: Change[])
   a.moving = false;
   delete a.tx;
   delete a.ty;
-  bump(p, 'ride', 1, out);
-  out.push(toast(p.id, fmt(T.mounted, { name })), fx(tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p), { t: 'animal', id: a.id, animal: a });
+  bump(p, vehicle ? 'drive' : 'ride', 1, out);
+  out.push(toast(p.id, fmt(vehicle ? T.drive : T.mounted, { name })), fx(tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p), { t: 'animal', id: a.id, animal: a });
 }
 
 /** Gets off the horse; the horse stays just behind the player (or on their tile). */
 export function dismount(world: WorldState, p: PlayerState, out: Change[]): void {
-  const farm = farmOf(world);
-  const a = p.riding !== undefined ? farm.animals[p.riding] : undefined;
+  const here = areaOf(farmOf(world), p);
+  const a = p.riding !== undefined ? here.animals[p.riding] : undefined;
   delete p.riding;
   out.push(playerChange(p));
   if (!a) return;
   const d = DIR_VEC[p.facing] ?? { dx: 0, dy: 1 };
   const btx = tileOf(p.x) - d.dx;
   const bty = tileOf(p.y) - d.dy;
-  const behindFree = inBounds(btx, bty) && !isSolidForAnimal(farm, btx, bty) && !inInterior(btx, bty);
+  const behindFree = inBounds(btx, bty) && !isSolidForAnimal(here, btx, bty) && !(isFarm(here) && inInterior(btx, bty));
   a.x = behindFree ? btx * TILE + TILE / 2 : p.x;
   a.y = behindFree ? bty * TILE + TILE / 2 : p.y;
   a.moving = false;
   a.waitMs = 1500;
   delete a.tx;
   delete a.ty;
-  out.push(toast(p.id, fmt(T.dismounted, { name: animalDisplayName(a) })), { t: 'animal', id: a.id, animal: a });
+  const change: Change = { t: 'animal', id: a.id, animal: a };
+  if (!isFarm(here)) change.area = here.area;
+  out.push(toast(p.id, fmt(isVehicle(a) ? T.parked : T.dismounted, { name: animalDisplayName(a) })), change);
+}
+
+/** Beep beep: a little horn fx for everyone nearby (only while driving). */
+export function honk(world: WorldState, playerId: string): Change[] {
+  const p = world.players[playerId];
+  if (!p || p.riding === undefined) return [];
+  const a = world.animals[p.riding];
+  if (!a || !isVehicle(a)) return [];
+  return [fx(tileOf(p.x), tileOf(p.y), 'honk')];
 }
 
 const DIR_VEC: Record<Facing, { dx: number; dy: number }> = { up: { dx: 0, dy: -1 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 } };
 
 /** Ridden horses sit under their rider; riders that vanished free their horse. */
 function tickRiding(world: WorldState, out: Change[]): void {
+  const here = world.area ?? 'farm';
   for (const p of Object.values(world.players)) {
     if (p.riding === undefined) continue;
     const a = world.animals[p.riding];
-    if (!a || !p.online || p.area !== 'farm' || inInterior(tileOf(p.x), tileOf(p.y))) {
+    if (!a || !p.online || p.area !== here || !canRideIn(world, tileOf(p.x), tileOf(p.y))) {
       delete p.riding;
       out.push(playerChange(p));
       continue;
+    }
+    if (isVehicle(a)) {
+      // odometer: whole tiles driven count towards Långfärd
+      if (!p.stats) p.stats = {};
+      const px = (p.stats.drive_px ?? 0) + Math.hypot(p.x - a.x, p.y - (a.y + 1));
+      const tiles = Math.floor(px / TILE);
+      p.stats.drive_px = px - tiles * TILE;
+      if (tiles > 0) bump(p, 'drive_tiles', tiles, out);
     }
     a.x = p.x;
     a.y = p.y + 1;
@@ -723,6 +775,10 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
       return;
     case 'sleep':
       goToSleep(world, p, out);
+      return;
+    case 'bus':
+    case 'train':
+      out.push({ t: 'open', to: p.id, ui: 'travel', id: obj.id });
       return;
     case 'exit':
       if (isBathKey(world.area)) out.push(...leaveBath(world, p.id));
@@ -1029,6 +1085,32 @@ export function buy(world: WorldState, playerId: string, id: string, qty: number
   }
   const cost = (d.buy ?? 0) * qty;
   if (p.coins < cost) return [toast(p.id, T.notEnoughCoins)];
+  if (d.category === 'animal' && d.species && ANIMALS[d.species]?.vehicle) {
+    const name = SPECIES_NAMES[d.species] ?? d.species;
+    const already = Object.values(farmOf(world).animals)
+      .concat(Object.values(world.animals))
+      .some((a) => a.owner === p.id && a.species === d.species);
+    if (already) return [toast(p.id, fmt(T.alreadyHaveVehicle, { name }))];
+    if (!canRideIn(world, tileOf(p.x), tileOf(p.y))) return [toast(p.id, T.notNow)];
+    p.coins -= cost;
+    const a: AnimalState = { ...dummyAnimal, id: world.nextId++, species: d.species, homeId: 0, name: '', named: false, age: 10, owner: p.id, variant: d.variant ?? 0 };
+    // parked on the nearest free tile next to the buyer
+    const ptx = tileOf(p.x);
+    const pty = tileOf(p.y);
+    let spot = { tx: ptx, ty: pty + 1 };
+    for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1]] as const) {
+      if (inBounds(ptx + dx, pty + dy) && !isSolidForAnimal(world, ptx + dx, pty + dy) && !(isFarm(world) && inInterior(ptx + dx, pty + dy))) {
+        spot = { tx: ptx + dx, ty: pty + dy };
+        break;
+      }
+    }
+    a.x = spot.tx * TILE + TILE / 2;
+    a.y = spot.ty * TILE + TILE / 2;
+    a.facing = 'right';
+    world.animals[a.id] = a;
+    out.push(toast(p.id, fmt(T.vehicleBought, { name: itemName(id) })), fx(spot.tx, spot.ty, 'sparkle'), fx(tileOf(p.x), tileOf(p.y), 'coin'), playerChange(p), { t: 'animal', id: a.id, animal: a });
+    return out;
+  }
   if (d.category === 'animal' && d.species && ANIMALS[d.species]?.pet) {
     const already = Object.values(world.animals).some((a) => a.owner === p.id && a.species === d.species) || p.orders.some((o) => o.species === d.species);
     if (already) return [toast(p.id, T.notNow)];
@@ -1469,6 +1551,8 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   const target = getArea(farm, keyStr);
   if (!target) return false;
   const current = areaOf(farm, p);
+  const ridden = p.riding !== undefined ? current.animals[p.riding] : undefined;
+  const drove = ridden && isVehicle(ridden) ? ridden : undefined;
   if (p.riding !== undefined) dismount(current, p, out);
   if (current !== farm) delete current.players[p.id];
   p.area = keyStr;
@@ -1479,7 +1563,16 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   delete p.fishing;
   if (target !== farm) target.players[p.id] = p;
   p.moveLock = 30;
-  if (current !== target) movePetsAlong(current, target, keyStr, p, out);
+  if (current !== target) {
+    movePetsAlong(current, target, keyStr, p, out);
+    if (drove && canRideIn(target, tx, ty)) {
+      moveAnimalAlong(current, target, keyStr, drove, p, out);
+      p.riding = drove.id;
+      drove.x = p.x;
+      drove.y = p.y + 1;
+      drove.facing = p.facing;
+    }
+  }
   if (!p.visited) p.visited = ['farm'];
   const firstVisit = !p.visited.includes(keyStr);
   if (firstVisit) {
@@ -1495,23 +1588,28 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
 /** Pets (and lasso-tamed animals) follow their owner from map to map; they get a fresh id in the new map. */
 function movePetsAlong(from: WorldState, to: WorldState, toKey: string, p: PlayerState, out: Change[]): void {
   if (to.area === 'dungeon') return;
-  const fromKey = from.area ?? 'farm';
   for (const a of Object.values(from.animals)) {
     if (a.owner !== p.id || !isPetAnimal(a)) continue;
-    delete from.animals[a.id];
-    const gone: Change = { t: 'animal', id: a.id, animal: null };
-    if (fromKey !== 'farm') gone.area = fromKey;
-    a.id = to.nextId++;
-    a.x = p.x;
-    a.y = p.y + 3;
-    a.moving = false;
-    delete a.tx;
-    delete a.ty;
-    to.animals[a.id] = a;
-    const here: Change = { t: 'animal', id: a.id, animal: a };
-    if (toKey !== 'farm') here.area = toKey;
-    out.push(gone, here);
+    moveAnimalAlong(from, to, toKey, a, p, out);
   }
+}
+
+/** Moves one animal into the player's new map (fresh id there) and tells both maps. */
+function moveAnimalAlong(from: WorldState, to: WorldState, toKey: string, a: AnimalState, p: PlayerState, out: Change[]): void {
+  const fromKey = from.area ?? 'farm';
+  delete from.animals[a.id];
+  const gone: Change = { t: 'animal', id: a.id, animal: null };
+  if (fromKey !== 'farm') gone.area = fromKey;
+  a.id = to.nextId++;
+  a.x = p.x;
+  a.y = p.y + 3;
+  a.moving = false;
+  delete a.tx;
+  delete a.ty;
+  to.animals[a.id] = a;
+  const here: Change = { t: 'animal', id: a.id, animal: a };
+  if (toKey !== 'farm') here.area = toKey;
+  out.push(gone, here);
 }
 
 const DIRS: Record<'n' | 's' | 'e' | 'w', { dx: number; dy: number; opposite: 'n' | 's' | 'e' | 'w' }> = {
@@ -1556,6 +1654,105 @@ export function teleport(world: WorldState, playerId: string, keyStr: string): C
   const target = areaOf(farm, p);
   for (let r = 0; r < 6 && isSolidForPlayer(target, tileOf(p.x), tileOf(p.y)); r++) p.y += TILE;
   out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Public transport: buses between places you know, trains also to one unknown city
+// ---------------------------------------------------------------------------
+export const TRANSPORT_PRICE: Record<'bus' | 'train', number> = { bus: 5, train: 15 };
+export interface Destination {
+  key: string;
+  name: string;
+  price: number;
+  /** A city nobody has visited yet (train only). */
+  unknown?: boolean;
+}
+
+/** Name of a city area (the first city is just "Byn"; others get their map coordinates). */
+export const cityName = (keyStr: string): string => {
+  if (keyStr === 'farm') return T.travelHome;
+  const c = areaCoords(keyStr);
+  if (!c) return BIOME_NAMES.by;
+  return c.ax === 1 && c.ay === 0 ? BIOME_NAMES.by : `${T.cityName} ${c.ax},${c.ay}`;
+};
+
+/** The nearest city nobody in the party has been to (scanning outward from the farm). */
+export function nearestUnknownCity(visited: string[]): string | null {
+  for (let r = 1; r <= 16; r++)
+    for (let ax = -r; ax <= r; ax++)
+      for (const ay of ax === -r || ax === r ? Array.from({ length: 2 * r + 1 }, (_, i) => i - r) : [-r, r]) {
+        if (biomeAt(ax, ay) !== 'by') continue;
+        const k = areaKey(ax, ay);
+        if (!visited.includes(k)) return k;
+      }
+  return null;
+}
+
+/** Where this player can go from a bus stop / station right now. */
+export function transportDestinations(p: PlayerState, via: 'bus' | 'train'): Destination[] {
+  const visited = p.visited ?? ['farm'];
+  const price = TRANSPORT_PRICE[via];
+  const out: Destination[] = [];
+  if (p.area !== 'farm') out.push({ key: 'farm', name: T.travelHome, price });
+  for (const k of visited) {
+    const c = areaCoords(k);
+    if (!c || k === 'farm' || k === p.area || biomeAt(c.ax, c.ay) !== 'by') continue;
+    out.push({ key: k, name: cityName(k), price });
+  }
+  if (via === 'train') {
+    const unknown = nearestUnknownCity(visited);
+    if (unknown && unknown !== p.area) out.push({ key: unknown, name: T.unknownCity, price, unknown: true });
+  }
+  return out;
+}
+
+const stopKind = (via: 'bus' | 'train', keyStr: string): string => (via === 'train' && keyStr !== 'farm' ? 'train_station' : 'bus_stop');
+
+/** Is the player standing next to a stop of this kind? */
+function nearStop(world: WorldState, p: PlayerState, via: 'bus' | 'train'): boolean {
+  const kind = stopKind(via, p.area);
+  const ptx = tileOf(p.x);
+  const pty = tileOf(p.y);
+  for (const o of Object.values(world.objects)) {
+    if (o.kind !== kind) continue;
+    const def = objectDef(o.kind);
+    if (ptx >= o.x - REACH - 1 && ptx <= o.x + def.w + REACH && pty >= o.y - REACH - 1 && pty <= o.y + def.h + REACH) return true;
+  }
+  return false;
+}
+
+/** Boards a bus or train: charges the fare and moves the player to the stop at the destination. */
+export function ride(world: WorldState, playerId: string, via: 'bus' | 'train', to: string, ctx: SimCtx): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon' || (via !== 'bus' && via !== 'train')) return [];
+  const here = areaOf(farm, p);
+  if (!nearStop(here, p, via)) return [toast(p.id, T.noTransportHere)];
+  const dest = transportDestinations(p, via).find((d) => d.key === to);
+  if (!dest) return [toast(p.id, T.notNow)];
+  if (p.coins < dest.price) return [toast(p.id, T.notEnoughCoins)];
+  const target = getArea(farm, to);
+  if (!target) return [toast(p.id, T.notNow)];
+  p.coins -= dest.price;
+  // land in front of the stop at the other end
+  const kind = stopKind(via, to);
+  const stop = Object.values(target.objects).find((o) => o.kind === kind) ?? Object.values(target.objects).find((o) => o.kind === 'bus_stop');
+  let tx = to === 'farm' ? SPAWN.x : MAP_W / 2;
+  let ty = to === 'farm' ? SPAWN.y : MAP_H / 2;
+  if (stop) {
+    const def = objectDef(stop.kind);
+    tx = stop.x + Math.floor(def.w / 2);
+    ty = stop.y + def.h;
+  }
+  for (let r = 0; r < 6 && isSolidForPlayer(target, tx, ty); r++) ty += 1;
+  const place = dest.unknown ? cityName(to) : dest.name;
+  const out: Change[] = [{ t: 'ride', to: p.id, via, place }, toast(p.id, fmt(via === 'bus' ? T.busLeaving : T.trainLeaving, { place }))];
+  placeIn(farm, p, to, tx, ty, 'down', out);
+  bump(p, 'rides', 1, out);
+  if (via === 'train') bump(p, 'train_rides', 1, out);
+  out.push(playerChange(p));
+  void ctx;
   return out;
 }
 
@@ -2137,9 +2334,17 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
 }
 
 function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
-  if (isFarm(world)) tickRiding(world, out);
+  if (world.area !== 'dungeon' && !isBathKey(world.area)) tickRiding(world, out);
+  const walkers = world.biome === 'by' ? npcsIn(world).map((n) => npcState(world, n.id)) : [];
   for (const a of Object.values(world.animals)) {
-    if (a.species === 'horse' && riderOf(world, a)) continue;
+    if ((a.species === 'horse' || isVehicle(a)) && riderOf(world, a)) continue;
+    if (isVehicle(a)) {
+      // city traffic follows its route; a player's own vehicle stays parked
+      if (a.route !== undefined) {
+        if (driveVehicle(world, a, dtMs, ctx.now, walkers).honk) out.push(fx(tileOf(a.x), tileOf(a.y), 'honk'));
+      } else a.moving = false;
+      continue;
+    }
     if (isPetAnimal(a) && tickPet(world, a, dtMs)) continue;
     if (tickFlee(world, a, dtMs, ctx)) continue;
     if (isHostile(a) && tickMob(world, a, dtMs, ctx, out)) continue;

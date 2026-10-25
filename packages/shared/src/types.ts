@@ -29,7 +29,11 @@ export type Terrain =
   | 'snow'
   | 'gravel'
   | 'ice'
-  | 'pool'; // swimmable water (the bath house)
+  | 'pool' // swimmable water (the bath house)
+  | 'road' // asphalt (the city)
+  | 'sidewalk'
+  | 'crossing' // zebra crossing
+  | 'rail';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -60,7 +64,7 @@ export interface ItemDef {
   /** Price in the catalogue; undefined = not for sale. */
   buy?: number;
   /** Catalogue tab, if sold. */
-  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars' | 'pizzeria';
+  tab?: 'seeds' | 'animals' | 'feed' | 'materials' | 'furniture' | 'clothes' | 'season' | 'stars' | 'pizzeria' | 'vehicles';
   /** Edible: eating restores hearts and gives a speed boost for this long. */
   food?: { boostMs: number };
   /** Price in stars (Stjärnor tab) instead of kr. */
@@ -75,6 +79,8 @@ export interface ItemDef {
   clothing?: { slot: ClothingSlot; style: string; color: string };
   /** For animals: species that moves in. */
   species?: string;
+  /** Vehicles: colour variant of the bought vehicle. */
+  variant?: number;
   /** For tools. */
   tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
@@ -110,7 +116,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -139,6 +145,8 @@ export interface AnimalDef {
   predator?: { hp: number; aggroRange: number };
   /** Dungeon monsters: hit points and whether it is the boss. */
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
+  /** Vehicles: speed multiplier when driven; traffic = AI-driven city vehicles; rideable = players may drive/board it. */
+  vehicle?: { speed: number; ride?: number; traffic?: boolean; seats?: number; rideable?: boolean };
 }
 
 export interface RecipeDef {
@@ -313,6 +321,8 @@ export interface AnimalState {
   homeId: number; // object id of its house
   /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
+  /** Vehicles: colour variant. */
+  variant?: number;
   /** Mobs and predators: remaining hit points and next time it may attack. */
   hp?: number;
   attackAt?: number;
@@ -320,9 +330,14 @@ export interface AnimalState {
   fleeUntil?: number;
   fleeX?: number;
   fleeY?: number;
-  /** Wander target. */
+  /** Wander target (vehicles: the next corner of their route). */
   tx?: number;
   ty?: number;
+  /** Traffic: which loop it drives and the corner it is heading for. */
+  route?: { loop: number; leg: number };
+  /** Traffic: when it may honk at the player in front of it / when it last stopped at a stop. */
+  honkAt?: number;
+  stoppedAt?: number;
   waitMs: number;
 }
 

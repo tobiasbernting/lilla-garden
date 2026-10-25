@@ -890,3 +890,102 @@ body:not(.touch) .run-btn {
 .paint-actions .spacer {
   flex: 1;
 }
+
+/* ---- bus / train trip ---- */
+.ride {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  overflow: hidden;
+  background: #8ec9f0;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: auto;
+}
+.ride.show {
+  opacity: 1;
+}
+.ride-sky {
+  position: absolute;
+  inset: 0 0 35% 0;
+  background: linear-gradient(#6fb4e8, #bfe3fb);
+}
+.ride-cloud {
+  position: absolute;
+  top: 18%;
+  width: calc(30 * var(--u));
+  height: calc(10 * var(--u));
+  border-radius: calc(6 * var(--u));
+  background: #fff;
+  box-shadow: calc(8 * var(--u)) calc(-4 * var(--u)) 0 calc(2 * var(--u)) #fff, calc(-10 * var(--u)) calc(-2 * var(--u)) 0 calc(1 * var(--u)) #fff;
+  animation: ride-cloud 2.6s linear infinite;
+}
+.ride-cloud.c2 {
+  top: 34%;
+  animation-delay: -0.9s;
+  transform: scale(0.7);
+}
+.ride-cloud.c3 {
+  top: 8%;
+  animation-delay: -1.8s;
+  transform: scale(1.2);
+}
+@keyframes ride-cloud {
+  from {
+    left: 110%;
+  }
+  to {
+    left: -40%;
+  }
+}
+.ride-ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 35%;
+  background: linear-gradient(#62a844 0 55%, #4a4f5a 55% 100%);
+}
+.ride.train .ride-ground {
+  background: linear-gradient(#62a844 0 55%, #8a6a4a 55% 62%, #4a4f5a 62% 100%);
+}
+.ride-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22%;
+  height: calc(26 * var(--u));
+}
+.ride-vehicle {
+  position: absolute;
+  bottom: 0;
+  height: calc(26 * var(--u));
+  image-rendering: pixelated;
+  animation: ride-drive 2.6s cubic-bezier(0.3, 0, 0.7, 1) forwards, ride-bump 0.18s ease-in-out infinite alternate;
+}
+@keyframes ride-drive {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 100%;
+  }
+}
+@keyframes ride-bump {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--u)));
+  }
+}
+.ride-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 55%;
+  text-align: center;
+  font-size: calc(8 * var(--u));
+  color: #fff;
+  text-shadow: 0 calc(1 * var(--u)) 0 var(--ink), 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.5);
+}

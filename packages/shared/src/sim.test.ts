@@ -10,6 +10,9 @@ import {
   CAVE_EXIT_TILE,
   MAX_HEARTS,
   applyMove,
+  ensureCity,
+  isCity,
+  isVehicle,
   areaOf,
   getArea,
   BATH_EXIT,
@@ -18,12 +21,22 @@ import {
   PLAYER_SPEED,
   inPool,
   ensureBathhouse,
+  ensureFarmBusStop,
+  ensureTransport,
+  nearestUnknownCity,
+  ride,
+  transportDestinations,
+  FARM_BUS_STOP,
+  CITY_BUS_STOP,
+  CITY_STATION,
   arrivalTile,
   biomeAt,
   generateArea,
   spawnDrop,
   teleport,
   travel,
+  rideSpeedMul,
+  honk,
   bump,
   dungeonStart,
   generateDungeon,
@@ -1671,5 +1684,282 @@ describe('sova', () => {
     expect(p.sleeping).toBeUndefined();
     expect(toasts(wake).some((t) => t.includes('vaknade'))).toBe(true);
     expect(world.day).toBe(day0 + 1);
+  });
+});
+
+describe('fordon', () => {
+  const tileOf = (v: number) => Math.floor(v / TILE);
+  const lot = () => {
+    const { world, p } = setup();
+    for (let y = 28; y < 36; y++) for (let x = 28; x < 40; x++) clearTile(world, x, y);
+    standAt(world, p, 30, 30);
+    p.coins = 5000;
+    return { world, p };
+  };
+
+  it('a bought car is parked next to you at once, only you may drive it, and it is fast', () => {
+    const { world, p } = lot();
+    const ch = buy(world, p.id, 'vehicle_car_blue', 1, ctx());
+    expect(p.coins).toBe(2500);
+    const car = Object.values(world.animals).find((a) => a.species === 'car')!;
+    expect(car.owner).toBe(p.id);
+    expect(car.variant).toBe(1);
+    expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThanOrEqual(TILE * 1.5);
+    expect(toasts(ch).some((t) => t.includes('parkerad'))).toBe(true);
+    expect(toasts(buy(world, p.id, 'vehicle_car_red', 1, ctx()))[0]).toContain('redan');
+    // somebody else cannot take it
+    const other = createPlayer(world, 'Kompis', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    setOnline(world, other.id, true);
+    standAt(world, other, tileOf(car.x) - 1, tileOf(car.y));
+    expect(toasts(performAction(world, other.id, tileOf(car.x), tileOf(car.y), ctx()))[0]).toContain('tillhör Test');
+    expect(other.riding).toBeUndefined();
+    // the owner drives, even with a sword in hand
+    standAt(world, p, tileOf(car.x) - 1, tileOf(car.y));
+    addItem(p.inventory, 'sword', 1);
+    select(p, 'sword');
+    const drive = performAction(world, p.id, tileOf(car.x), tileOf(car.y), ctx());
+    expect(p.riding).toBe(car.id);
+    expect(p.achievements).toContain('drive_1');
+    expect(toasts(drive).some((t) => t.includes('kör'))).toBe(true);
+    // road is fast, mud is slow
+    const idx = tileIndex(tileOf(p.x), tileOf(p.y));
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.6);
+    (world.terrain as string[])[idx] = 'road';
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.6 * 1.3);
+    world.terrain[idx] = 'soil';
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.6 * 0.7);
+    world.terrain[idx] = 'grass';
+    const x0 = p.x;
+    stepPlayer(world, p, 1, 0, 1000, rideSpeedMul(world, p));
+    expect(p.x - x0).toBeCloseTo(64 * 2.6, 0);
+    // the car sits under the driver and the odometer ticks
+    tick(world, 50, ctx());
+    expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThan(3);
+    expect(p.stats.drive_tiles).toBeGreaterThanOrEqual(10);
+    // any action parks it; tools do nothing while driving
+    addItem(p.inventory, 'hoe', 1);
+    select(p, 'hoe');
+    const ftx = tileOf(p.x) + 1;
+    const off = performAction(world, p.id, ftx, tileOf(p.y), ctx());
+    expect(p.riding).toBeUndefined();
+    expect(toasts(off).some((t) => t.includes('parkerar'))).toBe(true);
+    expect(world.terrain[tileIndex(ftx, tileOf(p.y))]).toBe('grass');
+    expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThan(2 * TILE);
+    // parked cars stay where they are
+    const cx = car.x;
+    for (let i = 0; i < 40; i++) tick(world, 50, ctx());
+    expect(car.x).toBe(cx);
+  });
+
+  it('cannot drive into water, honks, and comes along when you drive over the edge', () => {
+    const { world, p } = lot();
+    buy(world, p.id, 'vehicle_motorcycle', 1, ctx());
+    const moped = Object.values(world.animals).find((a) => a.species === 'motorcycle')!;
+    standAt(world, p, tileOf(moped.x) - 1, tileOf(moped.y));
+    performAction(world, p.id, tileOf(moped.x), tileOf(moped.y), ctx());
+    expect(p.riding).toBe(moped.id);
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.2);
+    const ahead = tileIndex(tileOf(p.x) + 1, tileOf(p.y));
+    world.terrain[ahead] = 'water';
+    const x0 = p.x;
+    for (let i = 0; i < 20; i++) stepPlayer(world, p, 1, 0, 50, rideSpeedMul(world, p));
+    expect(p.x - x0).toBeLessThan(TILE);
+    world.terrain[ahead] = 'grass';
+    expect(honk(world, p.id).some((c) => c.t === 'fx' && c.kind === 'honk')).toBe(true);
+    // over the east edge into the village, still driving
+    standAt(world, p, 63, 32);
+    tick(world, 50, ctx());
+    const ch = travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    const village = areaOf(world, p);
+    const there = Object.values(village.animals).find((a) => a.species === 'motorcycle' && a.owner === p.id)!;
+    expect(there).toBeDefined();
+    expect(there.owner).toBe(p.id);
+    expect(world.animals[moped.id]).toBeUndefined();
+    expect(p.riding).toBe(there.id);
+    expect(ch.some((c) => c.t === 'animal' && c.animal?.species === 'motorcycle' && c.area === 'a:1,0')).toBe(true);
+    // parking in the village and going home leaves it there
+    performAction(village, p.id, tileOf(p.x) + 1, tileOf(p.y), ctx());
+    expect(p.riding).toBeUndefined();
+    teleport(world, p.id, 'farm');
+    expect(village.animals[there.id]).toBeDefined();
+    expect(Object.values(world.animals).some((a) => a.species === 'motorcycle' && a.owner === p.id)).toBe(false);
+    // on foot there is nothing to honk with
+    expect(honk(world, p.id)).toEqual([]);
+  });
+});
+
+describe('buss och tåg', () => {
+  const toVillage = () => {
+    const { world, p } = setup();
+    p.coins = 100;
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    return { world, p, village: areaOf(world, p) };
+  };
+
+  it('the farm and every city have stops, also when saved before they existed', () => {
+    const { world, village } = toVillage();
+    const farmStop = Object.values(world.objects).find((o) => o.kind === 'bus_stop')!;
+    expect(farmStop).toBeDefined();
+    expect([farmStop.x, farmStop.y]).toEqual([FARM_BUS_STOP.x, FARM_BUS_STOP.y]);
+    expect(ensureFarmBusStop(world)).toBe(false);
+    delete world.objects[farmStop.id];
+    expect(ensureFarmBusStop(world)).toBe(true);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'bus_stop')).toHaveLength(1);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'train_station')).toHaveLength(1);
+    expect(ensureTransport(village)).toBe(false);
+    for (const o of Object.values(village.objects)) if (o.kind === 'bus_stop' || o.kind === 'train_station') delete village.objects[o.id];
+    expect(ensureTransport(village)).toBe(true);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'train_station')).toHaveLength(1);
+  });
+
+  it('the bus takes you home and back for 5 kr, but only to places you know', () => {
+    const { world, p, village } = toVillage();
+    // from the city: home is on the list, the unknown city is not
+    const dests = transportDestinations(p, 'bus');
+    expect(dests.map((d) => d.key)).toEqual(['farm']);
+    expect(dests[0]!.price).toBe(5);
+    // you have to stand by the stop
+    standAt(world, p, 10, 10);
+    expect(toasts(ride(world, p.id, 'bus', 'farm', ctx()))).toContain('Gå fram till hållplatsen först.');
+    standAt(world, p, CITY_BUS_STOP.x, CITY_BUS_STOP.y + 1);
+    const ch = ride(world, p.id, 'bus', 'farm', ctx());
+    expect(ch[0]).toMatchObject({ t: 'ride', via: 'bus', to: p.id });
+    expect(p.area).toBe('farm');
+    expect(p.coins).toBe(95);
+    expect(Math.floor(p.x / TILE)).toBe(FARM_BUS_STOP.x);
+    expect(Math.floor(p.y / TILE)).toBe(FARM_BUS_STOP.y + 1);
+    expect(p.stats?.rides).toBe(1);
+    expect(p.achievements).toContain('trip_1');
+    // and back to the city (visited), not to an unknown one
+    const farmDests = transportDestinations(p, 'bus');
+    expect(farmDests.map((d) => d.key)).toEqual(['a:1,0']);
+    expect(ride(world, p.id, 'bus', 'a:4,0', ctx()).some((c) => c.t === 'ride')).toBe(false);
+    ride(world, p.id, 'bus', 'a:1,0', ctx());
+    expect(p.area).toBe('a:1,0');
+    expect(Math.floor(p.y / TILE)).toBe(CITY_BUS_STOP.y + 1);
+    expect(areaOf(world, p)).toBe(village);
+    // broke: no ride
+    p.coins = 2;
+    standAt(world, p, CITY_BUS_STOP.x, CITY_BUS_STOP.y + 1);
+    expect(toasts(ride(world, p.id, 'bus', 'farm', ctx()))).toContain('Inte tillräckligt med kr');
+    expect(p.area).toBe('a:1,0');
+  });
+
+  it('the train also goes to one unknown city, which counts as visited on arrival', () => {
+    const { world, p } = toVillage();
+    const unknown = nearestUnknownCity(p.visited!)!;
+    expect(unknown).toBeTruthy();
+    expect(unknown).not.toBe('a:1,0');
+    const dests = transportDestinations(p, 'train');
+    expect(dests.find((d) => d.unknown)?.key).toBe(unknown);
+    expect(dests.find((d) => d.unknown)?.name).toBe('Okänd stad');
+    expect(dests.find((d) => d.unknown)?.price).toBe(15);
+    // bus never lists it
+    expect(transportDestinations(p, 'bus').some((d) => d.key === unknown)).toBe(false);
+    // the station is the boarding point for trains
+    standAt(world, p, CITY_BUS_STOP.x, CITY_BUS_STOP.y + 1);
+    expect(toasts(ride(world, p.id, 'train', unknown, ctx()))).toContain('Gå fram till hållplatsen först.');
+    standAt(world, p, CITY_STATION.x + 1, CITY_STATION.y + 2);
+    const ch = ride(world, p.id, 'train', unknown, ctx());
+    expect(ch.some((c) => c.t === 'ride' && c.via === 'train')).toBe(true);
+    expect(p.area).toBe(unknown);
+    expect(p.coins).toBe(85);
+    expect(p.visited).toContain(unknown);
+    expect(p.stats?.train_rides).toBe(1);
+    const city = areaOf(world, p);
+    expect(city.biome).toBe('by');
+    expect(Object.values(city.objects).some((o) => o.kind === 'train_station')).toBe(true);
+    expect(isSolidForPlayer(city, Math.floor(p.x / TILE), Math.floor(p.y / TILE))).toBe(false);
+    // next unknown city is a different one now
+    expect(nearestUnknownCity(p.visited!)).not.toBe(unknown);
+    expect(() => JSON.stringify(ch)).not.toThrow();
+  });
+});
+
+describe('staden', () => {
+  const tileOfPx = (v: number) => Math.floor(v / TILE);
+  const DIRS: Record<string, [number, number]> = { right: [1, 0], left: [-1, 0], down: [0, 1], up: [0, -1] };
+
+  it('has streets with sidewalks and crossings, a square, a station with rails, and traffic on the streets', () => {
+    const city = generateArea(1, 0);
+    expect(city.biome).toBe('by');
+    const T = city.terrain;
+    expect(T.filter((t) => t === 'road').length).toBeGreaterThan(200);
+    for (const t of ['sidewalk', 'crossing', 'rail', 'path_stone'] as const) expect(T).toContain(t);
+    const kinds = Object.values(city.objects).map((o) => o.kind);
+    for (const k of ['bus_stop', 'train_station', 'apartment', 'shop', 'traffic_light', 'street_lamp', 'parked_car', 'pizzeria', 'bathhouse', 'market', 'sellstall', 'town_well'])
+      expect(kinds).toContain(k);
+    expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
+    const species = Object.values(city.animals).map((a) => a.species);
+    expect(species.filter((s) => s === 'car')).toHaveLength(4);
+    expect(species.filter((s) => s === 'motorcycle')).toHaveLength(2);
+    expect(species.filter((s) => s === 'bus')).toHaveLength(2);
+    expect(species.filter((s) => s === 'train')).toHaveLength(1);
+    for (const a of Object.values(city.animals)) if (isVehicle(a)) expect(['road', 'crossing', 'rail']).toContain(T[tileIndex(tileOfPx(a.x), tileOfPx(a.y))]);
+    // the openings in the edges lead straight onto the main streets
+    expect(T[tileIndex(32, 1)]).toBe('road');
+    expect(T[tileIndex(1, 33)]).toBe('road');
+    expect(T[tileIndex(62, 34)]).toBe('road');
+    // the villagers' spots are on walkable ground, off the streets
+    for (const n of npcsIn(city))
+      for (const w of [n, ...n.routine]) {
+        expect(objectAt(city, w.x, w.y)).toBeUndefined();
+        expect(['road', 'crossing']).not.toContain(T[tileIndex(w.x, w.y)]);
+      }
+  });
+
+  it('traffic drives along the streets, stops and honks for a player in the way, and cannot be walked into', () => {
+    const { world, p } = setup();
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    const city = areaOf(world, p);
+    expect(city.biome).toBe('by');
+    const car = Object.values(city.animals).find((a) => a.species === 'car')!;
+    const start = { x: car.x, y: car.y };
+    let now = 1_000_000;
+    const step = () => {
+      now += 100;
+      return tick(world, 100, { ...ctx(), now });
+    };
+    for (let i = 0; i < 40; i++) step();
+    expect(Math.hypot(car.x - start.x, car.y - start.y)).toBeGreaterThan(TILE);
+    expect(car.moving).toBe(true);
+    expect(['road', 'crossing']).toContain(city.terrain[tileIndex(tileOfPx(car.x), tileOfPx(car.y))]);
+    // stand right in front of it: it stops, and after a while it honks (kindly)
+    const [dx, dy] = DIRS[car.facing]!;
+    p.x = car.x + dx * TILE * 1.3;
+    p.y = car.y + dy * TILE * 1.3;
+    const before = { x: car.x, y: car.y };
+    let honked = false;
+    for (let i = 0; i < 30; i++) if (step().some((c) => c.t === 'fx' && c.kind === 'honk')) honked = true;
+    expect(car.x).toBe(before.x);
+    expect(car.y).toBe(before.y);
+    expect(car.moving).toBe(false);
+    expect(honked).toBe(true);
+    expect(isSolidForPlayer(city, tileOfPx(car.x), tileOfPx(car.y))).toBe(true);
+    // tapping a car just makes it honk; nothing to feed or pet
+    const ch = performAction(city, p.id, tileOfPx(car.x), tileOfPx(car.y), ctx());
+    expect(toasts(ch).some((t) => t.includes('Tut'))).toBe(true);
+    expect(car.petted).toBe(false);
+    // out of the way again: it drives on
+    p.x = 8 * TILE;
+    p.y = 8 * TILE;
+    for (let i = 0; i < 20; i++) step();
+    expect(Math.hypot(car.x - before.x, car.y - before.y)).toBeGreaterThan(TILE / 2);
+  });
+
+  it('a village saved before the streets existed is rebuilt as a city, once', () => {
+    const old = generateArea(1, 0);
+    old.terrain = old.terrain.map((t) => (t === 'road' || t === 'sidewalk' || t === 'crossing' || t === 'rail' ? 'grass' : t));
+    old.animals = {};
+    expect(isCity(old)).toBe(false);
+    expect(ensureCity(old)).toBe(true);
+    expect(isCity(old)).toBe(true);
+    expect(Object.values(old.animals).some((a) => a.species === 'bus')).toBe(true);
+    expect(Object.values(old.objects).some((o) => o.kind === 'train_station')).toBe(true);
+    expect(ensureCity(old)).toBe(false);
   });
 });

@@ -24,9 +24,11 @@ export type Change =
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
-  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria'; id?: number; npc?: string }
+  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria' | 'travel'; id?: number; npc?: string }
+  /** Private: the rider boards a bus or train (the client plays the trip). */
+  | { t: 'ride'; to: string; via: 'bus' | 'train'; place: string }
   | { t: 'quests'; quests: Quest[] }
-  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso'; area?: string; from?: { x: number; y: number } }
+  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso' | 'honk'; area?: string; from?: { x: number; y: number } }
   /** Sent to one player when they enter another map (full state) or when it is torn down (null). */
   | { t: 'areaData'; to: string; key: string; world: WorldState | null };
 
@@ -48,11 +50,13 @@ export type ClientMsg =
   | { t: 'sell'; slot: number; qty: number }
   | { t: 'equip'; slot: 'hat' | 'shirt' | 'pants' | 'shoes'; item: string | null }
   | { t: 'emote'; id: string }
+  | { t: 'honk' }
   | { t: 'drop'; slot: number; qty: number }
   | { t: 'nameAnimal'; id: number; name: string }
   | { t: 'quest'; id: string }
   | { t: 'travel'; dir: 'n' | 's' | 'e' | 'w' }
   | { t: 'teleport'; to: string }
+  | { t: 'ride'; via: 'bus' | 'train'; to: string }
   | { t: 'paint'; pixels: string }
   | { t: 'ping' };
 

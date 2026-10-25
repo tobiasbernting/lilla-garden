@@ -9,6 +9,8 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   cow: { w: 24, h: 18 },
   pig: { w: 18, h: 14 },
   horse: { w: 26, h: 24 },
+  car: { w: 24, h: 14 },
+  motorcycle: { w: 16, h: 12 },
   dog: { w: 16, h: 14 },
   cat: { w: 14, h: 12 },
   fox: { w: 18, h: 12 },
@@ -23,6 +25,8 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   bear: { w: 24, h: 20 },
   wolf: { w: 20, h: 14 },
   lynx: { w: 18, h: 13 },
+  bus: { w: 40, h: 16 },
+  train: { w: 48, h: 16 },
   slime: { w: 14, h: 12 },
   bat: { w: 16, h: 10 },
   troll: { w: 18, h: 22 },
@@ -235,16 +239,75 @@ function lynx(p: Px, f: number): void {
   p.rect(2 + f, 9, 2, 4, d).rect(6, 9, 2, 4, c).rect(10 - f, 9, 2, 4, d);
 }
 
-const DRAW: Record<string, (p: Px, f: number) => void> = { hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, hare, boar, moose, bear, wolf, lynx, slime, bat, troll, boss };
+/** City traffic: drawn with a colour variant and never with a tomteluva. */
+export const VEHICLE_SPECIES = new Set(['car', 'motorcycle', 'bus', 'train']);
+export const VEHICLE_VARIANTS = 3;
+/** Colour variants per species (vehicles only); variant 0 is the default. */
+export const ANIMAL_VARIANTS: Record<string, number> = Object.fromEntries([...VEHICLE_SPECIES].map((s) => [s, VEHICLE_VARIANTS]));
+const CAR_COLORS = ['#d9453b', '#3b6fd9', '#f0c030'];
+const MOTO_COLORS = ['#d9453b', '#f08a2a', '#2f7a3a'];
+const wheel = (p: Px, cx: number, cy: number, r: number, f: number) => {
+  p.circle(cx, cy, r, '#2a2a2a').circle(cx, cy, Math.max(1, r - 1.5), '#8a8a90');
+  p.px(cx + (f ? 1 : 0), cy - (f ? 0 : 1), '#2a2a2a');
+};
+function car(p: Px, f: number, v = 0): void {
+  const c = CAR_COLORS[v % CAR_COLORS.length]!;
+  p.rect(1, 6, 22, 6, c).rect(5, 2, 13, 5, c).rect(1, 6, 22, 1, shade(c, 1.25)).rect(1, 11, 22, 1, shade(c, 0.75));
+  p.rect(7, 3, 4, 3, '#bfeaff').rect(12, 3, 5, 3, '#bfeaff');
+  p.rect(22, 7, 1, 2, '#fff1a0').rect(1, 7, 1, 2, '#e0362a'); // headlight, taillight
+  wheel(p, 6, 11, 2.5, f);
+  wheel(p, 18, 11, 2.5, f);
+}
+function motorcycle(p: Px, f: number, v = 0): void {
+  // small moped facing right (the driver is the player sprite on top): two wheels, a seat, handlebar and a headlamp
+  const c = MOTO_COLORS[v % MOTO_COLORS.length]!;
+  const d = shade(c, 0.7);
+  p.rect(3, 5, 10, 3, c).rect(4, 4, 6, 1, d); // frame + seat
+  p.rect(11, 2, 1, 4, '#3a3a3a').rect(10, 2, 3, 1, '#3a3a3a'); // handlebar
+  p.rect(13, 4, 2, 2, '#fff1a0'); // headlamp
+  p.rect(1, 8, 2, 1, d).rect(13, 7, 1, 1, d);
+  wheel(p, 3, 9, 2.5, f);
+  wheel(p, 13, 9, 2.5, f);
+}
+function bus(p: Px, f: number): void {
+  const c = '#f2c230';
+  p.rect(1, 1, 38, 12, c).rect(1, 1, 38, 1, shade(c, 1.2)).rect(1, 8, 38, 2, '#3b6fd9').rect(1, 12, 38, 1, shade(c, 0.75));
+  for (let i = 0; i < 6; i++) p.rect(3 + i * 6, 3, 4, 4, '#bfeaff');
+  p.rect(33, 8, 4, 5, '#2a2a2a').rect(34, 9, 2, 4, '#bfeaff'); // door
+  p.rect(38, 9, 1, 2, '#fff1a0').rect(1, 9, 1, 2, '#e0362a');
+  wheel(p, 8, 13, 2.5, f);
+  wheel(p, 30, 13, 2.5, f);
+}
+function train(p: Px, f: number): void {
+  const c = '#2f5fb8';
+  // engine (right) and one wagon (left)
+  p.rect(0, 3, 22, 10, c).rect(23, 2, 25, 11, c).rect(0, 3, 22, 1, shade(c, 1.25)).rect(23, 2, 25, 1, shade(c, 1.25));
+  p.rect(0, 12, 48, 1, shade(c, 0.7));
+  for (let i = 0; i < 4; i++) p.rect(2 + i * 5, 5, 3, 4, '#bfeaff');
+  for (let i = 0; i < 3; i++) p.rect(25 + i * 5, 4, 3, 4, '#bfeaff');
+  p.rect(43, 4, 4, 6, '#f2c230').rect(46, 6, 2, 2, '#fff1a0'); // yellow nose + headlight
+  p.rect(0, 7, 1, 2, '#e0362a');
+  p.rect(22, 5, 1, 7, '#2a2a2a'); // coupling
+  wheel(p, 5, 13, 2.5, f);
+  wheel(p, 17, 13, 2.5, f);
+  wheel(p, 28, 13, 2.5, f);
+  wheel(p, 42, 13, 2.5, f);
+}
+
+const DRAW: Record<string, (p: Px, f: number, v?: number) => void> = {
+  car,
+  motorcycle,
+  bus,
+  train, hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, hare, boar, moose, bear, wolf, lynx, slime, bat, troll, boss };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
 const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], pig: [14, -1], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0], hare: [11, -1], boar: [14, 1], moose: [19, 0], bear: [18, 1], wolf: [16, 0], lynx: [14, 0] };
 
-export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean): Px {
+export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean, variant = 0): Px {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };
   const full = new Px(size.w, size.h);
-  DRAW[species]?.(full, frame);
-  if (jul) {
+  DRAW[species]?.(full, frame, variant);
+  if (jul && !VEHICLE_SPECIES.has(species)) {
     const [hx, hy] = HAT_POS[species] ?? [8, 0];
     full.rect(hx - 3, hy + 1, 6, 1, '#ffffff').rect(hx - 2, hy - 1, 4, 2, '#d8363a').rect(hx - 1, hy - 3, 2, 2, '#d8363a').px(hx + 1, hy - 3, '#ffffff');
   }
@@ -258,11 +321,12 @@ export function drawAnimal(species: string, frame: number, baby: boolean, jul: b
   return p;
 }
 
-export function animalSheet(species: string, baby: boolean, jul: boolean): HTMLCanvasElement {
+export function animalSheet(species: string, baby: boolean, jul: boolean, variant = 0): HTMLCanvasElement {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };
   const sheet = new Px(size.w * 2, size.h);
-  sheet.blit(drawAnimal(species, 0, baby, jul), 0, 0).blit(drawAnimal(species, 1, baby, jul), size.w, 0);
+  sheet.blit(drawAnimal(species, 0, baby, jul, variant), 0, 0).blit(drawAnimal(species, 1, baby, jul, variant), size.w, 0);
   return sheet.canvas;
 }
 
-export const animalKey = (species: string, baby: boolean, jul: boolean): string => `animal-${species}-${baby ? 'baby' : 'adult'}${jul ? '-jul' : ''}`;
+export const animalKey = (species: string, baby: boolean, jul: boolean, variant = 0): string =>
+  `animal-${species}-${baby ? 'baby' : 'adult'}${jul ? '-jul' : ''}${variant ? `-v${variant}` : ''}`;

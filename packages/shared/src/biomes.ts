@@ -2,7 +2,7 @@
 // Walking off an edge of one area puts you on the opposite edge of the next.
 import { ANIMALS, NPCS } from './data.ts';
 import { SPECIES_NAMES } from './sv.ts';
-import { ensureBathhouse } from './bath.ts';
+import { BUS_STOP, PIZZERIA, TRAIN_STATION, buildCity, setAreaGenerator } from './city.ts';
 import { addObject, emptyWorld, inBounds, objectAt, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import type { AnimalDef, AnimalState, Terrain, WorldState } from './types.ts';
@@ -19,7 +19,7 @@ export const BIOME_NAMES: Record<Biome | 'farm' | 'dungeon', string> = {
   berg: 'Bergen',
   strand: 'Stranden',
   oken: 'Öknen',
-  by: 'Byn',
+  by: 'Staden',
 };
 export const BIOME_EMOJI: Record<Biome | 'farm' | 'dungeon', string> = {
   farm: '🏡',
@@ -166,7 +166,7 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
         }
       }
     }
-  if (biome === 'by') buildVillage(world, rnd);
+  if (biome === 'by') buildCity(world);
   spawnWildAnimals(world, biome, rnd);
   // A signpost at every arrival tile pointing home-ish (decoration)
   for (const side of ['n', 's', 'e', 'w'] as const) {
@@ -250,9 +250,6 @@ export function ensureFarmExits(world: WorldState): void {
     }
 }
 
-/** Where the pizzeria stands on the village square (3×2 footprint). */
-export const PIZZERIA = { x: MAP_W / 2 + 7, y: MAP_H / 2 - 3 };
-
 /** Adds the pizzeria (and room for Pino) to a village saved before it existed. Idempotent. */
 export function ensurePizzeria(world: WorldState): boolean {
   if (world.biome !== 'by') return false;
@@ -272,69 +269,60 @@ export function ensurePizzeria(world: WorldState): boolean {
   return true;
 }
 
-/** A village square with houses, a well, a market and a buyer, lanterns and flowers. */
-function buildVillage(world: WorldState, rnd: () => number): void {
-  const T = world.terrain;
-  const cx = MAP_W / 2;
-  const cy = MAP_H / 2;
-  const clear = (x: number, y: number) => {
-    const o = objectAt(world, x, y);
-    if (o) {
-      delete world.objects[o.id];
-      delete world.occupancy[key(x, y)];
+// ---------------------------------------------------------------------------
+// Public transport: every city has a bus stop by the square and a station by the north road;
+// the farm has a bus stop at its east exit.
+// ---------------------------------------------------------------------------
+export const CITY_BUS_STOP = BUS_STOP;
+export const CITY_STATION = TRAIN_STATION;
+export const FARM_BUS_STOP = { x: MAP_W - 3, y: MAP_H / 2 - 3 }; // the tile below it is the east exit path
+
+const KEEP_BUILDINGS = new Set(['house_small', 'market', 'sellstall', 'pizzeria', 'bathhouse', 'house', 'bus_stop', 'train_station']);
+function clearFootprint(world: WorldState, x0: number, y0: number, w: number, h: number): void {
+  for (let dy = -1; dy <= h; dy++)
+    for (let dx = -1; dx <= w; dx++) {
+      const x = x0 + dx;
+      const y = y0 + dy;
+      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) continue;
+      const o = objectAt(world, x, y);
+      if (o && !KEEP_BUILDINGS.has(o.kind)) delete world.objects[o.id];
+      const occ = world.occupancy[key(x, y)];
+      if (occ !== undefined && !world.objects[occ]) delete world.occupancy[key(x, y)];
+      if (world.terrain[tileIndex(x, y)] === 'water') world.terrain[tileIndex(x, y)] = 'sand';
     }
-  };
-  // plaza
-  for (let y = cy - 7; y <= cy + 7; y++)
-    for (let x = cx - 9; x <= cx + 9; x++) {
-      clear(x, y);
-      T[tileIndex(x, y)] = 'path_stone';
-    }
-  // roads to the four edges
-  for (let y = 0; y < MAP_H; y++) for (let x = cx - 1; x <= cx; x++) if (!(x >= cx - 9 && y >= cy - 7 && y <= cy + 7)) { clear(x, y); T[tileIndex(x, y)] = 'path_dirt'; }
-  for (let x = 0; x < MAP_W; x++) for (let y = cy - 1; y <= cy; y++) if (!(y >= cy - 7 && x >= cx - 9 && x <= cx + 9)) { clear(x, y); T[tileIndex(x, y)] = 'path_dirt'; }
-  // houses around the plaza (3x3 footprints) with varied roofs
-  const houses: [number, number][] = [
-    [cx - 9, cy - 11],
-    [cx - 4, cy - 11],
-    [cx + 2, cy - 11],
-    [cx + 7, cy - 11],
-    [cx - 13, cy - 4],
-    [cx - 13, cy + 2],
-    [cx + 11, cy - 4],
-    [cx + 11, cy + 2],
-    [cx - 9, cy + 9],
-    [cx + 7, cy + 9],
-  ];
-  houses.forEach(([x, y], i) => {
-    for (let dy = -1; dy <= 3; dy++) for (let dx = -1; dx <= 3; dx++) clear(x + dx, y + dy);
-    addObject(world, 'house_small', x, y, { variant: i % 4 });
-  });
-  addObject(world, 'town_well', cx, cy - 1);
-  addObject(world, 'market', cx - 6, cy - 5);
-  addObject(world, 'sellstall', cx + 4, cy - 5);
-  addObject(world, 'pizzeria', PIZZERIA.x, PIZZERIA.y);
-  for (const [x, y] of [
-    [cx - 9, cy - 7],
-    [cx + 9, cy - 7],
-    [cx - 9, cy + 7],
-    [cx + 9, cy + 7],
-  ] as const)
-    addObject(world, 'lantern', x, y);
-  for (const [x, y] of [
-    [cx - 7, cy + 5],
-    [cx + 6, cy + 5],
-    [cx - 2, cy + 7],
-    [cx + 2, cy + 7],
-  ] as const)
-    addObject(world, 'flowerbox', x, y);
-  addObject(world, 'bench', cx - 3, cy + 2);
-  addObject(world, 'bench', cx + 2, cy + 2);
-  ensureBathhouse(world);
-  // villagers must be able to stand on their spots
-  for (const n of Object.values(NPCS)) {
-    if (n.area !== world.area) continue;
-    for (const w of [n, ...n.routine]) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) clear(w.x + dx, w.y + dy);
-  }
-  void rnd;
 }
+
+/** Places the bus stop and the train station in a city (idempotent; the city builder calls this). */
+export function placeTransport(world: WorldState): boolean {
+  let added = false;
+  if (!Object.values(world.objects).some((o) => o.kind === 'bus_stop')) {
+    clearFootprint(world, CITY_BUS_STOP.x, CITY_BUS_STOP.y, 1, 1);
+    addObject(world, 'bus_stop', CITY_BUS_STOP.x, CITY_BUS_STOP.y);
+    added = true;
+  }
+  if (!Object.values(world.objects).some((o) => o.kind === 'train_station')) {
+    clearFootprint(world, CITY_STATION.x, CITY_STATION.y, 3, 2);
+    addObject(world, 'train_station', CITY_STATION.x, CITY_STATION.y);
+    // a little platform in front of the station
+    for (let dx = -1; dx <= 3; dx++) world.terrain[tileIndex(CITY_STATION.x + dx, CITY_STATION.y + 2)] = 'path_stone';
+    added = true;
+  }
+  return added;
+}
+
+/** Adds transport to a city saved before it existed. */
+export function ensureTransport(world: WorldState): boolean {
+  if (world.biome !== 'by') return false;
+  return placeTransport(world);
+}
+
+/** The farm's bus stop, just north of the east exit. Idempotent. */
+export function ensureFarmBusStop(world: WorldState): boolean {
+  if (Object.values(world.objects).some((o) => o.kind === 'bus_stop')) return false;
+  clearFootprint(world, FARM_BUS_STOP.x, FARM_BUS_STOP.y, 1, 1);
+  addObject(world, 'bus_stop', FARM_BUS_STOP.x, FARM_BUS_STOP.y);
+  return true;
+}
+
+// generateArea is what ensureCity uses to rebuild an old village
+setAreaGenerator((ax, ay) => generateArea(ax, ay));
