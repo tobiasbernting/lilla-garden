@@ -13,9 +13,22 @@ body {
   height: 100%;
   image-rendering: auto;
 }
+/* The HUD is anchored to the window's edges (the 2D game letterboxes a 16:9 stage instead) */
 #stage {
+  left: 0;
+  top: 0;
+  transform: none;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 1;
+}
+.invert-btn {
+  opacity: 0.55;
+}
+.invert-btn.on {
+  opacity: 1;
+  outline: calc(0.8 * var(--u)) solid var(--gold);
 }
 .art-btn {
   display: none !important;
@@ -60,8 +73,9 @@ body.touch .crosshair {
   position: fixed;
   inset: 0;
   display: none;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding-top: 28vh;
   background: rgba(0, 0, 0, 0.35);
   color: #fff;
   font: 800 28px 'Nunito', 'Trebuchet MS', system-ui, sans-serif;

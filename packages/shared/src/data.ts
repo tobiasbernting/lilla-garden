@@ -48,8 +48,13 @@ crop('sunflower', 20, 28);
 crop('wheat', 10, 10);
 
 // Materials
-add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials' }));
-add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials' }));
+add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials', block: 'planks' }));
+add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials', block: 'cobble' }));
+// 3D game: dug out of the ground, and built with
+add(I('dirt', 'material', { sell: 1, block: 'dirt' }));
+add(I('sand', 'material', { sell: 1, block: 'sand' }));
+add(I('gravel', 'material', { sell: 1, block: 'gravel' }));
+add(I('coal', 'material', { sell: 4 }));
 add(I('fiber', 'material', { sell: 1 }));
 add(I('paper', 'material', { sell: 1, buy: 3, tab: 'materials' }));
 add(I('hay', 'feed', { sell: 1, buy: 4, tab: 'feed' }));

@@ -16,6 +16,8 @@ import type {
 /** A change to the world that the server broadcasts after applying. `area` marks dungeon changes. */
 export type Change =
   | { t: 'terrain'; x: number; y: number; terrain: Terrain; area?: string }
+  /** 3D game: one block dug or placed. */
+  | { t: 'block'; x: number; y: number; h: number; b: number; area?: string }
   | { t: 'crop'; k: string; crop: CropState | null; area?: string }
   | { t: 'object'; id: number; obj: WorldObject | null; area?: string }
   | { t: 'animal'; id: number; animal: AnimalState | null; area?: string }
@@ -40,7 +42,10 @@ export interface SlotRef {
 
 export type ClientMsg =
   | { t: 'hello'; playerId: string }
-  | { t: 'move'; x: number; y: number; facing: Facing; moving: boolean }
+  | { t: 'move'; x: number; y: number; z?: number; facing: Facing; moving: boolean }
+  /** 3D game: dig the block at a cell, or build one there. */
+  | { t: 'dig'; x: number; y: number; h: number }
+  | { t: 'place'; x: number; y: number; h: number }
   | { t: 'act'; tx: number; ty: number }
   | { t: 'select'; slot: number }
   | { t: 'swap'; a: SlotRef; b: SlotRef }
@@ -69,6 +74,8 @@ export interface PlayerSnap {
   held: string | null;
   emote?: { id: string; until: number };
   area?: string;
+  /** 3D game: feet height in blocks. */
+  z?: number;
 }
 
 export interface NpcSnap {

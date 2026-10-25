@@ -211,6 +211,13 @@ const PAINTERS: Record<string, Painter> = {
   leaves_apple: leaves(LEAF, '#d8322a'),
   leaves_spruce: leaves(SPRUCE_LEAF),
   leaves_palm: leaves(['#4f9a2e', '#5aab36', '#448526', '#67b843']),
+  leaves_birch: leaves(['#6a9a3a', '#7aab46', '#5e8a33', '#86b852']),
+  leaves_dark: leaves(['#2b5a1c', '#336a22', '#244c17', '#3b7428']),
+  leaves_cherry: leaves(['#f2a6c8', '#f7bdd6', '#e88fb8', '#fbd0e2']),
+  log_dark: logSide(['#3b2a1a', '#33241a', '#45321f', '#2a1d12']),
+  log_redwood: logSide(['#8a3f24', '#7a361f', '#9a4a2c', '#682c18']),
+  log_cherry: logSide(['#4a2a2e', '#3f2428', '#553236', '#341d21']),
+  bedrock: (p) => p.noise(['#3a3a3a', '#575757', '#2a2a2a', '#6a6a6a', '#1f1f1f'], 1),
   leaves_snowy: (p) => {
     leaves(SPRUCE_LEAF)(p);
     p.dots(28, SNOW);
@@ -500,6 +507,13 @@ add({ name: 'leaves_apple', opaque: false, cutout: true });
 add({ name: 'leaves_spruce', opaque: false, cutout: true });
 add({ name: 'leaves_palm', opaque: false, cutout: true });
 add({ name: 'leaves_snowy', opaque: false, cutout: true });
+add({ name: 'leaves_birch', opaque: false, cutout: true });
+add({ name: 'leaves_dark', opaque: false, cutout: true });
+add({ name: 'leaves_cherry', opaque: false, cutout: true });
+add({ name: 'log_dark', top: 'log_oak_top', bottom: 'log_oak_top', side: 'log_dark' });
+add({ name: 'log_redwood', top: 'log_oak_top', bottom: 'log_oak_top', side: 'log_redwood' });
+add({ name: 'log_cherry', top: 'log_oak_top', bottom: 'log_oak_top', side: 'log_cherry' });
+add({ name: 'bedrock' });
 add({ name: 'snow' });
 add({ name: 'ice' });
 add({ name: 'water', opaque: false, liquid: true });

@@ -247,6 +247,7 @@ export function drawTerrainTiles(): TerrainTiles {
         case 'path_stone':
           return pathStoneI;
         case 'path_dirt':
+        case 'dirt': // (3D game only)
           return pathDirtI;
         case 'floor_wood':
           return floorWoodI;
@@ -255,6 +256,7 @@ export function drawTerrainTiles(): TerrainTiles {
         case 'snow':
           return snow[h % 2]!;
         case 'gravel':
+        case 'stone': // (3D game only)
           return gravelI;
         case 'ice':
           return iceI;

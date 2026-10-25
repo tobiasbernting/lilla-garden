@@ -1,7 +1,7 @@
 // The block world: a voxel grid built from the 2D map (terrain + block objects), Minecraft-style
 // sky/block light, and chunk meshes with face culling and smooth ambient occlusion.
 import * as THREE from 'three';
-import { BATH_ROOM, EDGE_GAP, INTERIOR, MAP_H, MAP_W, type Season, type Terrain, type WorldState } from '@lilla-garden/shared';
+import { BASE, BATH_ROOM, EDGE_GAP, INTERIOR, MAP_H, MAP_W, VB, VH, VOXEL_BLOCKS, blockAt, blockTerrain, columnTop, type Season, type Terrain, type WorldState } from '@lilla-garden/shared';
 import { AIR, BLOCK, BLOCKS, TEX, atlas, blockTile, tileUV, type BlockDef } from './blocks.ts';
 import { FACE_SHADE, FACES, GeoBuilder, type FaceDef, type V3 } from './builder.ts';
 import { makeMaterial } from './material.ts';
@@ -11,9 +11,9 @@ import { hash, objectLight, oakTree, spruceTree, stampObject, WALL_H, type Stamp
 export const MARGIN = 20;
 export const GW = MAP_W + MARGIN * 2;
 export const GD = MAP_H + MARGIN * 2;
-export const GH = 34;
-/** Layer index of the first block above the ground surface; the surface is at world y = 0. */
-export const GROUND = 10;
+export const GH = VH;
+/** Layer index of the first block above flat ground; flat ground is at world y = 0. */
+export const GROUND = BASE;
 const CHUNK = 16;
 const CX = Math.ceil(GW / CHUNK);
 const CZ = Math.ceil(GD / CHUNK);
@@ -58,6 +58,23 @@ const SURFACE: Record<Terrain, string> = {
   sidewalk: 'sidewalk',
   crossing: 'crossing',
   rail: 'rail',
+  dirt: 'dirt',
+  stone: 'stone',
+};
+
+/** The shared block layer's blocks (3D game) as the client's blocks. */
+const VOXEL_TO_CLIENT: Record<string, string> = {
+  dirt: 'dirt',
+  stone: 'stone',
+  bedrock: 'bedrock',
+  coal_ore: 'ore_coal',
+  gold_ore: 'ore_gold',
+  crystal_ore: 'ore_crystal',
+  sand: 'sand',
+  gravel: 'gravel',
+  cobble: 'cobble',
+  planks: 'planks_oak',
+  snow: 'snow',
 };
 
 export class Voxels {
@@ -73,6 +90,10 @@ export class Voxels {
   private prevSky = new Uint8Array(N);
   private prevBlk = new Uint8Array(N);
   private first = true;
+  /** Ground height (layer above the top terrain block) of every column, for placing things on it. */
+  private colTop = new Int16Array(GW * GD).fill(GROUND);
+  private world: WorldState | null = null;
+  private season: Season = 'none';
   kind: AreaKind = 'outdoor';
   /** Chunks re-meshed by the last rebuild (their light may have changed). */
   lastDirty = new Set<number>();
@@ -143,10 +164,12 @@ export class Voxels {
   surfaceAt(tx: number, tz: number): number {
     const x = tx + MARGIN;
     const z = tz + MARGIN;
-    const b = this.get(x, GROUND - 1, z);
-    const d = BLOCKS[b];
-    if (d?.liquid) return -0.35;
-    return d?.topInset ? -d.topInset / TEX : 0;
+    if (x < 0 || z < 0 || x >= GW || z >= GD) return 0;
+    const top = this.world?.voxel && tx >= 0 && tz >= 0 && tx < MAP_W && tz < MAP_H ? columnTop(this.world, tx, tz) : this.colTop[z * GW + x]!;
+    const d = BLOCKS[this.get(x, top - 1, z)];
+    const y = top - GROUND;
+    if (d?.liquid) return y - 0.35;
+    return d?.topInset ? y - d.topInset / TEX : y;
   }
 
   // ------------------------------------------------------------------------ building the grid
@@ -170,6 +193,8 @@ export class Voxels {
       this.owner[i] = ownerId;
     };
     this.kind = kind;
+    this.world = world;
+    this.season = season;
     if (terrain || this.baseKey !== baseKey) {
       this.blocks.fill(AIR);
       this.stampTerrain(world, kind, season);
@@ -185,14 +210,78 @@ export class Voxels {
       return id === undefined ? undefined : world.objects[id]?.kind;
     };
     const ctx: StampCtx = { season, biome: world.biome, kindAt };
+    let lift = 0;
+    const putLifted = (tx: number, h: number, tz: number, b: number) => put(tx, h + lift, tz, b);
     for (const o of Object.values(world.objects)) {
       ownerId = o.id;
-      stampObject(put, o, ctx);
+      // things stand on their tile's ground (hills in the 3D game)
+      lift = world.voxel ? columnTop(world, o.x, o.y) - BASE : 0;
+      stampObject(putLifted, o, ctx);
       const l = objectLight(o);
-      if (l && l.level > 0) emitters.push({ x: o.x + l.dx + MARGIN, y: GROUND + l.h, z: o.y + l.dz + MARGIN, level: l.level });
+      if (l && l.level > 0) emitters.push({ x: o.x + l.dx + MARGIN, y: GROUND + l.h + lift, z: o.y + l.dz + MARGIN, level: l.level });
     }
     this.computeLight(emitters);
     this.remesh();
+  }
+
+  /**
+   * Re-stamps single map columns into the cached terrain (a block dug or placed, a tile hoed) and
+   * rebuilds from there, instead of redoing the whole map.
+   */
+  patchColumns(world: WorldState, kind: AreaKind, season: Season, tiles: Iterable<[number, number]>): void {
+    const keep = this.blocks;
+    this.blocks = this.base;
+    for (const [tx, tz] of tiles) if (tx >= 0 && tz >= 0 && tx < MAP_W && tz < MAP_H) this.stampMapColumn(world, kind, season, tx, tz);
+    this.blocks = keep;
+    this.rebuild(world, kind, season, false);
+  }
+
+  private ground(kind: AreaKind, season: Season, t: Terrain): number {
+    let name = SURFACE[t] ?? 'grass';
+    if (kind === 'dungeon' && t === 'floor_stone') name = 'stone';
+    if (season === 'jul' && kind === 'outdoor' && t === 'grass') name = 'snowy_grass';
+    return BLOCK[name]!;
+  }
+
+  /** One column of the map from the shared block layer (3D game) or flat ground. */
+  private stampMapColumn(world: WorldState, kind: AreaKind, season: Season, tx: number, tz: number): void {
+    const x = tx + MARGIN;
+    const z = tz + MARGIN;
+    for (let y = 0; y < GH; y++) this.blocks[idx(x, y, z)] = AIR;
+    const t = world.terrain[tz * MAP_W + tx]!;
+    if (!world.voxel) {
+      const top = GROUND - 1;
+      if (t === 'water' || t === 'pool') {
+        const T = world.terrain;
+        const isWater = (ax: number, az: number) => T[Math.min(MAP_H - 1, Math.max(0, az)) * MAP_W + Math.min(MAP_W - 1, Math.max(0, ax))] === 'water';
+        const deep = isWater(tx - 1, tz) && isWater(tx + 1, tz) && isWater(tx, tz - 1) && isWater(tx, tz + 1);
+        const bottom = deep ? top - 2 : top - 1;
+        this.column(x, z, bottom, t === 'pool' ? BLOCK.quartz! : deep ? BLOCK.gravel! : BLOCK.sand!, BLOCK.dirt!);
+        for (let y = bottom + 1; y <= top; y++) this.blocks[idx(x, y, z)] = BLOCK.water!;
+      } else {
+        const g = this.ground(kind, season, t);
+        this.column(x, z, top, g, this.underOf(g));
+      }
+      this.colTop[z * GW + x] = GROUND;
+      return;
+    }
+    const top = columnTop(world, tx, tz) - 1;
+    for (let h = 0; h <= top && h < GH; h++) {
+      const raw = blockAt(world, tx, tz, h);
+      if (raw === VB.air) continue;
+      let b: number;
+      if (h === top) {
+        // the top block looks like its terrain (grass, farmland, path…); a dug-out ore keeps its look
+        b = raw !== VB.surface && blockTerrain(raw) === t ? BLOCK[VOXEL_TO_CLIENT[VOXEL_BLOCKS[raw]!] ?? 'stone']! : this.ground(kind, season, t);
+      } else if (raw === VB.surface) b = BLOCK.dirt!;
+      else b = BLOCK[VOXEL_TO_CLIENT[VOXEL_BLOCKS[raw]!] ?? 'stone']!;
+      this.blocks[idx(x, h, z)] = b;
+    }
+    this.colTop[z * GW + x] = top + 1;
+  }
+
+  private underOf(b: number): number {
+    return b === BLOCK.sand ? BLOCK.sand! : b === BLOCK.stone || b === BLOCK.stone_bricks || b === BLOCK.cobble ? BLOCK.stone! : BLOCK.dirt!;
   }
 
   private column(x: number, z: number, top: number, surface: number, under: number, deep = BLOCK.stone!): void {
@@ -254,16 +343,7 @@ export class Voxels {
         }
         // outdoors
         if (inside) {
-          const t = T[tz * MAP_W + tx]!;
-          if (t === 'water' || t === 'pool') {
-            const deep = isWater(tx - 1, tz) && isWater(tx + 1, tz) && isWater(tx, tz - 1) && isWater(tx, tz + 1);
-            const bottom = deep ? top - 2 : top - 1;
-            this.column(x, z, bottom, t === 'pool' ? BLOCK.quartz! : deep ? BLOCK.gravel! : BLOCK.sand!, BLOCK.dirt!);
-            for (let y = bottom + 1; y <= top; y++) this.blocks[idx(x, y, z)] = BLOCK.water!;
-          } else {
-            const g = ground(t);
-            this.column(x, z, top, g, underOf(g));
-          }
+          this.stampMapColumn(world, kind, season, tx, tz);
           continue;
         }
         // scenery around the map: continue the nearest edge, rising into hills away from the openings
@@ -286,7 +366,11 @@ export class Voxels {
         const surface = BLOCK[surfaceName]!;
         const noise = 0.55 + 0.45 * Math.sin(tx * 0.21 + Math.sin(tz * 0.17) * 2) * Math.cos(tz * 0.19 + Math.sin(tx * 0.13));
         const rise = corridor ? 0 : Math.max(0, Math.floor(Math.min(9, (d - 2) * 0.7) * noise + (hash(tx, tz) < 0.2 ? 1 : 0) * (d > 3 ? 1 : 0)));
-        this.column(x, z, top + rise, surface, underOf(surface));
+        // the 3D game's mountains carry on past the edge
+        const edge = world.voxel ? columnTop(world, Math.min(MAP_W - 1, Math.max(0, tx)), Math.min(MAP_H - 1, Math.max(0, tz))) - GROUND : 0;
+        const ctop = Math.min(GH - 14, top + rise + edge);
+        this.column(x, z, ctop, ctop - GROUND > 12 ? BLOCK.snow! : ctop - GROUND > 8 ? BLOCK.stone! : surface, ctop - GROUND > 8 ? BLOCK.stone! : underOf(surface));
+        this.colTop[z * GW + x] = ctop + 1;
       }
   }
 

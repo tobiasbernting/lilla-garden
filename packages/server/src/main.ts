@@ -1,9 +1,15 @@
+import { setVoxelMode } from '../../shared/src/index.ts';
 import { Game } from './game.ts';
 import { MemoryStore, PgStore } from './db/store.ts';
 import { createServer, findClientDist } from './http.ts';
 
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 8080);
+  // v2 (the 3D game): hills, mountains, digging and building in blocks
+  if (process.env.WORLD_MODE === 'voxel') {
+    setVoxelMode(true);
+    console.log('world mode: voxel (3D blocks)');
+  }
   const url = process.env.DATABASE_URL;
   let store: MemoryStore | PgStore;
   if (url) {

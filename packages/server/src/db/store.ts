@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, initVoxel, rebuildOccupancy, voxelMode, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -42,6 +42,8 @@ export class PgStore implements Store {
   private players = new Set<string>();
   private gone = { objects: new Set<number>(), crops: new Set<string>(), animals: new Set<number>(), players: new Set<string>() };
   private flushing: Promise<void> | null = null;
+  /** 3D game: the farm's block layer changed (areas keep theirs in their own row). */
+  private voxelDirty = false;
 
   constructor(url: string) {
     this.sqlc = postgres(url, { max: 4, onnotice: () => {} });
@@ -100,6 +102,14 @@ export class PgStore implements Store {
       delete world.players[p.id]!.fishing;
     }
     rebuildOccupancy(world);
+    // 3D game: the farm's block layer
+    const vrow = (await this.db.select().from(s.settings).where(sql`${s.settings.key} = 'voxel'`))[0];
+    if (vrow) world.voxel = JSON.parse(vrow.value) as WorldState['voxel'];
+    else if (voxelMode()) {
+      initVoxel(world, 1337);
+      this.voxelDirty = true;
+      console.log('built the block layer for the farm');
+    }
     world.areas = {};
     for (const row of await this.db.select().from(s.areas)) {
       const a = row.data;
@@ -158,6 +168,9 @@ export class PgStore implements Store {
       }
       if (c.t === 'areaData' && c.key !== 'dungeon') this.dirtyAreas.add(c.key);
       switch (c.t) {
+        case 'block':
+          this.voxelDirty = true;
+          break;
         case 'terrain':
         case 'day':
           this.worldDirty = true;
@@ -191,6 +204,7 @@ export class PgStore implements Store {
 
   markAllDirty(world: WorldState): void {
     this.worldDirty = true;
+    this.voxelDirty = !!world.voxel;
     for (const id of Object.keys(world.objects)) this.objects.add(Number(id));
     for (const k of Object.keys(world.crops)) this.crops.add(k);
     for (const id of Object.keys(world.animals)) this.animals.add(Number(id));
@@ -223,6 +237,8 @@ export class PgStore implements Store {
       players: [...this.gone.players],
     };
     const worldDirty = this.worldDirty;
+    const voxel = this.voxelDirty && world.voxel ? JSON.stringify(world.voxel) : null;
+    this.voxelDirty = false;
     const areasToSave = [...this.dirtyAreas];
     this.dirtyAreas.clear();
     this.objects.clear();
@@ -249,6 +265,7 @@ export class PgStore implements Store {
           .values(row)
           .onConflictDoUpdate({ target: s.world.id, set: { ...row, id: undefined } });
       }
+      if (voxel) await tx.insert(s.settings).values({ key: 'voxel', value: voxel }).onConflictDoUpdate({ target: s.settings.key, set: { value: voxel } });
       for (const batch of chunk(objects, 200)) {
         const rows = batch.map((id) => {
           const o = world.objects[id]!;

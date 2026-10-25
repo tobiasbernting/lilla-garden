@@ -53,6 +53,7 @@ Environment:
 | `DATABASE_URL`    | Postgres connection string (required for persistence)     |
 | `PORT`            | HTTP/WebSocket port, default 8080                         |
 | `SEASON_OVERRIDE` | `halloween`, `jul`, `pask`, `midsommar` or `none`         |
+| `WORLD_MODE`      | `voxel` gives new maps hills, mountains and a block layer you can dig and build in (v2). Leave unset for the 2D game. |
 
 ## Layout
 
@@ -76,9 +77,26 @@ terrain and objects; swapping those in later only touches `art/world.ts`.
 
 ### 3D (v2)
 
-- Dator: klicka i spelet för att styra med musen. WASD går, musen tittar, klick använder det du tittar på
-  (svart ram = inom räckhåll), mellanslag hoppar, Shift springer, `E`/`Q` ryggsäck, hjulet/`1–8` väljer verktyg,
-  `F5` eller `V` byter kamera (första person, bakifrån, framifrån), `Esc` släpper musen.
-- Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på en ruta för att använda den,
-  handknappen använder det du tittar på (annars rutan framför dig), ⤒ hoppar, 🎥 byter kamera.
+- Dator: klicka i spelet för att styra med musen. WASD går, musen tittar, klick använder verktyget på det du
+  tittar på (svart ram). Du behöver inte sikta exakt: spelet väljer det närmaste som verktyget kan användas på,
+  inom en ruta från dig. Håll in knappen för att fortsätta hugga, hacka, vattna, så eller bygga medan du går.
+  Mellanslag hoppar, Shift springer, `E`/`Q` ryggsäck, hjulet/`1–8` väljer verktyg, `F5` eller `V` byter kamera
+  (första person, bakifrån, framifrån), 🖱️ inverterar musen upp/ner, `Esc` släpper musen.
+- Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på något för att använda verktyget på det,
+  handknappen (håll in för att fortsätta) använder det du tittar på, annars rutan framför dig. ⤒ hoppar,
+  🎥 byter kamera, 🖱️ inverterar upp/ner.
+
+#### Gräva och bygga (`WORLD_MODE=voxel`)
+
+Med `WORLD_MODE=voxel` får världen kullar, berg vid kanterna, grottor och malm. Gården, huset och vägarna ut
+till grannkartorna hålls platta, och skogarna är glesare med ek, björk, mörk ek, körsbär, gran och rödgran.
+
+- Jord, sand, grus och snö gräver du med vad som helst (även händerna); sten och malm kräver hackan.
+  Sten ger sten, kolmalm kol, guldmalm guld, kristallmalm ädelstenar. Längst ner ligger berggrund.
+- Gräver du rakt fram tar du två block på höjden, så du kan gå in i berget.
+- Håll jord, sand, grus, sten (blir kullersten) eller trä (blir plankor) och klicka för att bygga ett block.
+  Hoppa och bygg under dig för att ta dig upp. Mittenklick väljer det block du tittar på från ryggsäcken.
+- Uppgrävd jord kan hackas till åker igen. Under träd, byggnader och grödor går det inte att gräva.
+
+Bytt läge på en befintlig gård får den ett blocklager men behåller sin gamla skog; en ny gård får allt.
 

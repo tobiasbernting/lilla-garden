@@ -58,15 +58,16 @@ export class ModelLayer {
       for (const o of s.objs) {
         const y = vox.surfaceAt(o.x, o.y);
         g.off = sg.off = [o.x, y, o.y];
-        g.boxLight = sg.boxLight = vox.lightAtWorld(o.x + 0.5, 0.5, o.y + 0.5);
+        g.boxLight = sg.boxLight = vox.lightAtWorld(o.x + 0.5, y + 0.5, o.y + 0.5);
         buildModel(o, ctx, g, sg);
       }
       for (const [key, c] of s.crops) {
         const [xs, ys] = key.split(',');
         const x = Number(xs);
         const z = Number(ys);
-        sg.off = [x, vox.surfaceAt(x, z) + 1 / 16, z];
-        sg.boxLight = vox.lightAtWorld(x + 0.5, 0.5, z + 0.5);
+        const ground = vox.surfaceAt(x, z);
+        sg.off = [x, ground + 1 / 16, z];
+        sg.boxLight = vox.lightAtWorld(x + 0.5, ground + 0.5, z + 0.5);
         buildCrop(c, sg);
       }
       const list: THREE.Mesh[] = [];
