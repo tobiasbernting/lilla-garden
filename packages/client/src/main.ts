@@ -10,6 +10,7 @@ import { h } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { Picker } from './ui/picker.js';
+import { initRide } from './ui/ride.ts';
 import { initSound, isMuted, setMuted } from './sound.ts';
 
 const ui = document.getElementById('ui')!;
@@ -40,6 +41,7 @@ window.addEventListener('resize', applyZoom);
 const labels = h('div', { id: 'labels' });
 ui.append(labels);
 initSound();
+initRide(ui);
 const menus = new Menus(ui);
 const hud = new Hud(
   ui,

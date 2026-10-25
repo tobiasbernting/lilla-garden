@@ -31,6 +31,7 @@ import {
   swapSlots,
   tagArea,
   teleport,
+  ride,
   tick,
   travel,
   type AnimalSnap,
@@ -320,6 +321,9 @@ export class Game {
         break;
       case 'teleport':
         changes = teleport(this.world, pid, String(msg.to ?? ''));
+        break;
+      case 'ride':
+        changes = ride(this.world, pid, msg.via, String(msg.to ?? ''), this.ctx());
         break;
       case 'select':
         changes = selectSlot(w, pid, msg.slot);

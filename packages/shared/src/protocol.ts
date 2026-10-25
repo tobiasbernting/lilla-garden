@@ -24,7 +24,9 @@ export type Change =
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
-  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria'; id?: number; npc?: string }
+  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria' | 'travel'; id?: number; npc?: string }
+  /** Private: the rider boards a bus or train (the client plays the trip). */
+  | { t: 'ride'; to: string; via: 'bus' | 'train'; place: string }
   | { t: 'quests'; quests: Quest[] }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso' | 'honk'; area?: string; from?: { x: number; y: number } }
   /** Sent to one player when they enter another map (full state) or when it is torn down (null). */
@@ -54,6 +56,7 @@ export type ClientMsg =
   | { t: 'quest'; id: string }
   | { t: 'travel'; dir: 'n' | 's' | 'e' | 'w' }
   | { t: 'teleport'; to: string }
+  | { t: 'ride'; via: 'bus' | 'train'; to: string }
   | { t: 'paint'; pixels: string }
   | { t: 'ping' };
 

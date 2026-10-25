@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureFarmExits, ensureInterior, ensurePizzeria, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -114,17 +114,23 @@ export class PgStore implements Store {
     }
     if (Object.keys(world.areas).length) console.log(`loaded ${Object.keys(world.areas).length} explored areas`);
     // Villages saved before the bath house existed get one
-    for (const [k, a] of Object.entries(world.areas))
+    for (const [k, a] of Object.entries(world.areas)) {
       if (ensureBathhouse(a)) {
         this.dirtyAreas.add(k);
         console.log(`added the bath house to ${k}`);
       }
+      if (ensureTransport(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`added the bus stop and station to ${k}`);
+      }
+    }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers
     const before = Object.keys(world.objects).length;
     if (ensureInterior(world)) console.log('added the farmhouse interior to the saved world');
     ensureVillagers(world);
     if (ensureCave(world)) console.log('added the cave to the saved world');
     ensureFarmExits(world);
+    if (ensureFarmBusStop(world)) console.log('added the bus stop to the farm');
     // Objects removed by the repairs above must also leave the database
     for (const id of loadedObjectIds) if (!world.objects[id]) this.gone.objects.add(id);
     if (Object.keys(world.objects).length !== before || this.gone.objects.size > 0 || before === 0) {

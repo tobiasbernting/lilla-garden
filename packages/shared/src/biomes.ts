@@ -272,6 +272,61 @@ export function ensurePizzeria(world: WorldState): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Public transport: every city has a bus stop by the square and a station by the north road;
+// the farm has a bus stop at its east exit.
+// ---------------------------------------------------------------------------
+export const CITY_BUS_STOP = { x: MAP_W / 2 - 4, y: MAP_H / 2 + 8 };
+export const CITY_STATION = { x: MAP_W / 2 + 2, y: 3 };
+export const FARM_BUS_STOP = { x: MAP_W - 3, y: MAP_H / 2 - 3 }; // the tile below it is the east exit path
+
+const KEEP_BUILDINGS = new Set(['house_small', 'market', 'sellstall', 'pizzeria', 'bathhouse', 'house', 'bus_stop', 'train_station']);
+function clearFootprint(world: WorldState, x0: number, y0: number, w: number, h: number): void {
+  for (let dy = -1; dy <= h; dy++)
+    for (let dx = -1; dx <= w; dx++) {
+      const x = x0 + dx;
+      const y = y0 + dy;
+      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) continue;
+      const o = objectAt(world, x, y);
+      if (o && !KEEP_BUILDINGS.has(o.kind)) delete world.objects[o.id];
+      const occ = world.occupancy[key(x, y)];
+      if (occ !== undefined && !world.objects[occ]) delete world.occupancy[key(x, y)];
+      if (world.terrain[tileIndex(x, y)] === 'water') world.terrain[tileIndex(x, y)] = 'sand';
+    }
+}
+
+/** Places the bus stop and the train station in a city (idempotent; the city builder calls this). */
+export function placeTransport(world: WorldState): boolean {
+  let added = false;
+  if (!Object.values(world.objects).some((o) => o.kind === 'bus_stop')) {
+    clearFootprint(world, CITY_BUS_STOP.x, CITY_BUS_STOP.y, 1, 1);
+    addObject(world, 'bus_stop', CITY_BUS_STOP.x, CITY_BUS_STOP.y);
+    added = true;
+  }
+  if (!Object.values(world.objects).some((o) => o.kind === 'train_station')) {
+    clearFootprint(world, CITY_STATION.x, CITY_STATION.y, 3, 2);
+    addObject(world, 'train_station', CITY_STATION.x, CITY_STATION.y);
+    // a little platform in front of the station
+    for (let dx = -1; dx <= 3; dx++) world.terrain[tileIndex(CITY_STATION.x + dx, CITY_STATION.y + 2)] = 'path_stone';
+    added = true;
+  }
+  return added;
+}
+
+/** Adds transport to a city saved before it existed. */
+export function ensureTransport(world: WorldState): boolean {
+  if (world.biome !== 'by') return false;
+  return placeTransport(world);
+}
+
+/** The farm's bus stop, just north of the east exit. Idempotent. */
+export function ensureFarmBusStop(world: WorldState): boolean {
+  if (Object.values(world.objects).some((o) => o.kind === 'bus_stop')) return false;
+  clearFootprint(world, FARM_BUS_STOP.x, FARM_BUS_STOP.y, 1, 1);
+  addObject(world, 'bus_stop', FARM_BUS_STOP.x, FARM_BUS_STOP.y);
+  return true;
+}
+
 /** A village square with houses, a well, a market and a buyer, lanterns and flowers. */
 function buildVillage(world: WorldState, rnd: () => number): void {
   const T = world.terrain;
@@ -314,6 +369,7 @@ function buildVillage(world: WorldState, rnd: () => number): void {
   addObject(world, 'market', cx - 6, cy - 5);
   addObject(world, 'sellstall', cx + 4, cy - 5);
   addObject(world, 'pizzeria', PIZZERIA.x, PIZZERIA.y);
+  placeTransport(world);
   for (const [x, y] of [
     [cx - 9, cy - 7],
     [cx + 9, cy - 7],

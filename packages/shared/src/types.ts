@@ -112,7 +112,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train';
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
