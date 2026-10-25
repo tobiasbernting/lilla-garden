@@ -41,7 +41,7 @@ import {
   type Terrain,
   type WorldObject,
 } from '@lilla-garden/shared';
-import { animalKey, ANIMAL_SIZE } from '../art/animals.js';
+import { animalKey, ANIMAL_SIZE, VEHICLE_VARIANTS } from '../art/animals.js';
 import { CHAR_H, CHAR_W, dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
 import { EMOTE_GLYPH, PAINT_COLORS } from '../art/world.js';
@@ -254,6 +254,7 @@ export class GameScene extends Phaser.Scene {
     if (t === 'water') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'water' || n === undefined), frame);
     if (t === 'pool') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'pool'), frame);
     if (t === 'soil' || t === 'soil_wet') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'soil' || n === 'soil_wet' || n === undefined));
+    if (t === 'road' || t === 'crossing') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'road' || n === 'crossing'));
     return art.terrain.index(t, x, y, snowy);
   }
 
@@ -438,7 +439,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private putAnimal(a: AnimalState): void {
-    const texture = animalKey(a.species, isBaby(a), client.season === 'jul', a.variant ?? 0);
+    const texture = animalKey(a.species, isBaby(a), client.season === 'jul', (a.variant ?? 0) % VEHICLE_VARIANTS);
     this.ensureAnimalAnims(texture);
     let actor = this.animals.get(a.id);
     if (!actor) {

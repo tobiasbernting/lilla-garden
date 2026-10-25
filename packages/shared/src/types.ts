@@ -29,7 +29,11 @@ export type Terrain =
   | 'snow'
   | 'gravel'
   | 'ice'
-  | 'pool'; // swimmable water (the bath house)
+  | 'pool' // swimmable water (the bath house)
+  | 'road' // asphalt (the city)
+  | 'sidewalk'
+  | 'crossing' // zebra crossing
+  | 'rail';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -142,7 +146,7 @@ export interface AnimalDef {
   /** Dungeon monsters: hit points and whether it is the boss. */
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
   /** Vehicles: speed multiplier when driven; traffic = AI-driven city vehicles; rideable = players may drive/board it. */
-  vehicle?: { speed: number; traffic?: boolean; seats?: number; rideable?: boolean };
+  vehicle?: { speed: number; ride?: number; traffic?: boolean; seats?: number; rideable?: boolean };
 }
 
 export interface RecipeDef {
@@ -326,9 +330,14 @@ export interface AnimalState {
   fleeUntil?: number;
   fleeX?: number;
   fleeY?: number;
-  /** Wander target. */
+  /** Wander target (vehicles: the next corner of their route). */
   tx?: number;
   ty?: number;
+  /** Traffic: which loop it drives and the corner it is heading for. */
+  route?: { loop: number; leg: number };
+  /** Traffic: when it may honk at the player in front of it / when it last stopped at a stop. */
+  honkAt?: number;
+  stoppedAt?: number;
   waitMs: number;
 }
 

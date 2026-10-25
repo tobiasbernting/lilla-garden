@@ -10,6 +10,9 @@ import {
   CAVE_EXIT_TILE,
   MAX_HEARTS,
   applyMove,
+  ensureCity,
+  isCity,
+  isVehicle,
   areaOf,
   getArea,
   BATH_EXIT,
@@ -1767,7 +1770,7 @@ describe('fordon', () => {
     const ch = travel(world, p.id, 'e');
     expect(p.area).toBe('a:1,0');
     const village = areaOf(world, p);
-    const there = Object.values(village.animals).find((a) => a.species === 'motorcycle')!;
+    const there = Object.values(village.animals).find((a) => a.species === 'motorcycle' && a.owner === p.id)!;
     expect(there).toBeDefined();
     expect(there.owner).toBe(p.id);
     expect(world.animals[moped.id]).toBeUndefined();
@@ -1778,7 +1781,7 @@ describe('fordon', () => {
     expect(p.riding).toBeUndefined();
     teleport(world, p.id, 'farm');
     expect(village.animals[there.id]).toBeDefined();
-    expect(Object.values(world.animals).some((a) => a.species === 'motorcycle')).toBe(false);
+    expect(Object.values(world.animals).some((a) => a.species === 'motorcycle' && a.owner === p.id)).toBe(false);
     // on foot there is nothing to honk with
     expect(honk(world, p.id)).toEqual([]);
   });
@@ -1871,5 +1874,90 @@ describe('buss och tåg', () => {
     // next unknown city is a different one now
     expect(nearestUnknownCity(p.visited!)).not.toBe(unknown);
     expect(() => JSON.stringify(ch)).not.toThrow();
+  });
+});
+
+describe('staden', () => {
+  const tileOfPx = (v: number) => Math.floor(v / TILE);
+  const DIRS: Record<string, [number, number]> = { right: [1, 0], left: [-1, 0], down: [0, 1], up: [0, -1] };
+
+  it('has streets with sidewalks and crossings, a square, a station with rails, and traffic on the streets', () => {
+    const city = generateArea(1, 0);
+    expect(city.biome).toBe('by');
+    const T = city.terrain;
+    expect(T.filter((t) => t === 'road').length).toBeGreaterThan(200);
+    for (const t of ['sidewalk', 'crossing', 'rail', 'path_stone'] as const) expect(T).toContain(t);
+    const kinds = Object.values(city.objects).map((o) => o.kind);
+    for (const k of ['bus_stop', 'train_station', 'apartment', 'shop', 'traffic_light', 'street_lamp', 'parked_car', 'pizzeria', 'bathhouse', 'market', 'sellstall', 'town_well'])
+      expect(kinds).toContain(k);
+    expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
+    const species = Object.values(city.animals).map((a) => a.species);
+    expect(species.filter((s) => s === 'car')).toHaveLength(4);
+    expect(species.filter((s) => s === 'motorcycle')).toHaveLength(2);
+    expect(species.filter((s) => s === 'bus')).toHaveLength(2);
+    expect(species.filter((s) => s === 'train')).toHaveLength(1);
+    for (const a of Object.values(city.animals)) if (isVehicle(a)) expect(['road', 'crossing', 'rail']).toContain(T[tileIndex(tileOfPx(a.x), tileOfPx(a.y))]);
+    // the openings in the edges lead straight onto the main streets
+    expect(T[tileIndex(32, 1)]).toBe('road');
+    expect(T[tileIndex(1, 33)]).toBe('road');
+    expect(T[tileIndex(62, 34)]).toBe('road');
+    // the villagers' spots are on walkable ground, off the streets
+    for (const n of npcsIn(city))
+      for (const w of [n, ...n.routine]) {
+        expect(objectAt(city, w.x, w.y)).toBeUndefined();
+        expect(['road', 'crossing']).not.toContain(T[tileIndex(w.x, w.y)]);
+      }
+  });
+
+  it('traffic drives along the streets, stops and honks for a player in the way, and cannot be walked into', () => {
+    const { world, p } = setup();
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    const city = areaOf(world, p);
+    expect(city.biome).toBe('by');
+    const car = Object.values(city.animals).find((a) => a.species === 'car')!;
+    const start = { x: car.x, y: car.y };
+    let now = 1_000_000;
+    const step = () => {
+      now += 100;
+      return tick(world, 100, { ...ctx(), now });
+    };
+    for (let i = 0; i < 40; i++) step();
+    expect(Math.hypot(car.x - start.x, car.y - start.y)).toBeGreaterThan(TILE);
+    expect(car.moving).toBe(true);
+    expect(['road', 'crossing']).toContain(city.terrain[tileIndex(tileOfPx(car.x), tileOfPx(car.y))]);
+    // stand right in front of it: it stops, and after a while it honks (kindly)
+    const [dx, dy] = DIRS[car.facing]!;
+    p.x = car.x + dx * TILE * 1.3;
+    p.y = car.y + dy * TILE * 1.3;
+    const before = { x: car.x, y: car.y };
+    let honked = false;
+    for (let i = 0; i < 30; i++) if (step().some((c) => c.t === 'fx' && c.kind === 'honk')) honked = true;
+    expect(car.x).toBe(before.x);
+    expect(car.y).toBe(before.y);
+    expect(car.moving).toBe(false);
+    expect(honked).toBe(true);
+    expect(isSolidForPlayer(city, tileOfPx(car.x), tileOfPx(car.y))).toBe(true);
+    // tapping a car just makes it honk; nothing to feed or pet
+    const ch = performAction(city, p.id, tileOfPx(car.x), tileOfPx(car.y), ctx());
+    expect(toasts(ch).some((t) => t.includes('Tut'))).toBe(true);
+    expect(car.petted).toBe(false);
+    // out of the way again: it drives on
+    p.x = 8 * TILE;
+    p.y = 8 * TILE;
+    for (let i = 0; i < 20; i++) step();
+    expect(Math.hypot(car.x - before.x, car.y - before.y)).toBeGreaterThan(TILE / 2);
+  });
+
+  it('a village saved before the streets existed is rebuilt as a city, once', () => {
+    const old = generateArea(1, 0);
+    old.terrain = old.terrain.map((t) => (t === 'road' || t === 'sidewalk' || t === 'crossing' || t === 'rail' ? 'grass' : t));
+    old.animals = {};
+    expect(isCity(old)).toBe(false);
+    expect(ensureCity(old)).toBe(true);
+    expect(isCity(old)).toBe(true);
+    expect(Object.values(old.animals).some((a) => a.species === 'bus')).toBe(true);
+    expect(Object.values(old.objects).some((o) => o.kind === 'train_station')).toBe(true);
+    expect(ensureCity(old)).toBe(false);
   });
 });

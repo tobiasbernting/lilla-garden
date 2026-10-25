@@ -1,6 +1,7 @@
 // Badhuset: a bath house in every village with a pool you can swim in.
 // The inside is its own small map (an "area" keyed `bath:<village key>`), generated once.
 import { addObject, emptyWorld, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
+import { BATHHOUSE } from './city.ts';
 import { MAP_H, MAP_W, key } from './types.ts';
 import type { WorldState } from './types.ts';
 
@@ -18,7 +19,7 @@ export const isBathKey = (k: string | undefined): boolean => !!k && k.startsWith
 export const villageOfBath = (k: string): string => k.slice('bath:'.length);
 
 /** Where the bath house stands in a village (top-left tile of its 3×2 footprint). */
-export const bathhouseSpot = (): { x: number; y: number } => ({ x: MAP_W / 2 + 2, y: MAP_H / 2 + 9 });
+export const bathhouseSpot = (): { x: number; y: number } => ({ x: BATHHOUSE.x, y: BATHHOUSE.y });
 
 /** The tile in front of the bath house door (where you land when leaving). */
 export const bathhouseDoorTile = (world: WorldState): { x: number; y: number } => {

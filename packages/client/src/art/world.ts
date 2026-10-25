@@ -147,6 +147,38 @@ export function drawTerrainTiles(): TerrainTiles {
   };
   const pool: number[][] = [];
   for (let m = 0; m < (NEW_ART ? 16 : 1); m++) pool.push([poolTile(0, m), poolTile(1, m)]);
+  // the city: asphalt with a dashed centre line on the lane edge, sidewalk slabs, zebra crossings, rails
+  const ASPHALT = '#4a4a52';
+  const roadTile = (mask: number) => {
+    const p = new Px(16, 16).rect(0, 0, 16, 16, ASPHALT);
+    speck(p, 1100 + mask, 5, '#555560', 1);
+    const dash = '#f0e6a0';
+    const up = mask & 1;
+    const right = mask & 2;
+    const down = mask & 4;
+    const left = mask & 8;
+    if (up && !down && !left && !right) p.rect(2, 15, 4, 1, dash).rect(10, 15, 4, 1, dash);
+    else if (down && !up && !left && !right) p.rect(2, 0, 4, 1, dash).rect(10, 0, 4, 1, dash);
+    else if (left && !right && !up && !down) p.rect(15, 2, 1, 4, dash).rect(15, 10, 1, 4, dash);
+    else if (right && !left && !up && !down) p.rect(0, 2, 1, 4, dash).rect(0, 10, 1, 4, dash);
+    return add(p);
+  };
+  const road = Array.from({ length: 16 }, (_, m) => roadTile(m));
+  const sidewalkP = new Px(16, 16).rect(0, 0, 16, 16, '#cfccc3').rect(0, 0, 16, 1, '#b3b0a7').rect(0, 0, 1, 16, '#b3b0a7').rect(8, 0, 1, 16, '#b3b0a7').rect(0, 8, 16, 1, '#b3b0a7');
+  speck(sidewalkP, 1200, 3, '#dedbd2', 1);
+  const sidewalkI = add(sidewalkP);
+  const crossingTile = (vertical: boolean) => {
+    const p = new Px(16, 16).rect(0, 0, 16, 16, ASPHALT);
+    for (let i = 1; i < 16; i += 3) if (vertical) p.rect(i, 0, 2, 16, '#e8e8e8');
+    else p.rect(0, i, 16, 2, '#e8e8e8');
+    return add(p);
+  };
+  const crossing = [crossingTile(false), crossingTile(true)];
+  const railP = new Px(16, 16).rect(0, 0, 16, 16, '#8f8a80');
+  speck(railP, 1300, 5, '#7a766d', 1);
+  for (let x = 1; x < 16; x += 4) railP.rect(x, 3, 2, 10, '#5a3d20');
+  railP.rect(0, 5, 16, 1, '#b8b8c0').rect(0, 6, 16, 1, '#6e6e78').rect(0, 10, 16, 1, '#b8b8c0').rect(0, 11, 16, 1, '#6e6e78');
+  const railI = add(railP);
   // sand
   const sandP = new Px(16, 16).rect(0, 0, 16, 16, '#e3d08f');
   speck(sandP, 600, 5, '#cdb878', 1);
@@ -189,13 +221,15 @@ export function drawTerrainTiles(): TerrainTiles {
   speck(rockP, 900, 4, '#26252c', 2);
   const rockI = add(rockP);
 
-  const sheet = new Px(16 * tiles.length, 16);
-  tiles.forEach((t, i) => sheet.blit(t, i * 16, 0));
+  // several rows: a single row would exceed the GPU's texture width limit
+  const cols = 32;
+  const sheet = new Px(16 * cols, 16 * Math.ceil(tiles.length / cols));
+  tiles.forEach((t, i) => sheet.blit(t, (i % cols) * 16, Math.floor(i / cols) * 16));
   return {
     canvas: sheet.canvas,
     count: tiles.length,
     rock: rockI,
-    edges: NEW_ART,
+    edges: true,
     waterFrames: [water[0]!, water[1]!],
     index: (t, x, y, snowy, mask = 0, frame = 0) => {
       const h = hash2(x, y);
@@ -226,6 +260,14 @@ export function drawTerrainTiles(): TerrainTiles {
           return iceI;
         case 'pool':
           return pool[mask % pool.length]![frame]!;
+        case 'road':
+          return road[mask & 15]!;
+        case 'sidewalk':
+          return sidewalkI;
+        case 'crossing':
+          return crossing[mask & 5 ? 0 : 1]!;
+        case 'rail':
+          return railI;
       }
     },
   };
@@ -574,6 +616,55 @@ const building = (w: number, h: number, wallC: string, roofC: string, door = tru
   return p.outline(OUTLINE);
 };
 
+// ---- the city ----
+const apartment = (v: number): Px => {
+  const wall = ['#d9c7a8', '#c9d4e0', '#e0c0b0', '#d6dcc4'][v % 4]!;
+  const p = new Px(48, 56);
+  p.rect(1, 4, 46, 51, wall).rect(1, 4, 46, 1, shade(wall, 1.2)).rect(1, 54, 46, 1, shade(wall, 0.7));
+  p.rect(0, 2, 48, 3, '#6b6b70').rect(0, 2, 48, 1, '#8a8a90'); // flat roof edge
+  p.rect(6, 0, 4, 3, '#8a8a90'); // chimney / vent
+  for (let floor = 0; floor < 3; floor++) {
+    const wy = 8 + floor * 13;
+    for (let i = 0; i < 4; i++) {
+      const wx = 4 + i * 11;
+      p.rect(wx, wy, 7, 8, '#8fd0f0').rect(wx + 3, wy, 1, 8, shade(wall, 0.6)).rect(wx, wy + 4, 7, 1, shade(wall, 0.6)).box(wx - 1, wy - 1, 9, 10, shade(wall, 0.6));
+      if ((floor * 4 + i + v) % 3 === 0) p.rect(wx, wy, 7, 3, '#f5e6a0'); // a lit curtain
+    }
+  }
+  p.rect(20, 45, 8, 10, WOOD_D).rect(21, 46, 6, 9, WOOD).px(26, 50, '#f2d35a');
+  return p.outline(OUTLINE);
+};
+const shop = (v: number): Px => {
+  const awning = ['#d9453b', '#3b6fd9', '#2f7a3a'][v % 3]!;
+  const p = new Px(48, 40);
+  p.rect(1, 6, 46, 33, '#e8dcc0').rect(1, 6, 46, 1, '#f5efe0').rect(1, 38, 46, 1, '#c9bb9d');
+  p.rect(0, 4, 48, 3, '#7a5230');
+  // striped awning
+  for (let x = 2; x < 46; x += 4) p.rect(x, 12, 4, 6, (x / 4) % 2 === 0 ? awning : '#f4f2ec');
+  for (let x = 2; x < 46; x += 4) p.px(x + 1, 18, (x / 4) % 2 === 0 ? awning : '#f4f2ec');
+  // big window with goods, and a door
+  p.rect(5, 21, 22, 13, '#bfeaff').box(4, 20, 24, 15, WOOD_D);
+  p.rect(8, 28, 4, 5, '#e8502a').rect(14, 27, 5, 6, '#f5d94a').rect(21, 29, 4, 4, '#4f9a3a');
+  p.rect(32, 24, 10, 15, WOOD_D).rect(33, 25, 8, 14, WOOD).px(39, 32, '#f2d35a');
+  p.rect(30, 8, 14, 4, '#ffffff').box(30, 8, 14, 4, WOOD_D).rect(32, 9, 10, 2, awning);
+  return p.outline(OUTLINE);
+};
+const trafficLight = (): Px => {
+  const p = new Px(16, 24);
+  p.rect(7, 10, 2, 14, '#3a3a3a').rect(5, 22, 6, 2, '#3a3a3a');
+  p.rect(4, 0, 8, 11, '#2a2a2a').rect(4, 0, 8, 1, '#4a4a4a');
+  p.circle(8, 2, 1.5, '#e0362a').circle(8, 5, 1.5, '#f0c020').circle(8, 8, 1.5, '#3fc04a');
+  return p.outline(OUTLINE);
+};
+const streetLamp = (): Px => new Px(16, 24).rect(7, 6, 2, 18, '#3a3a40').rect(4, 22, 8, 2, '#3a3a40').rect(5, 1, 6, 6, '#3a3a40').rect(6, 2, 4, 4, '#fff1a0').rect(7, 0, 2, 1, '#3a3a40').outline(OUTLINE);
+const parkedCar = (v: number): Px => {
+  const c = ['#d8363a', '#3b6fd9', '#f2c230'][v % 3]!;
+  const p = new Px(32, 18);
+  p.rect(2, 8, 28, 7, c).rect(7, 3, 16, 6, c).rect(9, 4, 5, 4, '#bfeaff').rect(16, 4, 5, 4, '#bfeaff').rect(2, 8, 28, 1, shade(c, 1.25));
+  p.circle(8, 15, 3, '#2a2a2a').circle(24, 15, 3, '#2a2a2a').px(8, 15, '#8a8a90').px(24, 15, '#8a8a90');
+  p.rect(29, 10, 1, 2, '#fff1a0').rect(2, 10, 1, 2, '#e0362a');
+  return p.outline(OUTLINE);
+};
 const pigsty = (): Px => {
   // a low wooden shed with an open front and a muddy wallow in front of it
   const p = new Px(32, 38);
@@ -809,6 +900,13 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('stall', [horseStable()], 0, -12);
   set('pigsty', [pigsty()], 0, -6);
   set('bathhouse', [bathhouse()], 0, -12);
+  set('apartment', [0, 1, 2, 3].map(apartment), 0, -8);
+  set('shop', [0, 1, 2].map(shop), 0, -8);
+  set('traffic_light', [trafficLight()], 0, -8);
+  set('street_lamp', [streetLamp()], 0, -8);
+  set('parked_car', [0, 1, 2].map(parkedCar), 0, -2);
+  set('bus_stop', [busStop()], 0, -8);
+  set('train_station', [trainStation()], 0, -4);
   set('bath_exit', [bathExit()]);
   set('bus_stop', [busStop()], 0, -8);
   set('train_station', [trainStation()], 0, -8);

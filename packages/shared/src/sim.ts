@@ -5,6 +5,7 @@ import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREA
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
 import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
+import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -116,7 +117,6 @@ export const isPetAnimal = (a: AnimalState): boolean => {
 };
 
 /** Cars, mopeds (and city traffic): parked where they stand, driven like a horse. */
-export const isVehicle = (a: { species: string }): boolean => !!ANIMALS[a.species]?.vehicle;
 
 /** Maps you may drive or ride in: any overworld map, not the cave, the bath house or indoors. */
 const canRideIn = (world: WorldState, tx: number, ty: number): boolean =>
@@ -131,13 +131,14 @@ export function rideSpeedMul(world: WorldState, p: { x: number; y: number; ridin
   if (!v) return RIDE_SPEED_MUL;
   const t = world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] as string | undefined;
   const ground = t === 'road' || t === 'crossing' ? 1.3 : t === 'soil' || t === 'soil_wet' || t === 'sand' || t === 'gravel' ? 0.7 : 1;
-  return v.speed * ground;
+  return (v.ride ?? RIDE_SPEED_MUL) * ground;
 }
 
 export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
   if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
   if (npcAt(world, tx, ty)) return true;
+  if (vehicleBlocks(world, tx, ty)) return true;
   if (world.area === 'dungeon') {
     for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return true;
   } else if (isFarm(world) && portalAt(tx, ty)) return false;
@@ -586,6 +587,11 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
   const aty = tileOf(a.y);
   const name = animalDisplayName(a);
   const heldDef = held ? item(held.item) : null;
+  if (a.route !== undefined) {
+    // city traffic: you cannot take the bus driver's seat, but you may honk
+    out.push(fx(atx, aty, 'honk'), toast(p.id, fmt(T.vehicleHonk, { name })));
+    return;
+  }
   if (riderOf(world, a)) {
     out.push(toast(p.id, fmt(T.horseBusy, { name })));
     return;
@@ -2328,10 +2334,14 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
 
 function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
   if (world.area !== 'dungeon' && !isBathKey(world.area)) tickRiding(world, out);
+  const walkers = world.biome === 'by' ? npcsIn(world).map((n) => npcState(world, n.id)) : [];
   for (const a of Object.values(world.animals)) {
     if ((a.species === 'horse' || isVehicle(a)) && riderOf(world, a)) continue;
     if (isVehicle(a)) {
-      a.moving = false;
+      // city traffic follows its route; a player's own vehicle stays parked
+      if (a.route !== undefined) {
+        if (driveVehicle(world, a, dtMs, ctx.now, walkers).honk) out.push(fx(tileOf(a.x), tileOf(a.y), 'honk'));
+      } else a.moving = false;
       continue;
     }
     if (isPetAnimal(a) && tickPet(world, a, dtMs)) continue;
