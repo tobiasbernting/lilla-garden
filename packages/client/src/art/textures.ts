@@ -1,7 +1,7 @@
 // Generates every texture once and registers it with Phaser. Also exposes icon data URLs for the HTML UI.
 import Phaser from 'phaser';
 import type { Appearance, Outfit } from '@lilla-garden/shared';
-import { animalKey, animalSheet, ANIMAL_SIZE } from './animals.js';
+import { animalKey, animalSheet, ANIMAL_SIZE, VEHICLE_SPECIES, VEHICLE_VARIANTS } from './animals.js';
 import { CHAR_H, CHAR_W, drawCharacterSheet, lookKey, lookOf, portrait } from './characters.js';
 import { drawTerrainTilesHD, hdFx, hdObjects, upscale } from './hd.ts';
 import { drawIcons } from './icons.js';
@@ -58,14 +58,16 @@ export function registerTextures(tm: Phaser.Textures.TextureManager): void {
   for (const [name, frames] of Object.entries(a.fx)) frames.forEach((f, i) => addCanvas(tm, `fx-${name}-${i}`, f.canvas));
   for (const [id, p] of Object.entries(a.icons)) addCanvas(tm, `icon-${id}`, p.canvas);
   for (const species of Object.keys(ANIMAL_SIZE)) {
+    const variants = VEHICLE_SPECIES.has(species) ? VEHICLE_VARIANTS : 1;
     for (const baby of [false, true])
-      for (const jul of [false, true]) {
-        const key = animalKey(species, baby, jul);
-        const size = ANIMAL_SIZE[species]!;
-        if (tm.exists(key)) continue;
-        const sheet = HD ? upscale(animalSheet(species, baby, jul)).canvas : animalSheet(species, baby, jul);
-        tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: size.w * R, frameHeight: size.h * R });
-      }
+      for (const jul of [false, true])
+        for (let v = 0; v < variants; v++) {
+          const key = animalKey(species, baby, jul, v);
+          const size = ANIMAL_SIZE[species]!;
+          if (tm.exists(key)) continue;
+          const sheet = HD ? upscale(animalSheet(species, baby, jul, v)).canvas : animalSheet(species, baby, jul, v);
+          tm.addSpriteSheet(key, sheet as unknown as HTMLImageElement, { frameWidth: size.w * R, frameHeight: size.h * R });
+        }
   }
 }
 

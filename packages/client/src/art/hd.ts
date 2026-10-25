@@ -301,14 +301,64 @@ export function drawTerrainTilesHD(): TerrainTiles {
     stroke(ctx, [[2, 3], [7, 7], [6, 12]], 'rgba(255,255,255,0.8)', 0.6);
     stroke(ctx, [[10, 2], [12, 8], [15, 10]], 'rgba(120,180,220,0.6)', 0.6);
   });
+  // the city
+  const road = Array.from({ length: 16 }, (_, mask) =>
+    tile((ctx) => {
+      ctx.fillStyle = lin(ctx, 0, 0, 16, 16, [[0, '#4e4e57'], [1, '#43434b']]);
+      ctx.fillRect(0, 0, 16, 16);
+      scatter(ctx, 140 + mask, 6, (x, y) => ellipse(ctx, x, y, 1.2, 0.8, 'rgba(255,255,255,0.05)'));
+      const up = mask & 1;
+      const right = mask & 2;
+      const down = mask & 4;
+      const left = mask & 8;
+      const dash = '#f0e6a0';
+      const dashes = (vertical: boolean, pos: number) => {
+        for (const o of [2, 10]) fillRR(ctx, vertical ? pos : o, vertical ? o : pos, vertical ? 1 : 4, vertical ? 4 : 1, 0.5, dash);
+      };
+      if (up && !down && !left && !right) dashes(false, 15);
+      else if (down && !up && !left && !right) dashes(false, 0);
+      else if (left && !right && !up && !down) dashes(true, 15);
+      else if (right && !left && !up && !down) dashes(true, 0);
+    }),
+  );
+  const sidewalk = tile((ctx) => {
+    ctx.fillStyle = '#b8b5ac';
+    ctx.fillRect(0, 0, 16, 16);
+    for (const [x, y] of [
+      [0.4, 0.4],
+      [8.4, 0.4],
+      [0.4, 8.4],
+      [8.4, 8.4],
+    ] as const)
+      fillRR(ctx, x, y, 7.2, 7.2, 0.8, lin(ctx, x, y, x + 7, y + 7, [[0, '#d8d5cc'], [1, '#c4c1b8']]));
+  });
+  const crossing = [false, true].map((vertical) =>
+    tile((ctx) => {
+      ctx.fillStyle = '#47474f';
+      ctx.fillRect(0, 0, 16, 16);
+      for (let i = 1; i < 16; i += 3) fillRR(ctx, vertical ? i : 0, vertical ? 0 : i, vertical ? 2 : 16, vertical ? 16 : 2, 0.4, 'rgba(240,240,240,0.92)');
+    }),
+  );
+  const rail = tile((ctx) => {
+    ctx.fillStyle = '#8f8a80';
+    ctx.fillRect(0, 0, 16, 16);
+    scatter(ctx, 150, 6, (x, y, i) => ellipse(ctx, x, y, 1, 0.7, i % 2 ? '#7a766d' : '#a39e94'));
+    for (let x = 1; x < 16; x += 4) fillRR(ctx, x, 3, 2, 10, 0.5, lin(ctx, x, 0, x + 2, 0, [[0, '#6b4a2a'], [1, '#4a3118']]));
+    for (const y of [5, 10]) {
+      fillRR(ctx, 0, y, 16, 1.6, 0, '#6e6e78');
+      fillRR(ctx, 0, y, 16, 0.7, 0, '#c0c0c8');
+    }
+  });
   const rock = tile((ctx) => {
     ctx.fillStyle = '#1d1c22';
     ctx.fillRect(0, 0, 16, 16);
     scatter(ctx, 120, 4, (x, y) => ellipse(ctx, x, y, 3, 2, 'rgba(255,255,255,0.03)'));
   });
 
-  const sheet = new Px(tiles.length * 16 * R, 16 * R);
-  tiles.forEach((t, i) => sheet.blit(t, i * 16 * R, 0));
+  // several rows: a single row would exceed the GPU's texture width limit
+  const cols = 32;
+  const sheet = new Px(cols * 16 * R, Math.ceil(tiles.length / cols) * 16 * R);
+  tiles.forEach((t, i) => sheet.blit(t, (i % cols) * 16 * R, Math.floor(i / cols) * 16 * R));
   return {
     canvas: sheet.canvas,
     count: tiles.length,
@@ -344,6 +394,14 @@ export function drawTerrainTilesHD(): TerrainTiles {
           return ice;
         case 'pool':
           return pool[mask & 15]![frame]!;
+        case 'road':
+          return road[mask & 15]!;
+        case 'sidewalk':
+          return sidewalk;
+        case 'crossing':
+          return crossing[mask & 5 ? 0 : 1]!;
+        case 'rail':
+          return rail;
       }
     },
   };

@@ -310,6 +310,14 @@ built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] })
 // Cave
 addO(O('cave', { w: 2, h: 2, interact: 'cave', breakWith: undefined }));
 addO(O('bathhouse', { w: 3, h: 2, interact: 'bath', breakWith: undefined }));
+// The city: streets, blocks and stops (interaction with stops/stations lives with the travel feature)
+addO(O('bus_stop', { breakWith: undefined }));
+addO(O('train_station', { w: 3, h: 2, breakWith: undefined, light: true }));
+addO(O('apartment', { w: 3, h: 3, breakWith: undefined }));
+addO(O('shop', { w: 3, h: 2, breakWith: undefined, light: true }));
+addO(O('traffic_light', { breakWith: undefined }));
+addO(O('street_lamp', { solid: false, breakWith: undefined, light: true }));
+addO(O('parked_car', { w: 2, h: 1, breakWith: undefined }));
 addO(O('bath_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_wall', { breakWith: undefined }));
@@ -374,6 +382,11 @@ export const ANIMALS: Record<string, AnimalDef> = {
   bear: { species: 'bear', house: '', growDays: 0, speed: 26, wild: 'skog', wildCount: [1, 1], tame: 0.3, predator: { hp: 5, aggroRange: 4 } },
   wolf: { species: 'wolf', house: '', growDays: 0, speed: 34, wild: 'berg|skog', wildCount: [1, 2], tame: 0.3, predator: { hp: 3, aggroRange: 4 } },
   lynx: { species: 'lynx', house: '', growDays: 0, speed: 36, wild: 'berg', wildCount: [1, 1], tame: 0.3, predator: { hp: 3, aggroRange: 3 } },
+  // City traffic: they drive around the blocks and always stop for people
+  car: { species: 'car', house: '', growDays: 0, speed: 48, vehicle: { speed: 48, traffic: true, seats: 2 } },
+  motorcycle: { species: 'motorcycle', house: '', growDays: 0, speed: 60, vehicle: { speed: 60, traffic: true, seats: 1 } },
+  bus: { species: 'bus', house: '', growDays: 0, speed: 36, vehicle: { speed: 36, traffic: true, seats: 6 } },
+  train: { species: 'train', house: '', growDays: 0, speed: 40, vehicle: { speed: 40, traffic: true, seats: 8 } },
   // Cave monsters (gentle): slime, bat, troll and the boss troll
   slime: { species: 'slime', house: '', growDays: 0, speed: 22, mob: { hp: 2, drops: [{ item: 'gold', min: 1, max: 2, chance: 0.8 }, { item: 'heartberry', min: 1, max: 1, chance: 0.25 }] } },
   bat: { species: 'bat', house: '', growDays: 0, speed: 44, mob: { hp: 1, drops: [{ item: 'gold', min: 1, max: 1, chance: 0.6 }] } },
@@ -513,15 +526,15 @@ NPCS.bo = {
   name: 'Bagar-Bo',
   area: VILLAGE_KEY,
   x: 27,
-  y: 30,
+  y: 29,
   appearance: { skin: '#f1c9a5', hair: '#2b2119', hairStyle: 'short' },
   outfit: { shirt: 'shirt_yellow', pants: 'pants_brown', shoes: 'shoes_boots', hat: 'hat_cap_red' },
   greeting: ['Välkommen till bageriet! Mjöl behövs alltid.', 'Nybakat bröd är det bästa som finns.', 'Har du vete? Jag bakar gärna.'],
   routine: [
-    { at: 0, x: 27, y: 30 },
-    { at: 0.3, x: 32, y: 34 },
-    { at: 0.5, x: 36, y: 30 },
-    { at: 0.7, x: 27, y: 30 },
+    { at: 0, x: 27, y: 29 },
+    { at: 0.3, x: 35, y: 29 },
+    { at: 0.5, x: 28, y: 24 },
+    { at: 0.7, x: 27, y: 29 },
   ],
 };
 NPCS.pino = {
@@ -529,47 +542,47 @@ NPCS.pino = {
   name: 'Pizza-Pino',
   area: VILLAGE_KEY,
   x: 40,
-  y: 32,
+  y: 24,
   appearance: { skin: '#dba97d', hair: '#2b2119', hairStyle: 'curly' },
   outfit: { shirt: 'shirt_red', pants: 'pants_brown', shoes: 'shoes_boots', hat: 'hat_cap_red' },
   greeting: ['Buongiorno! Vill du ha en pizza?', 'Pizzan är nybakad i stenugnen!', 'Tomater och vete – då blir det pizza!'],
   routine: [
-    { at: 0, x: 40, y: 32 },
-    { at: 0.35, x: 34, y: 36 },
-    { at: 0.5, x: 40, y: 32 },
-    { at: 0.75, x: 36, y: 34 },
-    { at: 0.85, x: 40, y: 32 },
+    { at: 0, x: 40, y: 24 },
+    { at: 0.35, x: 37, y: 28 },
+    { at: 0.5, x: 40, y: 24 },
+    { at: 0.75, x: 43, y: 26 },
+    { at: 0.85, x: 40, y: 24 },
   ],
 };
 NPCS.stina = {
   id: 'stina',
   name: 'Smed-Stina',
   area: VILLAGE_KEY,
-  x: 37,
+  x: 38,
   y: 30,
   appearance: { skin: '#b97a4e', hair: '#c43a2a', hairStyle: 'ponytail' },
   outfit: { shirt: 'shirt_overalls', pants: 'pants_blue', shoes: 'shoes_boots' },
   greeting: ['Hör du hammaren? Det är jag!', 'Sten och malm, det är mina favoriter.', 'Ädelstenar från bergen är underbara.'],
   routine: [
-    { at: 0, x: 37, y: 30 },
-    { at: 0.4, x: 33, y: 36 },
-    { at: 0.6, x: 37, y: 30 },
+    { at: 0, x: 38, y: 30 },
+    { at: 0.4, x: 42, y: 30 },
+    { at: 0.6, x: 38, y: 30 },
   ],
 };
 NPCS.lind = {
   id: 'lind',
   name: 'Fru Lind',
   area: VILLAGE_KEY,
-  x: 32,
-  y: 37,
+  x: 45,
+  y: 27,
   appearance: { skin: '#f7d7c0', hair: '#f2d16b', hairStyle: 'long' },
   outfit: { shirt: 'shirt_green', pants: 'pants_skirt_pink', shoes: 'shoes_red', hat: 'hat_straw' },
   greeting: ['Mina blommor behöver sällskap.', 'Honung från ängen är det godaste jag vet.', 'Har du varit i skogen? Där växer svamp.'],
   routine: [
-    { at: 0, x: 32, y: 37 },
-    { at: 0.25, x: 29, y: 34 },
-    { at: 0.55, x: 35, y: 34 },
-    { at: 0.75, x: 32, y: 37 },
+    { at: 0, x: 45, y: 27 },
+    { at: 0.25, x: 41, y: 30 },
+    { at: 0.55, x: 36, y: 26 },
+    { at: 0.75, x: 45, y: 27 },
   ],
 };
 

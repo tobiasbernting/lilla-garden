@@ -17,6 +17,10 @@ const COLORS: Record<string, string> = {
   snow: '#eef2f7',
   gravel: '#8f8a80',
   ice: '#bfe3f5',
+  road: '#45454d',
+  sidewalk: '#cfccc3',
+  crossing: '#d8d8d8',
+  rail: '#6b5a40',
 };
 
 export class Minimap {

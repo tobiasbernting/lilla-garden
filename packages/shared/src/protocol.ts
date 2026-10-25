@@ -26,7 +26,7 @@ export type Change =
   | { t: 'toast'; to: string | null; text: string }
   | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria'; id?: number; npc?: string }
   | { t: 'quests'; quests: Quest[] }
-  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso'; area?: string; from?: { x: number; y: number } }
+  | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso' | 'honk'; area?: string; from?: { x: number; y: number } }
   /** Sent to one player when they enter another map (full state) or when it is torn down (null). */
   | { t: 'areaData'; to: string; key: string; world: WorldState | null };
 

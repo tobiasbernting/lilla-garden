@@ -10,4 +10,5 @@ export * from './sim.ts';
 export * from './dungeon.ts';
 export * from './biomes.ts';
 export * from './bath.ts';
+export * from './city.ts';
 export * from './paint.ts';

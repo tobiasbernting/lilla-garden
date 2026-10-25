@@ -5,6 +5,7 @@ import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREA
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
 import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
+import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -118,6 +119,7 @@ export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boo
   if (!inBounds(tx, ty)) return true;
   if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
   if (npcAt(world, tx, ty)) return true;
+  if (vehicleBlocks(world, tx, ty)) return true;
   if (world.area === 'dungeon') {
     for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return true;
   } else if (isFarm(world) && portalAt(tx, ty)) return false;
@@ -282,7 +284,7 @@ export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.sele
 
 const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
 const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash'): Change => ({
+const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash' | 'honk'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -566,6 +568,10 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
   const aty = tileOf(a.y);
   const name = animalDisplayName(a);
   const heldDef = held ? item(held.item) : null;
+  if (ANIMALS[a.species]?.vehicle?.traffic) {
+    out.push(fx(atx, aty, 'honk'), toast(p.id, fmt(T.vehicleHonk, { name })));
+    return;
+  }
   if (riderOf(world, a)) {
     out.push(toast(p.id, fmt(T.horseBusy, { name })));
     return;
@@ -2138,7 +2144,12 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
 
 function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
   if (isFarm(world)) tickRiding(world, out);
+  const walkers = world.biome === 'by' ? npcsIn(world).map((n) => npcState(world, n.id)) : [];
   for (const a of Object.values(world.animals)) {
+    if (isVehicle(a)) {
+      if (driveVehicle(world, a, dtMs, ctx.now, walkers).honk) out.push(fx(tileOf(a.x), tileOf(a.y), 'honk'));
+      continue;
+    }
     if (a.species === 'horse' && riderOf(world, a)) continue;
     if (isPetAnimal(a) && tickPet(world, a, dtMs)) continue;
     if (tickFlee(world, a, dtMs, ctx)) continue;
