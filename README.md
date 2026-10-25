@@ -21,8 +21,10 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 pnpm install
 pnpm db:up          # Postgres 17 in a container on port 5435
 cp .env.example .env
-pnpm dev            # server on :8080, client (Vite) on :5173, also reachable on your LAN IP
+pnpm dev            # server on :8080, 2D client on :5173, 3D client (v2) on :5174, also on your LAN IP
 ```
+
+Both clients talk to the same dev server, so you can play the same farm in 2D and 3D side by side.
 
 Open `http://<your-computer-ip>:5173` on the tablet. The parent page is at `/admin`
 (force a season, save, skip to the next day, make it evening/morning).
@@ -40,6 +42,10 @@ DATABASE_URL=postgres://… node packages/server/dist/main.js   # serves the cli
 Or use the container image built by GitHub Actions: `ghcr.io/tobiasbernting/lilla-garden:latest`.
 It needs `DATABASE_URL` and listens on 8080. Migrations run on boot.
 
+The 3D version (v2) is the same server shipping the 3D client: `ghcr.io/tobiasbernting/lilla-garden-v2:latest`
+(built with `docker build --build-arg CLIENT=client3d .`). Run it as its own deployment, e.g. at
+`gard2.moderskepp.lan`, with its own database so the two farms don't share (or fight over) one save.
+
 Environment:
 
 | Variable          | Meaning                                                   |
@@ -53,6 +59,8 @@ Environment:
 - `packages/shared` – game data, world simulation, Swedish strings (no I/O). Vitest covers the sim.
 - `packages/server` – WebSocket game server (20 Hz), Postgres via Drizzle, `/api/players`, `/admin`, `/health`
 - `packages/client` – Phaser 3 client, HTML menus, PWA (320×180 virtual resolution, integer scaled)
+- `packages/client3d` – v2: Three.js client that draws the same world as Minecraft-style blocks. Reuses the 2D
+  client's networking, state, HUD, menus and pixel art (imported via the `@v1/*` alias); only the view is new.
 
 ## Controls
 
@@ -65,3 +73,12 @@ Environment:
 All pixel art (terrain, objects, crops, animals, characters, icons) is generated in code at boot
 (`packages/client/src/art`). The design originally planned to use Kenney's CC0 roguelike tiles for
 terrain and objects; swapping those in later only touches `art/world.ts`.
+
+### 3D (v2)
+
+- Dator: klicka i spelet för att styra med musen. WASD går, musen tittar, klick använder det du tittar på
+  (svart ram = inom räckhåll), mellanslag hoppar, Shift springer, `E`/`Q` ryggsäck, hjulet/`1–8` väljer verktyg,
+  `F5` eller `V` byter kamera (första person, bakifrån, framifrån), `Esc` släpper musen.
+- Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på en ruta för att använda den,
+  handknappen använder det du tittar på (annars rutan framför dig), ⤒ hoppar, 🎥 byter kamera.
+

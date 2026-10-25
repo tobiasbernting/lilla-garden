@@ -1,5 +1,5 @@
 // Generates every texture once and registers it with Phaser. Also exposes icon data URLs for the HTML UI.
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import type { Appearance, Outfit } from '@lilla-garden/shared';
 import { animalKey, animalSheet, ANIMAL_SIZE, VEHICLE_SPECIES, VEHICLE_VARIANTS } from './animals.js';
 import { CHAR_H, CHAR_W, drawCharacterSheet, lookKey, lookOf, portrait } from './characters.js';
