@@ -1713,8 +1713,10 @@ describe('fordon', () => {
     standAt(world, other, tileOf(car.x) - 1, tileOf(car.y));
     expect(toasts(performAction(world, other.id, tileOf(car.x), tileOf(car.y), ctx()))[0]).toContain('tillhör Test');
     expect(other.riding).toBeUndefined();
-    // the owner drives
+    // the owner drives, even with a sword in hand
     standAt(world, p, tileOf(car.x) - 1, tileOf(car.y));
+    addItem(p.inventory, 'sword', 1);
+    select(p, 'sword');
     const drive = performAction(world, p.id, tileOf(car.x), tileOf(car.y), ctx());
     expect(p.riding).toBe(car.id);
     expect(p.achievements).toContain('drive_1');

@@ -440,9 +440,10 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   }
   // 0c. Outside the cave, sword and bow only work on wild predators
   const pointedObject = objectAt(world, tx, ty);
-  const canOpen = !!pointedObject && !!objectDef(pointedObject.kind).interact;
+  const pointedAnimal = animalAt(world, tx, ty);
+  const canOpen = (!!pointedObject && !!objectDef(pointedObject.kind).interact) || (!!pointedAnimal && !isHostile(pointedAnimal));
   if (world.area !== 'dungeon' && (tool === 'sword' || tool === 'bow') && !canOpen) {
-    // (pointing at a door, chest or the cave mouth still opens it, whatever you hold)
+    // (pointing at a door, chest, the cave mouth, your horse or a friendly animal still works, whatever you hold)
     const target = animalAt(world, tx, ty);
     if (tool === 'sword') {
       if (target && isHostile(target)) attackMob(world, p, target, 2, ctx, out);
