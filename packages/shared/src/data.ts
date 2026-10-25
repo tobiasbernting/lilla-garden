@@ -310,6 +310,9 @@ built('door_out', { solid: false, flat: true, breakWith: undefined, drops: [] })
 // Cave
 addO(O('cave', { w: 2, h: 2, interact: 'cave', breakWith: undefined }));
 addO(O('bathhouse', { w: 3, h: 2, interact: 'bath', breakWith: undefined }));
+// Public transport: a bus stop sign and a small station (placed by the city builder)
+addO(O('bus_stop', { interact: 'bus', breakWith: undefined }));
+addO(O('train_station', { w: 3, h: 2, interact: 'train', breakWith: undefined, light: true }));
 addO(O('bath_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_wall', { breakWith: undefined }));
@@ -664,6 +667,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('truffle_20', 'truffle', 20, 2, 'animal_pig'),
   A('swim_1', 'swim', 1, 1, 'shell'),
   A('swim_25', 'swim', 25, 2, 'shell'),
+  A('trip_1', 'rides', 1, 1, 'lemonade'),
+  A('train_10', 'train_rides', 10, 2, 'gem'),
   A('tame_1', 'tame', 1, 1, 'lasso'),
   A('tame_bear', 'tame_bear', 1, 2, 'fur'),
   A('tame_5', 'tame_species', 5, 3, 'animal_dog'),

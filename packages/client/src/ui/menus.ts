@@ -30,6 +30,7 @@ import {
   type ItemDef,
   type RecipeDef,
   type SlotRef,
+  transportDestinations,
 } from '@lilla-garden/shared';
 import { portraitUrl, getArt } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
@@ -40,7 +41,7 @@ import { slotEl } from './hud.js';
 import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}` };
 const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
@@ -49,6 +50,8 @@ export class Menus {
   private modal: HTMLElement | null = null;
   private kind: MenuKind | null = null;
   private chestId: number | null = null;
+  /** The bus stop / station the travel menu was opened at. */
+  private travelId: number | null = null;
   private animalId: number | null = null;
   private npcId: string | null = null;
   private picked: SlotRef | null = null;
@@ -66,6 +69,7 @@ export class Menus {
     });
     bus.on('open', (c) => {
       if (c.ui === 'chest') this.open('chest', c.id);
+      else if (c.ui === 'travel') this.open('travel', c.id);
       else if (c.ui === 'nameAnimal') this.open('nameAnimal', c.id);
       else if (c.ui === 'npc') {
         this.npcId = c.npc ?? null;
@@ -92,6 +96,7 @@ export class Menus {
     this.picked = null;
     if (kind === 'chest') this.chestId = id ?? null;
     if (kind === 'nameAnimal') this.animalId = id ?? null;
+    if (kind === 'travel') this.travelId = id ?? null;
     this.modal = h('div', { class: 'modal' });
     this.modal.addEventListener('pointerdown', (e) => {
       if (e.target === this.modal) this.close();
@@ -131,12 +136,13 @@ export class Menus {
       map: `🗺️ ${T.worldMap}`,
       paint: `🎨 ${T.paint}`,
       pizzeria: `🍕 ${T.pizzeria}`,
+      travel: this.travelVia() === 'train' ? `🚂 ${T.travelTrain}` : `🚌 ${T.travelBus}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
     const coins = h('span', { class: 'price' }, `${me.coins} ${T.coins}${this.kind === 'catalogue' ? ` · ⭐ ${me.stars}` : ''}`);
-    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' ? coins : null, closeBtn);
+    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' || this.kind === 'travel' ? coins : null, closeBtn);
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: 'panel' }, head, body);
     switch (this.kind) {
@@ -154,6 +160,9 @@ export class Menus {
         break;
       case 'pizzeria':
         this.renderPizzeria(body);
+        break;
+      case 'travel':
+        this.renderTravel(body);
         break;
       case 'workbench':
         this.renderCraft(body, RECIPES, 'craft');
@@ -315,6 +324,36 @@ export class Menus {
       const row = h('div', { class: 'row' }, icon(getArt().iconUrl[d.id] ?? ''), h('span', { class: 'name' }, itemName(d.id)), h('span', { class: 'price' }, `${d.buy} ${T.coins}`));
       const b = h('button', { disabled: me.coins < (d.buy ?? 0) }, T.buy);
       onTap(b, () => net.send({ t: 'buy', item: d.id, qty: 1 }));
+      row.append(b);
+      rows.append(row);
+    }
+    body.append(rows);
+  }
+
+  // ---- bus stop / train station ----
+  private travelVia(): 'bus' | 'train' {
+    const w = activeWorld();
+    const o = w && this.travelId !== null ? w.objects[this.travelId] : undefined;
+    return o?.kind === 'train_station' ? 'train' : 'bus';
+  }
+
+  private renderTravel(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const via = this.travelVia();
+    body.append(h('div', { class: 'hint' }, T.travelHint));
+    const dests = transportDestinations(me, via);
+    if (!dests.length) {
+      body.append(h('p', { class: 'help-intro' }, T.noDestinations));
+      return;
+    }
+    const rows = h('div', { class: 'rows' });
+    for (const d of dests) {
+      const row = h('div', { class: 'row' }, h('span', { class: 'em' }, d.key === 'farm' ? '🏡' : d.unknown ? '❔' : '🏙️'), h('span', { class: 'name' }, d.name), h('span', { class: 'price' }, `${d.price} ${T.coins}`));
+      const b = h('button', { disabled: me.coins < d.price }, `${via === 'train' ? '🚂' : '🚌'} ${T.go}`);
+      onTap(b, () => {
+        net.send({ t: 'ride', via, to: d.key });
+        this.close();
+      });
       row.append(b);
       rows.append(row);
     }

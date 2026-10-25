@@ -89,6 +89,18 @@ export const SFX = {
     setTimeout(() => tone(50, 0.3, 'triangle', 0.08, -20), 80);
   },
   open: () => tone(440, 0.06, 'triangle', 0.04, 120),
+  bus: () => {
+    // engine rumble and a friendly horn
+    noise(0.6, 0.03);
+    setTimeout(() => tone(330, 0.25, 'square', 0.05), 150);
+    setTimeout(() => tone(392, 0.35, 'square', 0.05), 350);
+  },
+  train: () => {
+    // chuff-chuff and a long whistle
+    for (let i = 0; i < 6; i++) setTimeout(() => noise(0.08, 0.04), i * 160);
+    setTimeout(() => tone(740, 0.5, 'sine', 0.06, 60), 500);
+    setTimeout(() => tone(880, 0.6, 'sine', 0.05, -40), 700);
+  },
   newDay: () => {
     [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.06), i * 110));
   },

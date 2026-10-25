@@ -3,7 +3,7 @@
 
 import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
-import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
+import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
@@ -723,6 +723,10 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
       return;
     case 'sleep':
       goToSleep(world, p, out);
+      return;
+    case 'bus':
+    case 'train':
+      out.push({ t: 'open', to: p.id, ui: 'travel', id: obj.id });
       return;
     case 'exit':
       if (isBathKey(world.area)) out.push(...leaveBath(world, p.id));
@@ -1556,6 +1560,105 @@ export function teleport(world: WorldState, playerId: string, keyStr: string): C
   const target = areaOf(farm, p);
   for (let r = 0; r < 6 && isSolidForPlayer(target, tileOf(p.x), tileOf(p.y)); r++) p.y += TILE;
   out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Public transport: buses between places you know, trains also to one unknown city
+// ---------------------------------------------------------------------------
+export const TRANSPORT_PRICE: Record<'bus' | 'train', number> = { bus: 5, train: 15 };
+export interface Destination {
+  key: string;
+  name: string;
+  price: number;
+  /** A city nobody has visited yet (train only). */
+  unknown?: boolean;
+}
+
+/** Name of a city area (the first city is just "Byn"; others get their map coordinates). */
+export const cityName = (keyStr: string): string => {
+  if (keyStr === 'farm') return T.travelHome;
+  const c = areaCoords(keyStr);
+  if (!c) return BIOME_NAMES.by;
+  return c.ax === 1 && c.ay === 0 ? BIOME_NAMES.by : `${T.cityName} ${c.ax},${c.ay}`;
+};
+
+/** The nearest city nobody in the party has been to (scanning outward from the farm). */
+export function nearestUnknownCity(visited: string[]): string | null {
+  for (let r = 1; r <= 16; r++)
+    for (let ax = -r; ax <= r; ax++)
+      for (const ay of ax === -r || ax === r ? Array.from({ length: 2 * r + 1 }, (_, i) => i - r) : [-r, r]) {
+        if (biomeAt(ax, ay) !== 'by') continue;
+        const k = areaKey(ax, ay);
+        if (!visited.includes(k)) return k;
+      }
+  return null;
+}
+
+/** Where this player can go from a bus stop / station right now. */
+export function transportDestinations(p: PlayerState, via: 'bus' | 'train'): Destination[] {
+  const visited = p.visited ?? ['farm'];
+  const price = TRANSPORT_PRICE[via];
+  const out: Destination[] = [];
+  if (p.area !== 'farm') out.push({ key: 'farm', name: T.travelHome, price });
+  for (const k of visited) {
+    const c = areaCoords(k);
+    if (!c || k === 'farm' || k === p.area || biomeAt(c.ax, c.ay) !== 'by') continue;
+    out.push({ key: k, name: cityName(k), price });
+  }
+  if (via === 'train') {
+    const unknown = nearestUnknownCity(visited);
+    if (unknown && unknown !== p.area) out.push({ key: unknown, name: T.unknownCity, price, unknown: true });
+  }
+  return out;
+}
+
+const stopKind = (via: 'bus' | 'train', keyStr: string): string => (via === 'train' && keyStr !== 'farm' ? 'train_station' : 'bus_stop');
+
+/** Is the player standing next to a stop of this kind? */
+function nearStop(world: WorldState, p: PlayerState, via: 'bus' | 'train'): boolean {
+  const kind = stopKind(via, p.area);
+  const ptx = tileOf(p.x);
+  const pty = tileOf(p.y);
+  for (const o of Object.values(world.objects)) {
+    if (o.kind !== kind) continue;
+    const def = objectDef(o.kind);
+    if (ptx >= o.x - REACH - 1 && ptx <= o.x + def.w + REACH && pty >= o.y - REACH - 1 && pty <= o.y + def.h + REACH) return true;
+  }
+  return false;
+}
+
+/** Boards a bus or train: charges the fare and moves the player to the stop at the destination. */
+export function ride(world: WorldState, playerId: string, via: 'bus' | 'train', to: string, ctx: SimCtx): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon' || (via !== 'bus' && via !== 'train')) return [];
+  const here = areaOf(farm, p);
+  if (!nearStop(here, p, via)) return [toast(p.id, T.noTransportHere)];
+  const dest = transportDestinations(p, via).find((d) => d.key === to);
+  if (!dest) return [toast(p.id, T.notNow)];
+  if (p.coins < dest.price) return [toast(p.id, T.notEnoughCoins)];
+  const target = getArea(farm, to);
+  if (!target) return [toast(p.id, T.notNow)];
+  p.coins -= dest.price;
+  // land in front of the stop at the other end
+  const kind = stopKind(via, to);
+  const stop = Object.values(target.objects).find((o) => o.kind === kind) ?? Object.values(target.objects).find((o) => o.kind === 'bus_stop');
+  let tx = to === 'farm' ? SPAWN.x : MAP_W / 2;
+  let ty = to === 'farm' ? SPAWN.y : MAP_H / 2;
+  if (stop) {
+    const def = objectDef(stop.kind);
+    tx = stop.x + Math.floor(def.w / 2);
+    ty = stop.y + def.h;
+  }
+  for (let r = 0; r < 6 && isSolidForPlayer(target, tx, ty); r++) ty += 1;
+  const place = dest.unknown ? cityName(to) : dest.name;
+  const out: Change[] = [{ t: 'ride', to: p.id, via, place }, toast(p.id, fmt(via === 'bus' ? T.busLeaving : T.trainLeaving, { place }))];
+  placeIn(farm, p, to, tx, ty, 'down', out);
+  bump(p, 'rides', 1, out);
+  if (via === 'train') bump(p, 'train_rides', 1, out);
+  out.push(playerChange(p));
+  void ctx;
   return out;
 }
 

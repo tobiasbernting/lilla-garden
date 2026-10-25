@@ -18,6 +18,14 @@ import {
   PLAYER_SPEED,
   inPool,
   ensureBathhouse,
+  ensureFarmBusStop,
+  ensureTransport,
+  nearestUnknownCity,
+  ride,
+  transportDestinations,
+  FARM_BUS_STOP,
+  CITY_BUS_STOP,
+  CITY_STATION,
   arrivalTile,
   biomeAt,
   generateArea,
@@ -1671,5 +1679,95 @@ describe('sova', () => {
     expect(p.sleeping).toBeUndefined();
     expect(toasts(wake).some((t) => t.includes('vaknade'))).toBe(true);
     expect(world.day).toBe(day0 + 1);
+  });
+});
+
+describe('buss och tåg', () => {
+  const toVillage = () => {
+    const { world, p } = setup();
+    p.coins = 100;
+    standAt(world, p, 63, 32);
+    travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    return { world, p, village: areaOf(world, p) };
+  };
+
+  it('the farm and every city have stops, also when saved before they existed', () => {
+    const { world, village } = toVillage();
+    const farmStop = Object.values(world.objects).find((o) => o.kind === 'bus_stop')!;
+    expect(farmStop).toBeDefined();
+    expect([farmStop.x, farmStop.y]).toEqual([FARM_BUS_STOP.x, FARM_BUS_STOP.y]);
+    expect(ensureFarmBusStop(world)).toBe(false);
+    delete world.objects[farmStop.id];
+    expect(ensureFarmBusStop(world)).toBe(true);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'bus_stop')).toHaveLength(1);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'train_station')).toHaveLength(1);
+    expect(ensureTransport(village)).toBe(false);
+    for (const o of Object.values(village.objects)) if (o.kind === 'bus_stop' || o.kind === 'train_station') delete village.objects[o.id];
+    expect(ensureTransport(village)).toBe(true);
+    expect(Object.values(village.objects).filter((o) => o.kind === 'train_station')).toHaveLength(1);
+  });
+
+  it('the bus takes you home and back for 5 kr, but only to places you know', () => {
+    const { world, p, village } = toVillage();
+    // from the city: home is on the list, the unknown city is not
+    const dests = transportDestinations(p, 'bus');
+    expect(dests.map((d) => d.key)).toEqual(['farm']);
+    expect(dests[0]!.price).toBe(5);
+    // you have to stand by the stop
+    standAt(world, p, 10, 10);
+    expect(toasts(ride(world, p.id, 'bus', 'farm', ctx()))).toContain('Gå fram till hållplatsen först.');
+    standAt(world, p, CITY_BUS_STOP.x, CITY_BUS_STOP.y + 1);
+    const ch = ride(world, p.id, 'bus', 'farm', ctx());
+    expect(ch[0]).toMatchObject({ t: 'ride', via: 'bus', to: p.id });
+    expect(p.area).toBe('farm');
+    expect(p.coins).toBe(95);
+    expect(Math.floor(p.x / TILE)).toBe(FARM_BUS_STOP.x);
+    expect(Math.floor(p.y / TILE)).toBe(FARM_BUS_STOP.y + 1);
+    expect(p.stats?.rides).toBe(1);
+    expect(p.achievements).toContain('trip_1');
+    // and back to the city (visited), not to an unknown one
+    const farmDests = transportDestinations(p, 'bus');
+    expect(farmDests.map((d) => d.key)).toEqual(['a:1,0']);
+    expect(ride(world, p.id, 'bus', 'a:4,0', ctx()).some((c) => c.t === 'ride')).toBe(false);
+    ride(world, p.id, 'bus', 'a:1,0', ctx());
+    expect(p.area).toBe('a:1,0');
+    expect(Math.floor(p.y / TILE)).toBe(CITY_BUS_STOP.y + 1);
+    expect(areaOf(world, p)).toBe(village);
+    // broke: no ride
+    p.coins = 2;
+    standAt(world, p, CITY_BUS_STOP.x, CITY_BUS_STOP.y + 1);
+    expect(toasts(ride(world, p.id, 'bus', 'farm', ctx()))).toContain('Inte tillräckligt med kr');
+    expect(p.area).toBe('a:1,0');
+  });
+
+  it('the train also goes to one unknown city, which counts as visited on arrival', () => {
+    const { world, p } = toVillage();
+    const unknown = nearestUnknownCity(p.visited!)!;
+    expect(unknown).toBeTruthy();
+    expect(unknown).not.toBe('a:1,0');
+    const dests = transportDestinations(p, 'train');
+    expect(dests.find((d) => d.unknown)?.key).toBe(unknown);
+    expect(dests.find((d) => d.unknown)?.name).toBe('Okänd stad');
+    expect(dests.find((d) => d.unknown)?.price).toBe(15);
+    // bus never lists it
+    expect(transportDestinations(p, 'bus').some((d) => d.key === unknown)).toBe(false);
+    // the station is the boarding point for trains
+    standAt(world, p, CITY_BUS_STOP.x, CITY_BUS_STOP.y + 1);
+    expect(toasts(ride(world, p.id, 'train', unknown, ctx()))).toContain('Gå fram till hållplatsen först.');
+    standAt(world, p, CITY_STATION.x + 1, CITY_STATION.y + 2);
+    const ch = ride(world, p.id, 'train', unknown, ctx());
+    expect(ch.some((c) => c.t === 'ride' && c.via === 'train')).toBe(true);
+    expect(p.area).toBe(unknown);
+    expect(p.coins).toBe(85);
+    expect(p.visited).toContain(unknown);
+    expect(p.stats?.train_rides).toBe(1);
+    const city = areaOf(world, p);
+    expect(city.biome).toBe('by');
+    expect(Object.values(city.objects).some((o) => o.kind === 'train_station')).toBe(true);
+    expect(isSolidForPlayer(city, Math.floor(p.x / TILE), Math.floor(p.y / TILE))).toBe(false);
+    // next unknown city is a different one now
+    expect(nearestUnknownCity(p.visited!)).not.toBe(unknown);
+    expect(() => JSON.stringify(ch)).not.toThrow();
   });
 });

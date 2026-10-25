@@ -600,6 +600,35 @@ const bathhouse = (): Px => {
   for (let x = 2; x < 46; x += 4) p.rect(x, 41, 3, 2, '#bfe6f5');
   return p.outline(OUTLINE);
 };
+const busStop = (): Px => {
+  // a pole with a blue sign showing a little bus, and a bench foot
+  const p = new Px(16, 24).rect(7, 8, 2, 16, '#6d6d72').rect(7, 8, 1, 16, '#9a9aa0');
+  p.rect(2, 1, 12, 9, '#2f6fd1').rect(2, 1, 12, 1, '#6a9ff0').box(2, 1, 12, 9, '#1c4a9a');
+  p.rect(4, 4, 8, 4, '#ffd84a').rect(5, 5, 2, 2, '#bfeaff').rect(8, 5, 2, 2, '#bfeaff').px(5, 8, OUTLINE).px(10, 8, OUTLINE).rect(4, 3, 8, 1, '#ffe88a');
+  p.rect(4, 21, 8, 2, '#6d6d72');
+  return p.outline(OUTLINE);
+};
+const trainStation = (): Px => {
+  // a brick station house with a clock in the gable and a platform roof
+  const p = new Px(48, 40);
+  p.rect(2, 14, 44, 24, '#c0604a').rect(2, 14, 44, 1, '#d98a74');
+  for (let y = 16; y < 38; y += 4) for (let x = 2 + ((y / 4) % 2) * 3; x < 46; x += 6) p.rect(x, y, 5, 2, '#a84c3a');
+  for (let y = 0; y < 14; y++) {
+    const inset = Math.max(0, Math.round(((13 - y) / 13) * 20));
+    p.rect(inset, y, 48 - inset * 2, 1, y % 3 === 0 ? '#4a4f5a' : '#5e6470');
+  }
+  p.rect(0, 13, 48, 2, '#3a3e48');
+  // clock
+  p.circle(24, 7, 4, '#f4f0e6').circle(24, 7, 4.5, '#3a3e48').circle(24, 7, 3.5, '#f4f0e6').rect(24, 4, 1, 3, OUTLINE).rect(24, 7, 2, 1, OUTLINE).px(24, 7, '#d9453b');
+  // door and windows
+  p.rect(20, 24, 8, 14, WOOD_D).rect(21, 25, 6, 13, '#8a5a2a').rect(23, 26, 2, 5, '#bfeaff').px(26, 32, '#f2d35a');
+  for (const wx of [6, 34]) p.rect(wx, 20, 8, 8, '#bfeaff').rect(wx + 3, 20, 2, 8, WOOD_D).rect(wx, 23, 8, 1, WOOD_D).box(wx - 1, 19, 10, 10, WOOD_D);
+  // "STATION" board
+  p.rect(14, 16, 20, 3, '#f4f0e6').rect(16, 17, 3, 1, OUTLINE).rect(21, 17, 6, 1, OUTLINE).rect(29, 17, 3, 1, OUTLINE);
+  // platform edge
+  p.rect(0, 38, 48, 2, '#9d9a92').rect(0, 38, 48, 1, '#c9c6bd');
+  return p.outline(OUTLINE);
+};
 const bathExit = (): Px => new Px(16, 16).rect(0, 0, 16, 16, '#b9b6ad').rect(1, 1, 14, 14, '#2b86a6').rect(2, 2, 12, 12, '#4fb8da').rect(3, 3, 10, 10, '#2b86a6').rect(4, 4, 8, 8, '#4fb8da').rect(11, 7, 2, 2, '#f2d35a').rect(5, 12, 6, 1, '#dff6ff');
 
 const horseStable = (): Px => {
@@ -781,6 +810,8 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('pigsty', [pigsty()], 0, -6);
   set('bathhouse', [bathhouse()], 0, -12);
   set('bath_exit', [bathExit()]);
+  set('bus_stop', [busStop()], 0, -8);
+  set('train_station', [trainStation()], 0, -8);
   set('house', PAINT_COLORS.map((_, i) => house(i)), 0, -20);
   set('mailbox', [mailbox()], 0, -8);
   set('sellbox', [sellbox()]);
