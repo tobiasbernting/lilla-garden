@@ -76,9 +76,11 @@ terrain and objects; swapping those in later only touches `art/world.ts`.
 
 ### 3D (v2)
 
-- Dator: klicka i spelet för att styra med musen. WASD går, musen tittar, klick använder det du tittar på
-  (svart ram = inom räckhåll), mellanslag hoppar, Shift springer, `E`/`Q` ryggsäck, hjulet/`1–8` väljer verktyg,
-  `F5` eller `V` byter kamera (första person, bakifrån, framifrån), `Esc` släpper musen.
-- Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på en ruta för att använda den,
-  handknappen använder det du tittar på (annars rutan framför dig), ⤒ hoppar, 🎥 byter kamera.
-
+- Dator: klicka i spelet för att styra med musen. WASD går, musen tittar, klick använder verktyget på det du
+  tittar på (svart ram). Du behöver inte sikta exakt: spelet väljer det närmaste som verktyget kan användas på,
+  inom en ruta från dig. Håll in knappen för att fortsätta hugga, hacka, vattna, så eller bygga medan du går.
+  Mellanslag hoppar, Shift springer, `E`/`Q` ryggsäck, hjulet/`1–8` väljer verktyg, `F5` eller `V` byter kamera
+  (första person, bakifrån, framifrån), 🖱️ inverterar musen upp/ner, `Esc` släpper musen.
+- Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på något för att använda verktyget på det,
+  handknappen (håll in för att fortsätta) använder det du tittar på, annars rutan framför dig. ⤒ hoppar,
+  🎥 byter kamera, 🖱️ inverterar upp/ner.

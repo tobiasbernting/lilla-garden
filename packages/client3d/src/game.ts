@@ -40,6 +40,7 @@ import { paintingPx } from '@v1/art/painting.ts';
 import type { HudTarget } from '@v1/ui/hud.ts';
 import { net } from '@v1/net.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '@v1/state.ts';
+import { usefulness, type Use } from './assist.ts';
 import { BLOCKS, atlas } from './blocks.ts';
 import { GeoBuilder } from './builder.ts';
 import { Fx } from './fx.ts';
@@ -78,7 +79,22 @@ interface Target {
   ty: number;
   /** Highlight bounds (world). */
   box: THREE.Box3;
+  /** What using the held item there would do (aim assist). */
+  use?: Use;
+  /** Picked by aim assist rather than under the crosshair: how far to the side (radians). */
+  side?: number;
 }
+
+/** How far (radians) aim assist looks around the crosshair, and around a tapped point. */
+const ASSIST_VIEW = 0.95;
+const ASSIST_TAP = 0.5;
+/** Holding the button repeats safe actions (breaking, hoeing, planting…): on the same tile this often, */
+const REPEAT_MS = 320;
+/** and as soon as a new tile comes into reach (walking along a row), at most this often. */
+const REPEAT_NEW_MS = 110;
+/** While held, assist only keeps going on things about this far (radians) to the side of straight ahead. */
+const REPEAT_SIDE = 0.45;
+const LS_INVERT = 'lilla-garden-3d.invertY';
 
 const yawOf = (f: Facing): number => (f === 'down' ? 0 : f === 'up' ? Math.PI : f === 'right' ? Math.PI / 2 : -Math.PI / 2);
 const angleLerp = (a: number, b: number, t: number): number => {
@@ -97,6 +113,18 @@ export class World3D implements HudTarget {
   onWheel: (dir: number) => void = () => {};
   /** Camera: 0 first person, 1 behind, 2 in front (F5 like Minecraft). */
   camMode = 0;
+  /** Up/down look inverted (mouse and touch), remembered per device. */
+  invertY = (() => {
+    try {
+      return localStorage.getItem(LS_INVERT) === '1';
+    } catch {
+      return false;
+    }
+  })();
+  /** The use button (mouse or touch) is held down. */
+  private holding = false;
+  private nextUse = 0;
+  private lastUse = { key: '', at: 0 };
 
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -215,7 +243,10 @@ export class World3D implements HudTarget {
       }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.stopUse();
+    });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('wheel', (e) => {
       if (this.uiOpen) return;
@@ -230,8 +261,9 @@ export class World3D implements HudTarget {
         void el.requestPointerLock?.();
         return;
       }
-      if (e.button === 0 || e.button === 2) this.actOnTarget(false);
+      if (e.button === 0 || e.button === 2) this.startUse();
     });
+    document.addEventListener('mouseup', () => this.stopUse());
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       this.look(-e.movementX * LOOK_SPEED, -e.movementY * LOOK_SPEED);
@@ -260,8 +292,12 @@ export class World3D implements HudTarget {
       if (!t.moved && performance.now() - t.t < 350 && !this.uiOpen) {
         const r = el.getBoundingClientRect();
         const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-        const tgt = this.pick(ndc);
-        if (tgt) this.actAt(tgt.tx, tgt.ty);
+        this.raycaster.setFromCamera(ndc, this.camera);
+        const tgt = this.chooseTarget(this.raycaster.ray.clone(), ASSIST_TAP);
+        if (tgt) {
+          this.viewSwing = 1;
+          this.actAt(tgt.tx, tgt.ty);
+        }
       }
     };
     el.addEventListener('pointerup', end);
@@ -278,7 +314,17 @@ export class World3D implements HudTarget {
     this.updateLockHint();
   }
 
+  setInvertY(on: boolean): void {
+    this.invertY = on;
+    try {
+      localStorage.setItem(LS_INVERT, on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
   private look(dYaw: number, dPitch: number): void {
+    if (this.invertY) dPitch = -dPitch;
     this.yaw += dYaw;
     this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch + dPitch));
   }
@@ -291,9 +337,21 @@ export class World3D implements HudTarget {
     if (this.jumpY === 0 && !this.uiOpen) this.jumpV = 8.4;
   }
 
-  /** HUD action button: what the crosshair points at, else the tile in front. */
+  /** HUD action button (pressed): what the crosshair points at, else the tile in front. */
   act(): void {
-    this.actOnTarget(true);
+    this.startUse(true);
+  }
+
+  /** Press: use the held item now, and keep using it while held if that's safe (like Minecraft). */
+  startUse(fallbackFacing = false): void {
+    if (this.uiOpen) return;
+    this.holding = true;
+    this.actOnTarget(fallbackFacing);
+    this.nextUse = performance.now() + REPEAT_MS + 120;
+  }
+
+  stopUse(): void {
+    this.holding = false;
   }
 
   // ------------------------------------------------------------------ world (re)loading
@@ -608,12 +666,21 @@ export class World3D implements HudTarget {
 
   // ------------------------------------------------------------------ acting
 
-  /** Raycasts from the camera (or a screen point) to the thing under it within a few blocks. */
-  private pick(ndc = new THREE.Vector2(0, 0)): Target | null {
+  /** Where the player looks from: their eyes, also in third person (Minecraft casts from the eyes, not the camera). */
+  private viewRay(): THREE.Ray {
+    const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    const me = myPlayer();
+    const v = me ? this.players.get(me.id) : undefined;
+    const origin = v && this.camMode !== 0 ? v.rig.root.position.clone().add(new THREE.Vector3(0, EYE, 0)) : this.camera.position.clone();
+    return new THREE.Ray(origin, dir);
+  }
+
+  /** Raycasts along a ray to the thing it hits within a few blocks. */
+  private pick(ray: THREE.Ray): Target | null {
     const me = myPlayer();
     if (!me) return null;
-    this.raycaster.setFromCamera(ndc, this.camera);
-    this.raycaster.far = this.camMode === 0 ? 6 : 12;
+    this.raycaster.set(ray.origin, ray.direction);
+    this.raycaster.far = 6;
     const dropSet = new Set(this.drops.values());
     const objs: THREE.Object3D[] = [...this.vox.group.children, ...this.models.group.children, ...this.dynGroup.children.filter((c) => !dropSet.has(c))];
     for (const a of [...this.animals.values(), ...this.npcs.values()]) objs.push(a.rig.root);
@@ -669,6 +736,66 @@ export class World3D implements HudTarget {
     return Math.abs(tx - tileOf(me.x)) <= REACH && Math.abs(ty - tileOf(me.y)) <= REACH;
   }
 
+  /** What stands on a tile right now (animals and villagers move, so use their drawn positions). */
+  private whoAt(tx: number, ty: number): { animal?: boolean; hostile?: boolean; npc?: boolean; view?: ActorView } {
+    for (const [id, v] of this.animals) {
+      if (tileOf(v.x) !== tx || tileOf(v.y) !== ty) continue;
+      const a = this.world.animals[id];
+      if (!a || a.route !== undefined) continue;
+      const def = ANIMALS[a.species];
+      return { animal: true, hostile: !!(def?.mob || (def?.predator && !a.owner)), view: v };
+    }
+    for (const v of this.npcs.values()) if (tileOf(v.x) === tx && tileOf(v.y) === ty) return { npc: true, view: v };
+    return {};
+  }
+
+  /**
+   * Forgiving targeting: the exact thing under the ray if using the held item there does something;
+   * otherwise the most useful tile within reach closest to where the player is looking.
+   */
+  private chooseTarget(ray: THREE.Ray, assist: number): Target | null {
+    const me = myPlayer();
+    if (!me) return null;
+    const ptx = tileOf(me.x);
+    const pty = tileOf(me.y);
+    const hit = this.pick(ray);
+    const direct = hit && this.inReach(hit.tx, hit.ty) ? hit : null;
+    if (direct) {
+      direct.use = usefulness(this.world, me, direct.tx, direct.ty, this.whoAt(direct.tx, direct.ty), direct.tx === ptx && direct.ty === pty);
+      if (direct.use.score > 0) return direct;
+    }
+    let best: Target | null = null;
+    let bestScore = Infinity;
+    const to = new THREE.Vector3();
+    // compass direction of the ray, same convention as this.yaw (0 = north, -z)
+    const viewYaw = Math.atan2(-ray.direction.x, -ray.direction.z);
+    for (let dy = -REACH; dy <= REACH; dy++)
+      for (let dx = -REACH; dx <= REACH; dx++) {
+        const tx = ptx + dx;
+        const ty = pty + dy;
+        const who = this.whoAt(tx, ty);
+        const use = usefulness(this.world, me, tx, ty, who, dx === 0 && dy === 0);
+        if (use.score <= 0) continue;
+        const box = who.view ? new THREE.Box3().setFromObject(who.view.rig.root) : this.boundsOf(tx, ty);
+        box.getCenter(to).sub(ray.origin);
+        const angle = to.angleTo(ray.direction);
+        if (angle > assist) continue;
+        // Closest to the crosshair wins, but sideways counts more than up/down: walking forward looking
+        // down means "the tile in front of me", not the one diagonally ahead that happens to be nearer
+        // the crosshair. Your own tile has no direction, so it only wins when nothing else fits.
+        const tileYaw = Math.atan2(-(tx + 0.5 - me.x / TILE), -(ty + 0.5 - me.y / TILE));
+        const turn = tileYaw - viewYaw;
+        const side = dx === 0 && dy === 0 ? 0.6 : Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn)));
+        // clearer intent (an animal, a tree for the axe) gets a little pull
+        const score = angle * 0.5 + side - use.score * 0.06;
+        if (score < bestScore) {
+          bestScore = score;
+          best = { tx, ty, box, use, side };
+        }
+      }
+    return best ?? direct;
+  }
+
   private actOnTarget(fallbackFacing: boolean): void {
     if (this.uiOpen) return;
     const me = myPlayer();
@@ -691,6 +818,7 @@ export class World3D implements HudTarget {
       this.sendMove(true);
     }
     net.send({ t: 'act', tx, ty });
+    this.lastUse = { key: `${tx},${ty}`, at: performance.now() };
     this.viewSwing = 1;
     const a = this.players.get(me.id);
     if (a) a.rig.parts.get('rArm')!.userData.swingT = 0.3;
@@ -1009,7 +1137,8 @@ export class World3D implements HudTarget {
     if (!mesh) return;
     const g = new THREE.Group();
     g.add(mesh);
-    g.rotation.set(-Math.PI / 2 + 0.3, Math.PI / 2, 0);
+    // pointing forward, turned a little outwards so its face shows from behind too
+    g.rotation.set(-Math.PI / 2 + 0.3, Math.PI / 2 - 0.6, 0);
     g.position.set(0, -0.05, 0.05);
     v.rig.hand.add(g);
     v.held = { item, mesh: g };
@@ -1184,18 +1313,24 @@ export class World3D implements HudTarget {
 
   private updateTarget(me: PlayerState): void {
     let t: Target | null = null;
-    if (!this.uiOpen && !this.touch) {
-      const hit = this.pick();
-      if (hit && this.inReach(hit.tx, hit.ty)) t = hit;
-    } else if (this.touch && !this.uiOpen) {
-      const hit = this.pick();
-      t = hit && this.inReach(hit.tx, hit.ty) ? hit : null;
-      if (!t) {
+    if (!this.uiOpen) {
+      t = this.chooseTarget(this.viewRay(), ASSIST_VIEW);
+      if (!t && this.touch) {
         const f = facingTile(me);
         t = { ...f, box: this.boundsOf(f.tx, f.ty) };
       }
     }
     this.target = t;
+    // held button: keep chopping, hoeing, planting… as long as it is safe to repeat
+    const now = performance.now();
+    if (this.holding && t?.use?.repeat && (t.side ?? 0) <= REPEAT_SIDE && me.riding === undefined) {
+      const fresh = `${t.tx},${t.ty}` !== this.lastUse.key;
+      if (now >= this.nextUse || (fresh && now - this.lastUse.at >= REPEAT_NEW_MS)) {
+        this.nextUse = now + REPEAT_MS;
+        this.viewSwing = 1;
+        this.actAt(t.tx, t.ty);
+      }
+    }
     if (t) {
       const size = t.box.getSize(new THREE.Vector3());
       const c = t.box.getCenter(new THREE.Vector3());

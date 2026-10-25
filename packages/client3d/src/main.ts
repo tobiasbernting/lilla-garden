@@ -42,10 +42,21 @@ const hud = new Hud(
 hud.root.style.display = 'none';
 menus.onChange = (open) => view?.setUiOpen(open);
 
-// camera switch (F5 on a keyboard)
+// camera switch (F5 on a keyboard) and inverted up/down look
 const camBtn = h('div', { class: 'round small', title: 'Byt kameravy (F5)' }, '🎥');
 onTap(camBtn, () => view?.cycleCamera());
-hud.root.querySelector('.hud-right')?.append(camBtn);
+const invertBtn = h('div', { class: 'round small invert-btn', title: 'Invertera musen (upp/ner)' }, '🖱️');
+const showInvert = () => invertBtn.classList.toggle('on', !!view?.invertY);
+onTap(invertBtn, () => {
+  if (!view) return;
+  view.setInvertY(!view.invertY);
+  showInvert();
+  hud.toast(view.invertY ? 'Musen är inverterad: upp tittar ner' : 'Musen är normal igen');
+});
+hud.root.querySelector('.hud-right')?.append(invertBtn, camBtn);
+// holding the hand button keeps using the tool (it starts on press, in the HUD)
+const actBtn = hud.root.querySelector('.act-btn');
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) actBtn?.addEventListener(ev, () => view?.stopUse());
 // jump button for touch screens
 const jumpBtn = h('div', { class: 'jump-btn' }, '⤒');
 jumpBtn.addEventListener('pointerdown', (e) => {
@@ -81,6 +92,7 @@ function start(): void {
   if (!view) {
     view = new World3D(gameEl, ui);
     view.touch = isTouch;
+    showInvert();
     view.onWheel = (dir) => {
       const me = myPlayer();
       if (me) hud.select((me.selected + dir + 8) % 8);
