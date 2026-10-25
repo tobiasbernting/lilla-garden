@@ -658,6 +658,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('build_50', 'build', 50, 3, 'coop'),
   A('walls_20', 'walls', 20, 2, 'wall_wood'),
   A('painted_1', 'painted', 1, 1, 'paint_red'),
+  A('rooms_1', 'rooms', 1, 2, 'floor_wood'),
   A('fed_5', 'fed', 5, 1, 'hay'),
   A('fed_30', 'fed', 30, 2, 'animal_cow'),
   A('product_10', 'product', 10, 2, 'egg'),
