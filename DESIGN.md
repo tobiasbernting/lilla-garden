@@ -64,3 +64,7 @@ A Minecraft-looking version of the same game, deployed separately (`lilla-garden
 - First person by default (F5 cycles to third person), crosshair targeting with the 2D game's reach, visual-only jumping. HUD, menus, minimap and sounds are the 2D client's.
 - Kid-friendly tweaks: nights are dimmer than day but never black, and a soft light follows the player.
 
+- Voxel world (`WORLD_MODE=voxel`, v2 only): the shared sim keeps a block layer per map (`WorldState.voxel`: a height per tile from value noise, plus a sparse map of dug/placed blocks; everything else is derived: dirt, stone, caves, ores, bedrock, 48 blocks tall). The farmyard, buildings, water and the exits to neighbouring maps stay at ground level; hills grow away from them and mountains rise at the edges. The tile grid stays the source of truth for everything else: the top block of a column is reflected in `terrain` (dug earth reads as `dirt`, bare rock as `stone`), so farming, saves and the 2D client keep working.
+- Players carry a height (`z`): shared step/gravity/jump physics runs on the client and the server checks each move against the blocks. Animals and villagers stay on the surface and treat steep steps as walls.
+- Dig/place messages: anything digs soft blocks, the pickaxe digs stone and ore (coal, gold, gems). Dirt, sand, gravel, cobblestone (from stone) and planks (from wood) can be placed. Nothing is dug from under trees, buildings or crops.
+- Forests in voxel worlds are thinned so you can walk through them, with mixed oak, birch, dark oak, cherry, spruce and redwood.

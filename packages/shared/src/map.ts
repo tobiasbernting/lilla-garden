@@ -1,6 +1,7 @@
 import { NPCS, objectDef } from './data.ts';
 import { ensureFarmBusStop, ensureFarmExits } from './biomes.ts';
 import { mulberry32, randInt } from './rng.ts';
+import { initVoxel, thinForest, voxelMode } from './voxel.ts';
 import type { Terrain, WorldObject, WorldState } from './types.ts';
 import { MAP_H, MAP_W, key } from './types.ts';
 
@@ -246,5 +247,10 @@ export function generateWorld(seed = 1337): WorldState {
       else if (r < 0.115 && !isOpenArea(x, y)) addObject(world, 'bush', x, y);
     }
 
+  // 3D game: walkable mixed forests, hills and mountains
+  if (voxelMode()) {
+    thinForest(world, rnd);
+    initVoxel(world, seed);
+  }
   return world;
 }

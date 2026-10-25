@@ -22,8 +22,21 @@ import {
   PLAYER_HALF_H,
   PLAYER_HALF_W,
   REACH,
+  BODY_R,
+  EYE_HEIGHT,
+  DIG_REACH,
+  ITEMS,
+  PLAYER_SPEED,
+  applyPortal,
+  blockedByTiles,
+  columnTop,
+  standHeight,
+  stepBody,
   rideSpeedMul,
   stepPlayer,
+  type Fall,
+  fmt,
+  itemName,
   T,
   TILE,
   tileOf,
@@ -52,7 +65,7 @@ import { linkMask, type ModelCtx } from './models.ts';
 import { Sky } from './sky.ts';
 import { pixelTexture } from './sprites.ts';
 import { WALL_H } from './structures.ts';
-import { chunkOf, Voxels, type AreaKind } from './voxels.ts';
+import { chunkOf, GROUND, Voxels, type AreaKind } from './voxels.ts';
 
 const EYE = 1.62;
 const GRAVITY = 28;
@@ -72,6 +85,8 @@ interface ActorView {
   key: string;
   held?: { item: string; mesh: THREE.Object3D } | null;
   flash: number;
+  /** Block worlds: interpolated feet height (world y) of other players. */
+  z?: number;
 }
 
 interface Target {
@@ -83,7 +98,15 @@ interface Target {
   use?: Use;
   /** Picked by aim assist rather than under the crosshair: how far to the side (radians). */
   side?: number;
+  /** Block worlds: a terrain block under the crosshair (cell x, y = tile row, h = layer) and the empty cell in front of the face. */
+  cell?: { x: number; y: number; h: number };
+  front?: { x: number; y: number; h: number };
+  /** Block worlds: what using the held item does to that block. */
+  block?: 'dig' | 'place';
 }
+
+/** Blocks bare hands (and tools other than the pickaxe) can dig. */
+const SOFT = new Set(['grass', 'snowy_grass', 'dirt', 'farmland', 'farmland_wet', 'path', 'sand', 'gravel', 'snow']);
 
 /** How far (radians) aim assist looks around the crosshair, and around a tapped point. */
 const ASSIST_VIEW = 0.95;
@@ -103,6 +126,51 @@ const angleLerp = (a: number, b: number, t: number): number => {
   while (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
 };
+
+/** Minecraft's black block outline, with edges thick enough to see on any screen (WebGL lines are 1 px). */
+class Outline {
+  readonly group = new THREE.Group();
+  private edges: THREE.Mesh[] = [];
+  private last = '';
+
+  constructor() {
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
+    for (let i = 0; i < 12; i++) {
+      const m = new THREE.Mesh(geo, mat);
+      m.renderOrder = 5;
+      this.edges.push(m);
+      this.group.add(m);
+    }
+    this.group.visible = false;
+  }
+
+  show(box: THREE.Box3 | null): void {
+    if (!box) {
+      this.group.visible = false;
+      this.last = '';
+      return;
+    }
+    this.group.visible = true;
+    const k = `${box.min.toArray()}|${box.max.toArray()}`;
+    if (k === this.last) return;
+    this.last = k;
+    const t = 0.03;
+    const lo = box.min.clone().subScalar(0.005);
+    const hi = box.max.clone().addScalar(0.005);
+    hi.y = Math.max(hi.y, lo.y + 0.02);
+    const size = hi.clone().sub(lo);
+    let i = 0;
+    const edge = (x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+      const m = this.edges[i++]!;
+      m.position.set(x, y, z);
+      m.scale.set(sx, sy, sz);
+    };
+    for (const y of [lo.y, hi.y]) for (const z of [lo.z, hi.z]) edge((lo.x + hi.x) / 2, y, z, size.x + t, t, t);
+    for (const y of [lo.y, hi.y]) for (const x of [lo.x, hi.x]) edge(x, y, (lo.z + hi.z) / 2, t, t, size.z + t);
+    for (const x of [lo.x, hi.x]) for (const z of [lo.z, hi.z]) edge(x, (lo.y + hi.y) / 2, z, t, size.y + t, t);
+  }
+}
 
 export class World3D implements HudTarget {
   joystick = { dx: 0, dy: 0 };
@@ -135,7 +203,7 @@ export class World3D implements HudTarget {
   private fx = new Fx();
   private actorsGroup = new THREE.Group();
   private dynGroup = new THREE.Group();
-  private highlight: THREE.LineSegments;
+  private highlight: Outline;
   private viewModel = new THREE.Group();
   private viewArm: THREE.Object3D | null = null;
   private viewItem: { item: string; mesh: THREE.Object3D } | null = null;
@@ -159,6 +227,12 @@ export class World3D implements HudTarget {
   /** Free camera position for debugging from the console (lillaGarden.view().debugEye = …). */
   debugEye: THREE.Vector3 | null = null;
   private jumpY = 0;
+  /** Block worlds (3D game): real falling and jumping. */
+  private fall: Fall = { vz: 0, onGround: true };
+  private jumpQueued = false;
+  private lastZSent: number | undefined;
+  /** When we started disagreeing with the server about where we stand (0 = we agree). */
+  private driftSince = 0;
   private jumpV = 0;
   private keys = new Set<string>();
   private lastMoveSent = 0;
@@ -169,6 +243,8 @@ export class World3D implements HudTarget {
   private target: Target | null = null;
   private dirtyVox = false;
   private dirtyTerrain = false;
+  /** Map columns whose ground changed (hoed, dug, built on): patched without rebuilding the whole map. */
+  private dirtyColumns = new Map<string, [number, number]>();
   private dirtyModels = new Set<number>();
   private lastVoxBuild = 0;
   private time = 0;
@@ -191,9 +267,8 @@ export class World3D implements HudTarget {
     this.scene.add(this.vox.group, this.models.group, this.actorsGroup, this.dynGroup, this.fx.group, this.sky.group, this.camera);
     this.camera.rotation.order = 'YXZ';
     // Minecraft's black block outline
-    this.highlight = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6 }));
-    this.highlight.visible = false;
-    this.scene.add(this.highlight);
+    this.highlight = new Outline();
+    this.scene.add(this.highlight.group);
     this.camera.add(this.viewModel);
     this.labels = document.getElementById('labels')!;
 
@@ -262,6 +337,10 @@ export class World3D implements HudTarget {
         return;
       }
       if (e.button === 0 || e.button === 2) this.startUse();
+      else if (e.button === 1) {
+        e.preventDefault();
+        this.pickBlock();
+      }
     });
     document.addEventListener('mouseup', () => this.stopUse());
     document.addEventListener('mousemove', (e) => {
@@ -334,7 +413,9 @@ export class World3D implements HudTarget {
   }
 
   jump(): void {
-    if (this.jumpY === 0 && !this.uiOpen) this.jumpV = 8.4;
+    if (this.uiOpen) return;
+    if (this.world?.voxel) this.jumpQueued = true;
+    else if (this.jumpY === 0) this.jumpV = 8.4;
   }
 
   /** HUD action button (pressed): what the crosshair points at, else the tile in front. */
@@ -415,7 +496,11 @@ export class World3D implements HudTarget {
   }
 
   private rebuildBlocks(all = false): void {
-    this.vox.rebuild(this.world, this.kind, client.season, all || this.dirtyTerrain);
+    if (this.dirtyColumns.size && !all) {
+      this.vox.patchColumns(this.world, this.kind, client.season, this.dirtyColumns.values());
+      this.dirtyColumns.clear();
+    } else this.vox.rebuild(this.world, this.kind, client.season, all || this.dirtyTerrain);
+    this.dirtyColumns.clear();
     this.dirtyTerrain = false;
     const chunks = all ? null : new Set([...this.vox.lastDirty, ...this.dirtyModels]);
     this.models.rebuild(this.world, this.vox, this.modelCtx(), chunks);
@@ -441,11 +526,11 @@ export class World3D implements HudTarget {
   private onChange(c: Change): void {
     if (c.t === 'areaData') return;
     const forArea = ('area' in c && c.area) || 'farm';
-    if ((c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop') && forArea !== this.area) return;
+    if ((c.t === 'terrain' || c.t === 'block' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop') && forArea !== this.area) return;
     switch (c.t) {
       case 'terrain':
-        this.dirtyVox = true;
-        this.dirtyTerrain = true;
+      case 'block':
+        this.dirtyColumns.set(`${c.x},${c.y}`, [c.x, c.y]);
         this.markTile(c.x, c.y, true);
         break;
       case 'crop': {
@@ -596,7 +681,7 @@ export class World3D implements HudTarget {
   // ------------------------------------------------------------------ dynamic objects
 
   private lightDynamic(m: THREE.ShaderMaterial, pos: THREE.Vector3): void {
-    const [s, b] = this.vox.lightAtWorld(pos.x + 0.5, 0.5, pos.z + 0.5);
+    const [s, b] = this.vox.lightAtWorld(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5);
     setActorLight(m, s, b);
   }
 
@@ -630,9 +715,9 @@ export class World3D implements HudTarget {
       const tex = pixelTexture(paintingPx(o.data).canvas);
       const mat = makeMaterial(tex, { actor: true });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-      mesh.position.set(o.x + 0.5, 1.5, o.y + 0.04);
+      mesh.position.set(o.x + 0.5, this.vox.surfaceAt(o.x, o.y) + 1.5, o.y + 0.04);
       this.dynGroup.add(mesh);
-      this.lightDynamic(mat, new THREE.Vector3(o.x, 0, o.y));
+      this.lightDynamic(mat, new THREE.Vector3(o.x, this.vox.surfaceAt(o.x, o.y), o.y));
       this.paintings.set(o.id, mesh);
     }
   }
@@ -709,7 +794,16 @@ export class World3D implements HudTarget {
       tx = Math.min(obj.x + def.w - 1, Math.max(obj.x, tx));
       ty = Math.min(obj.y + def.h - 1, Math.max(obj.y, ty));
     }
-    return { tx, ty, box: this.boundsOf(tx, ty) };
+    const target: Target = { tx, ty, box: this.boundsOf(tx, ty) };
+    // block worlds: a terrain block (not part of a tree or a house) can be dug or built against
+    if (this.world.voxel && !obj && hit.object.userData.chunk && hit.face && tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H) {
+      const n = hit.face.normal;
+      const h = Math.floor(p.y) + GROUND;
+      target.cell = { x: tx, y: ty, h };
+      const f = hit.point.clone().addScaledVector(n, 0.5);
+      target.front = { x: Math.floor(f.x), y: Math.floor(f.z), h: Math.floor(f.y) + GROUND };
+    }
+    return target;
   }
 
   /** Outline around whatever stands on a tile. */
@@ -759,11 +853,19 @@ export class World3D implements HudTarget {
     const ptx = tileOf(me.x);
     const pty = tileOf(me.y);
     const hit = this.pick(ray);
+    const blockTarget = hit?.cell ? this.blockUse(me, hit) : null;
     const direct = hit && this.inReach(hit.tx, hit.ty) ? hit : null;
-    if (direct) {
+    // the side of a cliff, a tunnel wall: blocks only (the tile's ground is somewhere else)
+    const surface = !hit?.cell || hit.cell.h === columnTop(this.world, hit.cell.x, hit.cell.y) - 1;
+    if (direct && surface) {
       direct.use = usefulness(this.world, me, direct.tx, direct.ty, this.whoAt(direct.tx, direct.ty), direct.tx === ptx && direct.ty === pty);
+      if (this.world.voxel && me.z !== undefined && Math.abs(columnTop(this.world, direct.tx, direct.ty) - me.z) > 2.5) direct.use = { score: 0, repeat: false };
       if (direct.use.score > 0) return direct;
     }
+    // the pickaxe and building blocks go for the block you point at; anything else tries aim assist first
+    const held = heldItem(me);
+    const blockFirst = !!held && (ITEMS[held.item]?.tool === 'pick' || !!ITEMS[held.item]?.block);
+    if (blockTarget && blockFirst) return blockTarget;
     let best: Target | null = null;
     let bestScore = Infinity;
     const to = new THREE.Vector3();
@@ -776,6 +878,8 @@ export class World3D implements HudTarget {
         const who = this.whoAt(tx, ty);
         const use = usefulness(this.world, me, tx, ty, who, dx === 0 && dy === 0);
         if (use.score <= 0) continue;
+        // block worlds: ground far above or below you (a cliff, from a tunnel) is out of reach
+        if (this.world.voxel && me.z !== undefined && Math.abs(columnTop(this.world, tx, ty) - me.z) > 2.5) continue;
         const box = who.view ? new THREE.Box3().setFromObject(who.view.rig.root) : this.boundsOf(tx, ty);
         box.getCenter(to).sub(ray.origin);
         const angle = to.angleTo(ray.direction);
@@ -793,7 +897,37 @@ export class World3D implements HudTarget {
           best = { tx, ty, box, use, side };
         }
       }
-    return best ?? direct;
+    return best ?? blockTarget ?? direct;
+  }
+
+  /** Block worlds: dig the pointed-at block (pickaxe: anything; otherwise soft ground) or build against it. */
+  private blockUse(me: PlayerState, t: Target): Target | null {
+    const c = t.cell!;
+    const eye = new THREE.Vector3(me.x / TILE, (me.z ?? GROUND) - GROUND + EYE_HEIGHT, me.y / TILE);
+    if (eye.distanceTo(new THREE.Vector3(c.x + 0.5, c.h - GROUND + 0.5, c.y + 0.5)) > DIG_REACH) return null;
+    const held = heldItem(me);
+    const def = held ? ITEMS[held.item] : undefined;
+    const box = new THREE.Box3(new THREE.Vector3(c.x, c.h - GROUND, c.y), new THREE.Vector3(c.x + 1, c.h - GROUND + 1, c.y + 1));
+    if (def?.block) {
+      const f = t.front!;
+      if (f.x < 0 || f.y < 0 || f.x >= MAP_W || f.y >= MAP_H) return null;
+      // not into your own body, except under your feet while jumping (building yourself up a pillar)
+      const r = BODY_R + 0.02;
+      const z = me.z ?? GROUND;
+      const inBody = f.x + 1 > me.x / TILE - r && f.x < me.x / TILE + r && f.y + 1 > me.y / TILE - r && f.y < me.y / TILE + r && f.h + 1 > z && f.h < z + 1.8;
+      if (inBody && !(this.fall.vz > 0 && f.h + 1 <= z + 0.9)) return null;
+      return { tx: f.x, ty: f.y, box, cell: c, front: f, block: 'place', use: { score: 2, repeat: true } };
+    }
+    const name = BLOCKS[this.vox.blockAtWorld(c.x + 0.5, c.h - GROUND + 0.5, c.y + 0.5)]?.name ?? '';
+    if (name === 'bedrock' || name === 'water') return null;
+    // the ground under a tree, a fence, a crop… stays (flat things like tufts just go with it)
+    if (c.h === columnTop(this.world, c.x, c.y) - 1) {
+      const id = this.world.occupancy[`${c.x},${c.y}`];
+      const o = id === undefined ? undefined : this.world.objects[id];
+      if ((o && (!objectDef(o.kind).flat || objectDef(o.kind).interact)) || this.world.crops[`${c.x},${c.y}`]) return null;
+    }
+    if (def?.tool === 'pick' || SOFT.has(name)) return { tx: c.x, ty: c.y, box, cell: c, block: 'dig', use: { score: 2, repeat: true } };
+    return null;
   }
 
   private actOnTarget(fallbackFacing: boolean): void {
@@ -803,7 +937,51 @@ export class World3D implements HudTarget {
     let t: { tx: number; ty: number } | null = this.target;
     if (!t && fallbackFacing) t = facingTile(me);
     this.viewSwing = 1;
-    if (t) this.actAt(t.tx, t.ty);
+    if (this.target?.block) this.useBlock(this.target);
+    else if (t) this.actAt(t.tx, t.ty);
+  }
+
+  /**
+   * Minecraft's "pick block" (middle click): the item you build the pointed-at block with goes into
+   * the selected hotbar slot, swapped in from the backpack.
+   */
+  pickBlock(): void {
+    const me = myPlayer();
+    const c = this.target?.cell;
+    if (!me || !c) return;
+    const name = BLOCKS[this.vox.blockAtWorld(c.x + 0.5, c.h - GROUND + 0.5, c.y + 0.5)]?.name ?? '';
+    const itemId = /sand/.test(name) ? 'sand' : /gravel/.test(name) ? 'gravel' : /planks/.test(name) ? 'wood' : /stone|cobble|ore|brick/.test(name) ? 'stone' : 'dirt';
+    if (me.inventory[me.selected]?.item === itemId) return;
+    const slot = me.inventory.findIndex((s) => s?.item === itemId);
+    if (slot < 0) {
+      bus.emit('toast', fmt(T.noBlocks, { item: itemName(itemId).toLowerCase() }));
+      return;
+    }
+    if (slot < 8) {
+      net.send({ t: 'select', slot });
+      return;
+    }
+    net.send({ t: 'swap', a: { slot: me.selected }, b: { slot } });
+  }
+
+  private useBlock(t: Target): void {
+    const c = t.block === 'place' ? t.front! : t.cell!;
+    net.send({ t: t.block === 'place' ? 'place' : 'dig', x: c.x, y: c.y, h: c.h });
+    // digging into a wall at body height takes both blocks, so a tunnel is always walk-in tall
+    const me = myPlayer();
+    if (t.block === 'dig' && me?.z !== undefined) {
+      const feet = Math.round(me.z);
+      const beside = (c.x !== tileOf(me.x) || c.y !== tileOf(me.y)) && (c.h === feet || c.h === feet + 1);
+      const other = c.h === feet ? feet + 1 : feet;
+      const b = this.vox.blockAtWorld(c.x + 0.5, other - GROUND + 0.5, c.y + 0.5);
+      if (beside && b !== 0 && BLOCKS[b]?.name !== 'bedrock') {
+        net.send({ t: 'dig', x: c.x, y: c.y, h: other });
+      }
+    }
+    this.lastUse = { key: `b:${c.x},${c.y},${c.h}`, at: performance.now() };
+    this.viewSwing = 1;
+    const a = me ? this.players.get(me.id) : undefined;
+    if (a) a.rig.parts.get('rArm')!.userData.swingT = 0.3;
   }
 
   private actAt(tx: number, ty: number): void {
@@ -919,7 +1097,8 @@ export class World3D implements HudTarget {
     if (!force && now - this.lastMoveSent < 50) return;
     this.lastMoveSent = now;
     this.lastFacingSent = me.facing;
-    net.send({ t: 'move', x: me.x, y: me.y, facing: me.facing, moving: me.moving });
+    this.lastZSent = me.z;
+    net.send({ t: 'move', x: me.x, y: me.y, z: me.z, facing: me.facing, moving: me.moving });
   }
 
   private frame(): void {
@@ -932,7 +1111,14 @@ export class World3D implements HudTarget {
       return;
     }
     if (myArea() !== this.area) return; // a reload is on its way
-    if ((this.dirtyVox && now - this.lastVoxBuild > 120) || (this.dirtyModels.size && now - this.lastVoxBuild > 60)) {
+    if (this.dirtyColumns.size && !this.dirtyVox) {
+      // dug, built or hoed: patch just those columns (fast enough to dig continuously)
+      this.vox.patchColumns(this.world, this.kind, client.season, this.dirtyColumns.values());
+      this.dirtyColumns.clear();
+      this.models.rebuild(this.world, this.vox, this.modelCtx(), new Set([...this.vox.lastDirty, ...this.dirtyModels]));
+      this.dirtyModels.clear();
+      this.lastVoxBuild = now;
+    } else if ((this.dirtyVox && now - this.lastVoxBuild > 120) || (this.dirtyModels.size && now - this.lastVoxBuild > 60)) {
       if (this.dirtyVox) this.rebuildBlocks();
       else {
         this.models.rebuild(this.world, this.vox, this.modelCtx(), this.dirtyModels);
@@ -977,27 +1163,44 @@ export class World3D implements HudTarget {
     const running = !this.uiOpen && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('ControlLeft') || this.runHeld);
     const boost = me.boostUntil !== undefined && me.boostUntil > serverNow() ? BOOST_SPEED_MUL : 1;
     const before = { x: me.x, y: me.y };
-    stepPlayer(this.world, me, dx, dy, dt * 1000, (me.riding !== undefined ? rideSpeedMul(this.world, me) : running ? 1.7 : 1) * boost);
+    const speedMul = (me.riding !== undefined ? rideSpeedMul(this.world, me) : running ? 1.7 : 1) * boost;
+    if (this.world.voxel && me.riding === undefined && !me.sleeping) {
+      // the 3D game: walk on the blocks, step up single blocks, fall, jump
+      const len = Math.hypot(dx, dy);
+      const v = len > 0.01 ? (PLAYER_SPEED * speedMul) / len : 0;
+      const jump = this.jumpQueued || (this.keys.has('Space') && !this.uiOpen);
+      this.jumpQueued = false;
+      stepBody(this.world, me, this.fall, dx * v, dy * v, dt * 1000, jump, (x, y, z) => blockedByTiles(this.world, x, y, z));
+      if (applyPortal(me, this.world)) me.z = standHeight(this.world, me.x, me.y);
+    } else {
+      stepPlayer(this.world, me, dx, dy, dt * 1000, speedMul);
+      if (this.world.voxel) me.z = standHeight(this.world, me.x, me.y);
+    }
     // face where we look (the 2D facing is one of four directions)
     if (Math.hypot(me.x - before.x, me.y - before.y) < 20) me.facing = Math.abs(fx) > Math.abs(fz) ? (fx > 0 ? 'right' : 'left') : fz > 0 ? 'down' : 'up';
-    if (me.moving || this.wasMoving || me.facing !== this.lastFacingSent) this.sendMove(!me.moving && this.wasMoving);
+    if (me.moving || this.wasMoving || me.facing !== this.lastFacingSent || (me.z !== undefined && Math.abs(me.z - (this.lastZSent ?? me.z)) > 0.05)) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
-    // jumping (just for fun: the 2D world has no height)
-    if (this.jumpV !== 0 || this.jumpY > 0) {
-      this.jumpV -= GRAVITY * dt;
-      this.jumpY = Math.max(0, this.jumpY + this.jumpV * dt);
-      if (this.jumpY === 0) this.jumpV = 0;
+    // jumping in the flat world (just for fun: it has no height)
+    if (!this.world.voxel) {
+      if (this.jumpV !== 0 || this.jumpY > 0) {
+        this.jumpV -= GRAVITY * dt;
+        this.jumpY = Math.max(0, this.jumpY + this.jumpV * dt);
+        if (this.jumpY === 0) this.jumpV = 0;
+      }
+      if (this.keys.has('Space') && this.jumpY === 0) this.jump();
     }
-    if (this.keys.has('Space') && this.jumpY === 0) this.jump();
 
     // walking off the edge of the map into the next area
     if (this.area !== 'dungeon' && performance.now() - this.travelSentAt > 1500 && inEdgeGap(tileOf(me.x), tileOf(me.y))) {
       let dir: 'n' | 's' | 'e' | 'w' | null = null;
-      if (dy < 0 && me.y <= PLAYER_HALF_H + 1) dir = 'n';
-      else if (dy > 0 && me.y >= MAP_H * TILE - PLAYER_HALF_H - 1) dir = 's';
-      else if (dx < 0 && me.x <= PLAYER_HALF_W + 1) dir = 'w';
-      else if (dx > 0 && me.x >= MAP_W * TILE - PLAYER_HALF_W - 1) dir = 'e';
+      // how close to the edge a body can get (the block world's body is a little wider)
+      const hw = (this.world.voxel ? Math.max(PLAYER_HALF_W, BODY_R * TILE) : PLAYER_HALF_W) + 1;
+      const hh = (this.world.voxel ? Math.max(PLAYER_HALF_H, BODY_R * TILE) : PLAYER_HALF_H) + 1;
+      if (dy < 0 && me.y <= hh) dir = 'n';
+      else if (dy > 0 && me.y >= MAP_H * TILE - hh) dir = 's';
+      else if (dx < 0 && me.x <= hw) dir = 'w';
+      else if (dx > 0 && me.x >= MAP_W * TILE - hw) dir = 'e';
       if (dir) {
         this.travelSentAt = performance.now();
         this.sendMove(true);
@@ -1006,9 +1209,19 @@ export class World3D implements HudTarget {
     }
     // reconcile with the server if we drifted a lot
     const snap = client.snaps.players.get(me.id);
-    if (snap && Math.hypot(snap.x - me.x, snap.y - me.y) > 40) {
-      me.x = snap.x;
-      me.y = snap.y;
+    if (snap) {
+      const off = Math.hypot(snap.x - me.x, snap.y - me.y);
+      const offZ = snap.z !== undefined && me.z !== undefined ? Math.abs(snap.z - me.z) : 0;
+      // standing still yet the server sees us elsewhere: it refused a move, so go where it says
+      const settled = !me.moving && this.fall.onGround && (off > 3 || offZ > 0.5);
+      this.driftSince = settled ? (this.driftSince || performance.now()) : 0;
+      if (off > 40 || offZ > 4 || (this.driftSince && performance.now() - this.driftSince > 700)) {
+        me.x = snap.x;
+        me.y = snap.y;
+        me.z = snap.z;
+        this.fall.vz = 0;
+        this.driftSince = 0;
+      }
     }
     const insideNow = this.area === 'farm' && inInterior(tileOf(me.x), tileOf(me.y));
     if (insideNow !== this.inside) {
@@ -1024,11 +1237,11 @@ export class World3D implements HudTarget {
     return a?.rig.seat ?? 0.6;
   }
 
-  private placeRig(v: ActorView, facingYaw: number, moving: boolean, dt: number, lift = 0): void {
+  private placeRig(v: ActorView, facingYaw: number, moving: boolean, dt: number, lift = 0, feet?: number): void {
     const x = v.x / TILE;
     const z = v.y / TILE;
-    const ground = this.vox.surfaceAt(tileOf(v.x), tileOf(v.y));
-    v.rig.root.position.set(x, Math.max(ground, ground < 0 ? -0.35 : ground) + lift, z);
+    const ground = feet ?? this.vox.surfaceAt(tileOf(v.x), tileOf(v.y));
+    v.rig.root.position.set(x, ground + lift, z);
     v.yaw = angleLerp(v.yaw, facingYaw, 1 - Math.pow(0.0001, dt));
     v.rig.root.rotation.y = v.yaw;
     v.walk += ((moving ? 1 : 0) - v.walk) * Math.min(1, dt * 10);
@@ -1061,17 +1274,24 @@ export class World3D implements HudTarget {
       const p = world.players[id];
       if (!p) continue;
       const mine = id === me.id;
+      let feet: number | undefined;
       if (mine) {
         v.x = me.x;
         v.y = me.y;
+        if (world.voxel && me.z !== undefined) feet = me.z - GROUND;
       } else {
         const snap = client.snaps.players.get(id);
         if (snap) follow(v, snap.x, snap.y, 64);
+        if (world.voxel && snap?.z !== undefined) {
+          const target = snap.z - GROUND;
+          v.z = v.z === undefined || Math.abs(target - v.z) > 4 ? target : v.z + (target - v.z) * lerp;
+          feet = v.z;
+        }
       }
       const swimming = this.kind === 'bath' && inPool(world, v);
       const seat = this.seatOf(p);
       const yaw = mine ? this.yaw + Math.PI : yawOf(p.facing);
-      this.placeRig(v, yaw, p.moving && seat === 0, dt, seat + (mine ? this.jumpY : 0) - (swimming ? 0.9 : 0));
+      this.placeRig(v, yaw, p.moving && seat === 0, dt, seat + (mine ? this.jumpY : 0) - (swimming ? 0.9 : 0), feet);
       // sitting, sleeping
       const sitting = seat > 0;
       v.rig.parts.get('rLeg')!.rotation.x = sitting ? -1.4 : v.rig.parts.get('rLeg')!.rotation.x;
@@ -1324,20 +1544,15 @@ export class World3D implements HudTarget {
     // held button: keep chopping, hoeing, planting… as long as it is safe to repeat
     const now = performance.now();
     if (this.holding && t?.use?.repeat && (t.side ?? 0) <= REPEAT_SIDE && me.riding === undefined) {
-      const fresh = `${t.tx},${t.ty}` !== this.lastUse.key;
+      const fresh = !t.block && `${t.tx},${t.ty}` !== this.lastUse.key;
       if (now >= this.nextUse || (fresh && now - this.lastUse.at >= REPEAT_NEW_MS)) {
         this.nextUse = now + REPEAT_MS;
         this.viewSwing = 1;
-        this.actAt(t.tx, t.ty);
+        if (t.block) this.useBlock(t);
+        else this.actAt(t.tx, t.ty);
       }
     }
-    if (t) {
-      const size = t.box.getSize(new THREE.Vector3());
-      const c = t.box.getCenter(new THREE.Vector3());
-      this.highlight.position.copy(c);
-      this.highlight.scale.set(size.x + 0.01, Math.max(0.01, size.y) + 0.01, size.z + 0.01);
-      this.highlight.visible = true;
-    } else this.highlight.visible = false;
+    this.highlight.show(t ? t.box : null);
     this.crosshair.style.display = this.camMode === 0 && !this.uiOpen ? '' : 'none';
   }
 
@@ -1406,7 +1621,9 @@ export class World3D implements HudTarget {
     shared.uTime.value = this.time / 1000;
     const pv = this.players.get(me.id);
     if (pv) shared.uLanternPos.value.copy(pv.rig.root.position).add(new THREE.Vector3(0, 1, 0));
-    shared.uLantern.value = this.kind === 'dungeon' ? 0.55 : outdoor ? Math.max(0, (0.75 - day) * 0.9) : 0.2;
+    // a soft light around you at night, in the cave, and down in your own tunnels
+    const [skyHere] = this.vox.lightAtWorld(this.camera.position.x, this.camera.position.y, this.camera.position.z);
+    shared.uLantern.value = this.kind === 'dungeon' ? 0.55 : outdoor ? Math.max((0.75 - day) * 0.9, skyHere < 0.6 ? 0.6 : 0, 0) : 0.2;
     if (outdoor) {
       this.scene.background = this.sky.color;
       shared.uFogColor.value.copy(this.sky.fog);

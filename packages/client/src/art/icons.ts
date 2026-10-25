@@ -100,6 +100,18 @@ const produce = (id: string): Px => {
     case 'stone':
       p.ellipse(2, 4, 12, 9, '#6f6c66').ellipse(3, 3, 10, 8, '#9d9a92').rect(5, 5, 3, 2, '#c9c6bd');
       break;
+    case 'dirt':
+      p.rect(2, 3, 12, 11, '#866043').rect(2, 3, 12, 1, '#a07a58').rect(2, 13, 12, 1, '#5a3e2a').px(5, 6, '#5a3e2a').px(10, 8, '#5a3e2a').px(7, 11, '#a07a58');
+      break;
+    case 'sand':
+      p.rect(2, 3, 12, 11, '#dbcf9b').rect(2, 3, 12, 1, '#ebe2b8').rect(2, 13, 12, 1, '#bfae74').px(5, 7, '#bfae74').px(10, 10, '#bfae74');
+      break;
+    case 'gravel':
+      p.rect(2, 3, 12, 11, '#857f7c').rect(2, 3, 12, 1, '#a8a3a1').rect(2, 13, 12, 1, '#5d5856').px(4, 6, '#5d5856').px(9, 5, '#a8a3a1').px(11, 10, '#5d5856').px(6, 10, '#a8a3a1');
+      break;
+    case 'coal':
+      p.ellipse(3, 4, 10, 9, '#2a2a2e').ellipse(4, 4, 6, 5, '#48484e').px(6, 6, '#6a6a72');
+      break;
     case 'paper':
       p.rect(3, 1, 10, 14, '#f6efdc').rect(3, 1, 10, 1, '#ffffff').rect(10, 1, 3, 3, '#e3d7b8').rect(5, 5, 6, 1, '#b9b0a0').rect(5, 8, 6, 1, '#b9b0a0').rect(5, 11, 4, 1, '#b9b0a0');
       break;

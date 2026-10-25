@@ -2,6 +2,7 @@
 import {
   objectDef,
   rebuildOccupancy,
+  setBlock,
   key as tileKey,
   type AnimalSnap,
   type NpcSnap,
@@ -118,6 +119,9 @@ export function applyChange(c: Change): void {
   switch (c.t) {
     case 'terrain':
       world.terrain[c.y * 64 + c.x] = c.terrain;
+      break;
+    case 'block':
+      if (world.voxel) setBlock(world, c.x, c.y, c.h, c.b);
       break;
     case 'crop':
       if (c.crop) world.crops[c.k] = c.crop;

@@ -56,6 +56,56 @@ export function spruceTree(put: Put, x: number, z: number, leaves: number, seed:
   put(x, th, z, leaves);
 }
 
+/** A round canopy: discs of `radii` (from `from` up), corners trimmed, around a trunk of `trunk` blocks. */
+function roundTree(put: Put, x: number, z: number, log: number, leaves: number, trunk: number, from: number, radii: number[], seed: number): void {
+  for (let h = 0; h < trunk; h++) put(x, h, z, log);
+  radii.forEach((r, i) => {
+    const h = from + i;
+    for (let dz = -r; dz <= r; dz++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx === 0 && dz === 0 && h < trunk) continue;
+        const d = Math.hypot(dx, dz);
+        if (d > r + 0.45) continue;
+        if (d > r - 0.4 && hash(x + dx, z + dz, h + seed) < 0.35) continue; // ragged edge
+        put(x + dx, h, z + dz, leaves);
+      }
+  });
+}
+
+/** v2 forests mix kinds: 'tree' variants are oak, birch, dark oak and cherry; 'tree_pine' spruce or redwood. */
+function variedTree(put: Put, kind: string, variant: number, x: number, z: number, snowy: boolean, seed: number): void {
+  const B = BLOCK;
+  const tall = Math.floor(hash(x, z, seed) * 3);
+  if (kind === 'tree_pine') {
+    if (variant === 1) {
+      // redwood: a tall red trunk with a narrow crown at the top
+      const th = 10 + tall;
+      for (let h = 0; h < th; h++) put(x, h, z, B.log_redwood!);
+      for (let h = 5; h <= th; h++) {
+        const r = h >= th - 1 ? 1 : (h - 5) % 3 === 0 ? 1 : 2;
+        for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) if ((dx || dz) && Math.abs(dx) + Math.abs(dz) <= r + (r > 1 ? 1 : 0)) put(x + dx, h, z + dz, snowy ? B.leaves_snowy! : B.leaves_spruce!);
+      }
+      put(x, th, z, snowy ? B.leaves_snowy! : B.leaves_spruce!);
+      put(x, th + 1, z, snowy ? B.leaves_snowy! : B.leaves_spruce!);
+      return;
+    }
+    spruceTree(put, x, z, snowy ? B.leaves_snowy! : B.leaves_spruce!, seed);
+    return;
+  }
+  switch (variant % 4) {
+    case 1: // birch: white and slender
+      roundTree(put, x, z, B.log_birch!, B.leaves_birch!, 5 + tall, 3 + tall, [2, 2, 1, 1], seed);
+      return;
+    case 2: // dark oak: short and wide
+      roundTree(put, x, z, B.log_dark!, B.leaves_dark!, 4, 3, [3, 3, 2], seed);
+      return;
+    case 3: // cherry: a pink cloud
+      roundTree(put, x, z, B.log_cherry!, B.leaves_cherry!, 4 + (tall > 1 ? 1 : 0), 3, [2, 3, 3, 2], seed);
+      return;
+  }
+  oakTree(put, x, z, B.leaves_oak!, seed);
+}
+
 function palmTree(put: Put, x: number, z: number): void {
   const th = 5;
   for (let h = 0; h < th; h++) put(x, h, z, BLOCK.log_palm!);
@@ -159,13 +209,13 @@ export function stampObject(put: Put, o: WorldObject, ctx: StampCtx): boolean {
   const paint = (fallback: number) => (o.variant ? (BLOCK[PAINT_BLOCKS[o.variant % PAINT_BLOCKS.length]!] ?? fallback) : fallback);
   switch (o.kind) {
     case 'tree':
-      oakTree(put, x, z, B.leaves_oak!, o.id);
+      variedTree(put, 'tree', o.variant ?? 0, x, z, snowy, o.id);
       return true;
     case 'tree_apple':
       oakTree(put, x, z, B.leaves_apple!, o.id);
       return true;
     case 'tree_pine':
-      spruceTree(put, x, z, snowy ? B.leaves_snowy! : B.leaves_spruce!, o.id);
+      variedTree(put, 'tree_pine', o.variant ?? 0, x, z, snowy, o.id);
       return true;
     case 'palm':
       palmTree(put, x, z);
