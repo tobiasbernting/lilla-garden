@@ -12,4 +12,5 @@ export * from './biomes.ts';
 export * from './bath.ts';
 export * from './city.ts';
 export * from './paint.ts';
+export * from './rooms.ts';
 export * from './voxel.ts';

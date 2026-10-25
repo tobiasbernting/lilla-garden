@@ -10,6 +10,7 @@ import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, remo
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import { PAINTED_SELL, isValidPainting } from './paint.ts';
+import { WALL_KINDS, findRooms, type Room } from './rooms.ts';
 import { ACHIEVEMENT_TEXT, DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
 import type { Change, SlotRef } from './protocol.ts';
 import { DIG_REACH, EYE_HEIGHT, PLAYER_HEIGHT, VB, VH, initVoxel, thinForest, voxelMode, blockAt, blockTerrain, bodyFree, cellBlock, columnTop, setBlock, standHeight, steepTile, type VoxelBlock } from './voxel.ts';
@@ -364,8 +365,6 @@ export function bump(p: PlayerState, stat: string, n: number, out: Change[]): vo
 // Actions on a tile
 // ---------------------------------------------------------------------------
 
-/** Pieces of a self-built house; they link up and are painted together. */
-export const WALL_KINDS = new Set(['wall_wood', 'wall_stone', 'window', 'door']);
 const PAINTABLE = new Set(['house', ...WALL_KINDS]);
 
 /** Paints the farmhouse, or a wall piece and every piece connected to it. */
@@ -388,6 +387,47 @@ function paintObject(world: WorldState, p: PlayerState, obj: WorldObject, colour
   takeFromSlot(p.inventory, p.selected, 1);
   bump(p, 'painted', 1, out);
   out.push(fx(obj.x, obj.y, 'sparkle'), toast(p.id, T.painted), playerChange(p));
+}
+
+/** Grows by itself (grass, flowers, trees, rocks…), as opposed to something a player built. */
+const isWild = (kind: string): boolean => {
+  const d = objectDef(kind);
+  return (d.regrowDays !== undefined || d.harvest === true || kind === 'stump') && !d.drops?.some((x) => x.item === kind);
+};
+
+/**
+ * The walls just closed a room: clear out what grew there (the builder gets the harvest),
+ * lift crops (seeds back, or the produce when ripe) and lay a floor. The 2D client adds the roof.
+ */
+function finishRoom(world: WorldState, p: PlayerState, room: Room, ctx: SimCtx, out: Change[]): void {
+  const floor: Terrain = room.stone ? 'floor_stone' : 'floor_wood';
+  for (const i of room.tiles) {
+    const x = i % MAP_W;
+    const y = (i - x) / MAP_W;
+    const crop = world.crops[key(x, y)];
+    if (crop) {
+      const cdef = CROPS[crop.crop];
+      if (cdef && cropMature(crop)) giveItems(world, p, cdef.produce, cdef.yield[0], out);
+      else if (cdef) giveItems(world, p, cdef.seed, 1, out);
+      delete world.crops[key(x, y)];
+      out.push({ t: 'crop', k: key(x, y), crop: null });
+    }
+    const obj = objectAt(world, x, y);
+    if (obj && isWild(obj.kind)) {
+      removeObject(world, obj.id);
+      out.push({ t: 'object', id: obj.id, obj: null });
+      for (const d of objectDef(obj.kind).drops ?? []) giveItems(world, p, d.item, randInt(ctx.rnd, d.min, d.max), out);
+    }
+    const t = world.terrain[i]!;
+    if (t === 'water' || t === 'pool' || t === 'floor_wood' || t === 'floor_stone') continue;
+    const back = TERRAIN_ITEM[t];
+    if (back) giveItems(world, p, back, 1, out);
+    world.terrain[i] = floor;
+    out.push({ t: 'terrain', x, y, terrain: floor });
+  }
+  const mid = room.tiles[Math.floor(room.tiles.length / 2)]!;
+  bump(p, 'rooms', 1, out);
+  out.push(fx(mid % MAP_W, Math.floor(mid / MAP_W), 'sparkle'), toast(p.id, T.roomDone), playerChange(p));
 }
 
 const FLOOR_ITEMS: Record<string, Terrain> = {
@@ -986,6 +1026,8 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     if (odef.interact === 'chest') extra.items = makeInventory(CHEST_SIZE);
     if (odef.interact === 'feed') extra.items = makeInventory(1);
     if (held.data !== undefined) extra.data = held.data;
+    // 2D game: remember which tiles were indoors, to tell when this piece closes a new room
+    const indoorsBefore = WALL_KINDS.has(def.places) && !voxelMode() ? new Set(findRooms(world).flatMap((r) => r.tiles)) : null;
     const obj = addObject(world, def.places, tx, ty, extra);
     if (!obj) {
       out.push(toast(p.id, T.cantPlaceHere));
@@ -995,6 +1037,8 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     bump(p, 'build', 1, out);
     if (WALL_KINDS.has(obj.kind)) bump(p, 'walls', 1, out);
     out.push({ t: 'object', id: obj.id, obj }, fx(tx, ty, 'poof'), playerChange(p));
+    if (indoorsBefore)
+      for (const room of findRooms(world)) if (room.tiles.some((i) => !indoorsBefore.has(i))) finishRoom(world, p, room, ctx, out);
     return;
   }
   void ctx;

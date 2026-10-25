@@ -77,6 +77,7 @@ import {
   paint,
   swapSlots as swap,
   PAINT_EMPTY,
+  findRooms,
   type Change,
   type PlayerState,
   type SimCtx,
@@ -434,6 +435,65 @@ describe('own house and paint', () => {
     expect(world.objects[rock.id]).toBeDefined();
     expect(toasts(ch2).length).toBe(1);
     expect(countItem(p.inventory, 'paint_red')).toBe(1);
+  });
+
+  /** Walls around the 2×2 room (21..22, 21..22), all but the door spot (23,22). */
+  const ringBut = (world: WorldState, kind: string, skip: [number, number]) => {
+    for (let y = 19; y <= 25; y++) for (let x = 19; x <= 25; x++) clearTile(world, x, y);
+    for (let y = 20; y <= 23; y++)
+      for (let x = 20; x <= 23; x++) {
+        const edge = x === 20 || x === 23 || y === 20 || y === 23;
+        if (edge && !(x === skip[0] && y === skip[1])) addObject(world, kind, x, y);
+      }
+  };
+
+  it('closing the walls lays a floor, clears what grew inside and keeps furniture', () => {
+    const { world, p } = setup();
+    ringBut(world, 'wall_wood', [23, 22]);
+    expect(findRooms(world)).toHaveLength(0);
+    addObject(world, 'grass_tuft', 21, 21);
+    addObject(world, 'chest', 22, 21, { items: [] });
+    world.terrain[tileIndex(22, 22)] = 'soil';
+    world.crops[key(22, 22)] = { crop: 'carrot', stage: 0, progress: 0, watered: false };
+    world.terrain[tileIndex(21, 22)] = 'path_dirt';
+    standAt(world, p, 24, 22);
+    const seeds = countItem(p.inventory, 'carrot_seed');
+    addItem(p.inventory, 'door', 1);
+    select(p, 'door');
+    const ch = performAction(world, p.id, 23, 22, ctx());
+    const rooms = findRooms(world);
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0]!.tiles.sort()).toEqual([tileIndex(21, 21), tileIndex(22, 21), tileIndex(21, 22), tileIndex(22, 22)].sort());
+    for (const [x, y] of [[21, 21], [22, 21], [21, 22], [22, 22]] as const) expect(world.terrain[tileIndex(x, y)]).toBe('floor_wood');
+    expect(objectAt(world, 21, 21)).toBeUndefined();
+    expect(objectAt(world, 22, 21)?.kind).toBe('chest');
+    expect(world.crops[key(22, 22)]).toBeUndefined();
+    expect(countItem(p.inventory, 'fiber')).toBeGreaterThan(0);
+    expect(countItem(p.inventory, 'carrot_seed')).toBe(seeds + 1);
+    expect(countItem(p.inventory, 'path_dirt')).toBe(1);
+    expect(toasts(ch).some((t) => t.includes('taket'))).toBe(true);
+    expect(p.stats?.rooms).toBe(1);
+    expect(p.achievements).toContain('rooms_1');
+    // a wall inside an existing room does not "finish" it again
+    standAt(world, p, 21, 21);
+    addItem(p.inventory, 'wall_wood', 1);
+    select(p, 'wall_wood');
+    expect(toasts(performAction(world, p.id, 22, 22, ctx())).some((t) => t.includes('taket'))).toBe(false);
+  });
+
+  it('stone walls give a stone floor; a gap or a corner that only touches diagonally keeps it open', () => {
+    const { world, p } = setup();
+    ringBut(world, 'wall_stone', [23, 22]);
+    standAt(world, p, 24, 22);
+    addItem(p.inventory, 'wall_stone', 1);
+    select(p, 'wall_stone');
+    performAction(world, p.id, 23, 22, ctx());
+    expect(world.terrain[tileIndex(21, 21)]).toBe('floor_stone');
+
+    const w2 = setup().world;
+    ringBut(w2, 'wall_wood', [23, 23]); // missing corner: the walls only meet diagonally
+    expect(findRooms(w2)).toHaveLength(0);
+    expect(w2.terrain[tileIndex(22, 22)]).toBe('grass');
   });
 });
 

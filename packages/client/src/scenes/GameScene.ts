@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import {
   WALL_KINDS,
+  findRooms,
   ANIMALS,
   heldItem,
   ITEMS,
@@ -76,6 +77,11 @@ export interface InputSource {
   dy: number;
 }
 
+const shadeInt = (c: number, f: number): number => {
+  const ch = (sh: number) => Math.min(255, Math.round(((c >> sh) & 0xff) * f));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+
 const lerpColor = (a: number, b: number, t: number): number => {
   const ch = (sh: number) => Math.round(((a >> sh) & 0xff) * (1 - t) + ((b >> sh) & 0xff) * t);
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
@@ -90,6 +96,9 @@ export class GameScene extends Phaser.Scene {
   private objectShadows = new Map<number, Phaser.GameObjects.Image>();
   private doorIds = new Set<number>();
   private doorOpen = new Map<number, boolean>();
+  /** Roofs over rooms closed by wall pieces, with the tiles each covers (it fades away while I stand there). */
+  private roofs: { gfx: Phaser.GameObjects.Graphics; tiles: Set<number> }[] = [];
+  private roofsDirty = true;
   private crops = new Map<string, Phaser.GameObjects.Image>();
   private drops = new Map<number, Phaser.GameObjects.Image>();
   private players = new Map<string, Actor>();
@@ -133,6 +142,8 @@ export class GameScene extends Phaser.Scene {
     this.objectShadows.clear();
     this.doorIds.clear();
     this.doorOpen.clear();
+    this.roofs = [];
+    this.roofsDirty = true;
     this.crops.clear();
     this.drops.clear();
     this.players.clear();
@@ -290,6 +301,64 @@ export class GameScene extends Phaser.Scene {
       if (!o) continue;
       const a = art.objects[o.kind];
       if (a?.animated && a.frames.length > 1) img.setTexture(`obj-${o.kind}-${this.animTick % a.frames.length}`);
+    }
+  }
+
+  // ------------------------------------------------------------------ roofs
+
+  /**
+   * Puts a gabled roof on every room the wall pieces close. It is drawn one tile up, like the walls'
+   * height, so the front wall still shows below the eaves and whatever stands behind the house is hidden.
+   */
+  private rebuildRoofs(me: PlayerState): void {
+    this.roofsDirty = false;
+    for (const r of this.roofs) r.gfx.destroy();
+    this.roofs = [];
+    if (this.world.voxel || this.area === 'dungeon') return;
+    const myTile = tileOf(me.y) * MAP_W + tileOf(me.x);
+    for (const room of findRooms(this.world)) {
+      const tiles = new Set([...room.tiles, ...room.walls]);
+      const base = room.stone ? 0x646b74 : 0xb5413a;
+      const lit = shadeInt(base, 1.12);
+      const dark = shadeInt(base, 0.82);
+      const line = shadeInt(base, 0.62);
+      const has = (x: number, y: number) => tiles.has(y * MAP_W + x);
+      // each column's ridge sits halfway between its top and bottom tile
+      const span = new Map<number, [number, number]>();
+      for (const i of tiles) {
+        const x = i % MAP_W;
+        const y = (i - x) / MAP_W;
+        const s = span.get(x);
+        span.set(x, s ? [Math.min(s[0], y), Math.max(s[1], y)] : [y, y]);
+      }
+      const g = this.add.graphics();
+      let bottom = 0;
+      for (const i of tiles) {
+        const x = i % MAP_W;
+        const y = (i - x) / MAP_W;
+        bottom = Math.max(bottom, y);
+        const [top, bot] = span.get(x)!;
+        const ridge = ((top + bot + 1) / 2) * TILE;
+        const px = x * TILE;
+        for (let row = 0; row < 4; row++) {
+          const ry = y * TILE + row * 4;
+          g.fillStyle(ry + 4 <= ridge ? lit : dark).fillRect(px, ry - TILE, TILE, 4);
+          g.fillStyle(line).fillRect(px, ry - TILE + 3, TILE, 1);
+          const off = (row + y) % 2 ? 2 : 6;
+          g.fillRect(px + off, ry - TILE, 1, 3).fillRect(px + off + 8, ry - TILE, 1, 3);
+        }
+        g.fillStyle(line);
+        if (!has(x - 1, y)) g.fillRect(px, y * TILE - TILE, 1, TILE);
+        if (!has(x + 1, y)) g.fillRect(px + TILE - 1, y * TILE - TILE, 1, TILE);
+        if (!has(x, y - 1)) g.fillRect(px, y * TILE - TILE, TILE, 1);
+        // eaves along the front
+        if (!has(x, y + 1)) g.fillStyle(shadeInt(base, 0.7)).fillRect(px, y * TILE - 3, TILE, 2).fillStyle(line).fillRect(px, y * TILE - 1, TILE, 1);
+      }
+      // the ridge on top, once every tile is down
+      g.fillStyle(shadeInt(base, 1.35));
+      for (const [x, [top, bot]] of span) g.fillRect(x * TILE, ((top + bot + 1) / 2) * TILE - TILE - 1, TILE, 2);
+      g.setDepth((bottom + 1) * TILE + 0.5).setAlpha(tiles.has(myTile) ? 0 : 1);
+      this.roofs.push({ gfx: g, tiles });
     }
   }
 
@@ -501,6 +570,7 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case 'object':
+        this.roofsDirty = true;
         if (c.obj) this.putObject(c.obj);
         else {
           const gone = this.objects.get(c.id);
@@ -819,6 +889,14 @@ export class GameScene extends Phaser.Scene {
     }
     if (insideNow) cam.centerOn((INTERIOR.x + INTERIOR.w / 2) * TILE, (INTERIOR.y + INTERIOR.h / 2) * TILE);
     else cam.centerOn(Math.round(me.x), Math.round(me.y));
+
+    // --- roofs: the one over the room I'm in fades away ---
+    if (this.roofsDirty) this.rebuildRoofs(me);
+    const myTile = tileOf(me.y) * MAP_W + tileOf(me.x);
+    for (const r of this.roofs) {
+      const target = r.tiles.has(myTile) ? 0 : 1;
+      if (r.gfx.alpha !== target) r.gfx.setAlpha(Phaser.Math.Clamp(r.gfx.alpha + Math.sign(target - r.gfx.alpha) * (dt / 200), 0, 1));
+    }
 
     // --- villagers follow the server's routine (interpolated) ---
     for (const [id, actor] of this.npcs) {
