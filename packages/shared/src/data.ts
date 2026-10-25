@@ -100,6 +100,11 @@ add(I('animal_horse', 'animal', { species: 'horse', buy: 500, tab: 'animals', st
 add(I('animal_pig', 'animal', { species: 'pig', buy: 350, tab: 'animals', stack: 1 }));
 add(I('animal_dog', 'animal', { species: 'dog', buy: 250, tab: 'animals', stack: 1 }));
 add(I('animal_cat', 'animal', { species: 'cat', buy: 250, tab: 'animals', stack: 1 }));
+// Vehicles (bought like animals, parked next to you at once, driven like a horse)
+add(I('vehicle_motorcycle', 'animal', { species: 'motorcycle', buy: 800, tab: 'vehicles', stack: 1 }));
+add(I('vehicle_car_red', 'animal', { species: 'car', variant: 0, buy: 2500, tab: 'vehicles', stack: 1 }));
+add(I('vehicle_car_blue', 'animal', { species: 'car', variant: 1, buy: 2500, tab: 'vehicles', stack: 1 }));
+add(I('vehicle_car_yellow', 'animal', { species: 'car', variant: 2, buy: 2500, tab: 'vehicles', stack: 1 }));
 
 // Placeables (crafted or bought)
 const place = (id: string, extra: Partial<ItemDef> = {}) =>
@@ -357,6 +362,9 @@ export const ANIMALS: Record<string, AnimalDef> = {
   pig: { species: 'pig', product: 'truffle', house: 'pigsty', growDays: 3, speed: 16 },
   // Horses give nothing but can be ridden by their owner once grown
   horse: { species: 'horse', house: 'stall', growDays: 3, speed: 24 },
+  // Vehicles: no house, no food, they just stand where you park them
+  motorcycle: { species: 'motorcycle', house: '', growDays: 0, speed: 0, vehicle: { speed: 2.2, rideable: true } },
+  car: { species: 'car', house: '', growDays: 0, speed: 0, vehicle: { speed: 2.6, rideable: true, seats: 1 } },
   // Pets follow their owner and need no house
   dog: { species: 'dog', house: '', growDays: 0, speed: 70, pet: true },
   cat: { species: 'cat', house: '', growDays: 0, speed: 60, pet: true },
@@ -660,6 +668,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('paint_10', 'paint', 10, 3, 'paper'),
   A('ride_1', 'ride', 1, 1, 'animal_horse'),
   A('ride_25', 'ride', 25, 2, 'stall'),
+  A('drive_1', 'drive', 1, 1, 'vehicle_car_red'),
+  A('drive_1000', 'drive_tiles', 1000, 2, 'vehicle_motorcycle'),
   A('truffle_1', 'truffle', 1, 1, 'truffle'),
   A('truffle_20', 'truffle', 20, 2, 'animal_pig'),
   A('swim_1', 'swim', 1, 1, 'shell'),

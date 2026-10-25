@@ -1,6 +1,7 @@
 // All in-game menus as HTML overlays: ryggsäck, kista, katalog, sälj, snickra, garderob, emotes, namn.
 import {
   ACHIEVEMENTS,
+  isVehicle,
   ACHIEVEMENT_TEXT,
   ANIMALS,
   BIOME_EMOJI,
@@ -42,8 +43,8 @@ import { stackIconUrl } from '../art/painting.ts';
 
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria';
 
-const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}` };
-const TABS = ['seeds', 'animals', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
+const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}`, vehicles: T.tabVehicles };
+const TABS = ['seeds', 'animals', 'vehicles', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
 
 export class Menus {
   private modal: HTMLElement | null = null;
@@ -322,7 +323,7 @@ export class Menus {
   }
 
   private catalogueName(d: ItemDef): string {
-    if (d.category === 'animal' && d.species) {
+    if (d.category === 'animal' && d.species && !ANIMALS[d.species]?.vehicle) {
       const house = ANIMALS[d.species]?.house;
       return `${SPECIES_NAMES[d.species] ?? d.id}${house ? ` (behöver ${itemName(house)})` : ''}`;
     }
@@ -409,6 +410,16 @@ export class Menus {
 
   private renderEmotes(body: HTMLElement): void {
     const grid = h('div', { class: 'emotes' });
+    const me = myPlayer();
+    const ridden = me?.riding !== undefined ? activeWorld()?.animals[me.riding] : undefined;
+    if (ridden && isVehicle(ridden)) {
+      const b = h('button', { title: T.honk }, T.honk);
+      onTap(b, () => {
+        net.send({ t: 'honk' });
+        this.close();
+      });
+      grid.append(b);
+    }
     for (const e of T.emotes) {
       const b = h('button', { title: e }, EMOTE_GLYPH[e] ?? e);
       onTap(b, () => {

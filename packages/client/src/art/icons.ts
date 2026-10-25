@@ -267,7 +267,7 @@ export function drawIcons(objects: Record<string, ObjectArt>): Record<string, Px
         p = fish(d.id);
         break;
       case 'animal': {
-        const a = drawAnimal(d.species!, 0, false, false);
+        const a = drawAnimal(d.species!, 0, false, false, d.variant ?? 0);
         p = new Px(16, 16);
         const s = Math.min(16 / a.w, 16 / a.h);
         const w = Math.round(a.w * s);

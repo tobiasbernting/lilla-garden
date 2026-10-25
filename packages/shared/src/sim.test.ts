@@ -24,6 +24,8 @@ import {
   spawnDrop,
   teleport,
   travel,
+  rideSpeedMul,
+  honk,
   bump,
   dungeonStart,
   generateDungeon,
@@ -1671,5 +1673,105 @@ describe('sova', () => {
     expect(p.sleeping).toBeUndefined();
     expect(toasts(wake).some((t) => t.includes('vaknade'))).toBe(true);
     expect(world.day).toBe(day0 + 1);
+  });
+});
+
+describe('fordon', () => {
+  const tileOf = (v: number) => Math.floor(v / TILE);
+  const lot = () => {
+    const { world, p } = setup();
+    for (let y = 28; y < 36; y++) for (let x = 28; x < 40; x++) clearTile(world, x, y);
+    standAt(world, p, 30, 30);
+    p.coins = 5000;
+    return { world, p };
+  };
+
+  it('a bought car is parked next to you at once, only you may drive it, and it is fast', () => {
+    const { world, p } = lot();
+    const ch = buy(world, p.id, 'vehicle_car_blue', 1, ctx());
+    expect(p.coins).toBe(2500);
+    const car = Object.values(world.animals).find((a) => a.species === 'car')!;
+    expect(car.owner).toBe(p.id);
+    expect(car.variant).toBe(1);
+    expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThanOrEqual(TILE * 1.5);
+    expect(toasts(ch).some((t) => t.includes('parkerad'))).toBe(true);
+    expect(toasts(buy(world, p.id, 'vehicle_car_red', 1, ctx()))[0]).toContain('redan');
+    // somebody else cannot take it
+    const other = createPlayer(world, 'Kompis', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    setOnline(world, other.id, true);
+    standAt(world, other, tileOf(car.x) - 1, tileOf(car.y));
+    expect(toasts(performAction(world, other.id, tileOf(car.x), tileOf(car.y), ctx()))[0]).toContain('tillhör Test');
+    expect(other.riding).toBeUndefined();
+    // the owner drives
+    standAt(world, p, tileOf(car.x) - 1, tileOf(car.y));
+    const drive = performAction(world, p.id, tileOf(car.x), tileOf(car.y), ctx());
+    expect(p.riding).toBe(car.id);
+    expect(p.achievements).toContain('drive_1');
+    expect(toasts(drive).some((t) => t.includes('kör'))).toBe(true);
+    // road is fast, mud is slow
+    const idx = tileIndex(tileOf(p.x), tileOf(p.y));
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.6);
+    (world.terrain as string[])[idx] = 'road';
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.6 * 1.3);
+    world.terrain[idx] = 'soil';
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.6 * 0.7);
+    world.terrain[idx] = 'grass';
+    const x0 = p.x;
+    stepPlayer(world, p, 1, 0, 1000, rideSpeedMul(world, p));
+    expect(p.x - x0).toBeCloseTo(64 * 2.6, 0);
+    // the car sits under the driver and the odometer ticks
+    tick(world, 50, ctx());
+    expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThan(3);
+    expect(p.stats.drive_tiles).toBeGreaterThanOrEqual(10);
+    // any action parks it; tools do nothing while driving
+    addItem(p.inventory, 'hoe', 1);
+    select(p, 'hoe');
+    const ftx = tileOf(p.x) + 1;
+    const off = performAction(world, p.id, ftx, tileOf(p.y), ctx());
+    expect(p.riding).toBeUndefined();
+    expect(toasts(off).some((t) => t.includes('parkerar'))).toBe(true);
+    expect(world.terrain[tileIndex(ftx, tileOf(p.y))]).toBe('grass');
+    expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThan(2 * TILE);
+    // parked cars stay where they are
+    const cx = car.x;
+    for (let i = 0; i < 40; i++) tick(world, 50, ctx());
+    expect(car.x).toBe(cx);
+  });
+
+  it('cannot drive into water, honks, and comes along when you drive over the edge', () => {
+    const { world, p } = lot();
+    buy(world, p.id, 'vehicle_motorcycle', 1, ctx());
+    const moped = Object.values(world.animals).find((a) => a.species === 'motorcycle')!;
+    standAt(world, p, tileOf(moped.x) - 1, tileOf(moped.y));
+    performAction(world, p.id, tileOf(moped.x), tileOf(moped.y), ctx());
+    expect(p.riding).toBe(moped.id);
+    expect(rideSpeedMul(world, p)).toBeCloseTo(2.2);
+    const ahead = tileIndex(tileOf(p.x) + 1, tileOf(p.y));
+    world.terrain[ahead] = 'water';
+    const x0 = p.x;
+    for (let i = 0; i < 20; i++) stepPlayer(world, p, 1, 0, 50, rideSpeedMul(world, p));
+    expect(p.x - x0).toBeLessThan(TILE);
+    world.terrain[ahead] = 'grass';
+    expect(honk(world, p.id).some((c) => c.t === 'fx' && c.kind === 'honk')).toBe(true);
+    // over the east edge into the village, still driving
+    standAt(world, p, 63, 32);
+    tick(world, 50, ctx());
+    const ch = travel(world, p.id, 'e');
+    expect(p.area).toBe('a:1,0');
+    const village = areaOf(world, p);
+    const there = Object.values(village.animals).find((a) => a.species === 'motorcycle')!;
+    expect(there).toBeDefined();
+    expect(there.owner).toBe(p.id);
+    expect(world.animals[moped.id]).toBeUndefined();
+    expect(p.riding).toBe(there.id);
+    expect(ch.some((c) => c.t === 'animal' && c.animal?.species === 'motorcycle' && c.area === 'a:1,0')).toBe(true);
+    // parking in the village and going home leaves it there
+    performAction(village, p.id, tileOf(p.x) + 1, tileOf(p.y), ctx());
+    expect(p.riding).toBeUndefined();
+    teleport(world, p.id, 'farm');
+    expect(village.animals[there.id]).toBeDefined();
+    expect(Object.values(world.animals).some((a) => a.species === 'motorcycle')).toBe(false);
+    // on foot there is nothing to honk with
+    expect(honk(world, p.id)).toEqual([]);
   });
 });

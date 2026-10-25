@@ -51,6 +51,14 @@ const noise = (dur: number, vol = 0.06): void => {
 };
 
 export const SFX = {
+  honk: () => {
+    tone(440, 0.18, 'square', 0.07);
+    tone(554, 0.18, 'square', 0.05);
+    setTimeout(() => {
+      tone(440, 0.22, 'square', 0.07);
+      tone(554, 0.22, 'square', 0.05);
+    }, 220);
+  },
   coin: () => {
     tone(880, 0.08, 'square', 0.06);
     setTimeout(() => tone(1320, 0.12, 'square', 0.06), 70);

@@ -13,6 +13,7 @@ import {
   createPlayer,
   dropItem,
   emote,
+  honk,
   equip,
   getArea,
   isSeason,
@@ -343,6 +344,9 @@ export class Game {
         break;
       case 'emote':
         changes = emote(w, pid, msg.id, this.ctx());
+        break;
+      case 'honk':
+        changes = tagArea(honk(w, pid), areaK);
         break;
       case 'drop':
         changes = dropItem(w, pid, msg.slot, msg.qty);

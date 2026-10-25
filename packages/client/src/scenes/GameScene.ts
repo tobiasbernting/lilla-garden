@@ -27,7 +27,8 @@ import {
   nightAmount,
   objectDef,
   stepPlayer,
-  RIDE_SPEED_MUL,
+  rideSpeedMul,
+  isVehicle,
   BOOST_SPEED_MUL,
   BATH_ROOM,
   inPool,
@@ -437,7 +438,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private putAnimal(a: AnimalState): void {
-    const texture = animalKey(a.species, isBaby(a), client.season === 'jul');
+    const texture = animalKey(a.species, isBaby(a), client.season === 'jul', a.variant ?? 0);
     this.ensureAnimalAnims(texture);
     let actor = this.animals.get(a.id);
     if (!actor) {
@@ -730,7 +731,7 @@ export class GameScene extends Phaser.Scene {
     }
     const running = !this.uiOpen && (this.keys.SHIFT!.isDown || this.runHeld);
     const boost = me.boostUntil !== undefined && me.boostUntil > serverNow() ? BOOST_SPEED_MUL : 1;
-    stepPlayer(world, me, dx, dy, dt, (me.riding !== undefined ? RIDE_SPEED_MUL : running ? 1.7 : 1) * boost);
+    stepPlayer(world, me, dx, dy, dt, (me.riding !== undefined ? rideSpeedMul(world, me) : running ? 1.7 : 1) * boost);
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
@@ -775,9 +776,11 @@ export class GameScene extends Phaser.Scene {
           }
         }
       }
-      this.placeActor(actor, p.facing, p.moving, true, p.riding !== undefined);
+      const ride = this.rideInfo(p);
+      this.placeActor(actor, p.facing, p.moving, true, ride.lift);
       const swimming = this.bath && inPool(world, actor);
       this.updateSwim(actor, swimming);
+      if (!swimming && ride.cropLegs) actor.sprite.setCrop(0, 0, CHAR_W * R, 16 * R);
       this.updateHeld(actor, p, swimming);
       this.updateBubble(actor, p);
     }
@@ -785,7 +788,7 @@ export class GameScene extends Phaser.Scene {
       const a = world.animals[id];
       const snap = client.snaps.animals.get(id);
       if (!a) continue;
-      const rider = a.species === 'horse' ? Object.values(world.players).find((p) => p.riding === id) : undefined;
+      const rider = a.species === 'horse' || isVehicle(a) ? Object.values(world.players).find((p) => p.riding === id) : undefined;
       const riderActor = rider ? this.players.get(rider.id) : undefined;
       if (riderActor) {
         // glued under its rider (predicted for me, interpolated for others)
@@ -862,7 +865,8 @@ export class GameScene extends Phaser.Scene {
   /** Draws the selected item in the player's hand (tools, weapons, food… everything). */
   private updateHeld(actor: Actor, p: PlayerState, swimming: boolean): void {
     const stack = heldItem(p);
-    const key = stack && !swimming && !p.sleeping ? `icon-${stack.item}` : null;
+    const driving = p.riding !== undefined && !!this.world.animals[p.riding] && isVehicle(this.world.animals[p.riding]!);
+    const key = stack && !swimming && !p.sleeping && !driving ? `icon-${stack.item}` : null;
     if (!key || !this.textures.exists(key)) {
       actor.held?.setVisible(false);
       return;
@@ -872,7 +876,7 @@ export class GameScene extends Phaser.Scene {
       actor.held.setTexture(key);
       actor.heldKey = key;
     }
-    const lift = p.riding !== undefined ? 7 : 0;
+    const lift = this.rideInfo(p).lift;
     const f = p.facing;
     const bob = p.moving ? Math.round(Math.sin(this.time.now / 90)) : 0;
     const tool = ITEMS[stack!.item]?.category === 'tool';
@@ -903,9 +907,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean, riding = false): void {
+  /** How a rider sits: on a horse or moped high up, in a car lower with the legs hidden. */
+  private rideInfo(p: PlayerState): { lift: number; cropLegs: boolean } {
+    if (p.riding === undefined) return { lift: 0, cropLegs: false };
+    const a = this.world.animals[p.riding];
+    if (a?.species === 'car') return { lift: 4, cropLegs: true };
+    return { lift: 7, cropLegs: false };
+  }
+
+  private placeActor(actor: Actor, facing: PlayerState['facing'], moving: boolean, isPlayer: boolean, lift = 0): void {
     const { dir, flip } = dirOf(facing);
-    const lift = riding ? 7 : 0; // sitting on the horse's back
+    const riding = lift > 0; // sitting on a horse, moped or in a car
     actor.sprite.setPosition(Math.round(actor.x), Math.round(actor.y) + 4 - lift);
     actor.shadow.setPosition(Math.round(actor.x), Math.round(actor.y) + 3);
     actor.shadow.setVisible(!riding);
