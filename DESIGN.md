@@ -55,3 +55,12 @@ Agreed design (2026-10-24). A 2D pixel top-down farm game in Swedish for one par
 
 ## Later
 NPCs, in-game seasons, ownership locks, processing machines, more areas.
+
+## v2: 3D (2026-10-25)
+A Minecraft-looking version of the same game, deployed separately (`lilla-garden-v2` image, e.g. `gard2.moderskepp.lan`).
+- Same server, sim and protocol; only the client is new (`packages/client3d`, Three.js). The world stays a 2D tile grid: the client builds a voxel world from it (1 tile = 1 block), so every rule, quest and save works unchanged.
+- Blocks: procedurally painted 16×16 textures, face culling, smooth ambient occlusion, Minecraft-style sky and block light (torches, lamps, furnaces), chunked meshes rebuilt on change. Trees, rocks, walls (3 high) and buildings are stamped as blocks; smaller things are box models; crops, flowers and anything without a model use the 2D pixel art as crossed sprites.
+- Characters use the standard 64×64 skin layout, generated from appearance and outfit; animals, monsters and vehicles are box rigs with walk cycles.
+- First person by default (F5 cycles to third person), crosshair targeting with the 2D game's reach, visual-only jumping. HUD, menus, minimap and sounds are the 2D client's.
+- Kid-friendly tweaks: nights are dimmer than day but never black, and a soft light follows the player.
+

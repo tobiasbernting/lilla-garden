@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const out = path.resolve(here, '../public');
+const out = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(here, '../public');
 
 // 16x16 carrot on grass, same as icon.svg
 const G = '#5c9e3a', L = '#3f8a2e', O = '#f08a2a', D = '#e07a1e', K = '#c96a14';

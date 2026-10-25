@@ -5,10 +5,16 @@ import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
 import { stackIconUrl } from '../art/painting.ts';
 import { net } from '../net.js';
-import type { GameScene } from '../scenes/GameScene.js';
 import { bus, client, myPlayer, serverNow } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { isMuted, setMuted } from '../sound.ts';
+
+/** What the HUD drives on the game view (the 2D scene or the 3D view). */
+export interface HudTarget {
+  joystick: { dx: number; dy: number };
+  runHeld: boolean;
+  act(): void;
+}
 
 export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; picked?: boolean; key?: string; onTap?: () => void } = {}): HTMLDivElement {
   const art = getArt();
@@ -37,7 +43,7 @@ export class Hud {
 
   constructor(
     private ui: HTMLElement,
-    private scene: () => GameScene | null,
+    private scene: () => HudTarget | null,
     private openMenu: (ui: 'inventory' | 'emotes' | 'help' | 'book' | 'map') => void,
   ) {
     this.root = h('div', { class: 'hud' });
@@ -80,7 +86,7 @@ export class Hud {
   private artBtn(): HTMLElement {
     const next = nextArtStyle(ART_STYLE);
     const label: Record<string, string> = { klassisk: 'Klassisk grafik', ny: 'Ny pixelgrafik', hd: 'HD-grafik (prototyp)' };
-    const b = h('div', { class: 'round small', title: `Byt till: ${label[next]}` }, ART_STYLE === 'klassisk' ? '✨' : ART_STYLE === 'ny' ? '🖼️' : '🎨');
+    const b = h('div', { class: 'round small art-btn', title: `Byt till: ${label[next]}` }, ART_STYLE === 'klassisk' ? '✨' : ART_STYLE === 'ny' ? '🖼️' : '🎨');
     onTap(b, () => setArtStyle(next));
     return b;
   }

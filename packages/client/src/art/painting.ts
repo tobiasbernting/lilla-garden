@@ -1,5 +1,5 @@
 // Textures for paintings drawn by players (16×16 palette-index strings).
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import { PAINT_SIZE, paintColor } from '@lilla-garden/shared';
 import { upscale } from './hd.ts';
 import { Px } from './px.js';

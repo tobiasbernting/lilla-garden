@@ -1,0 +1,109 @@
+/* The 3D canvas fills the window; the 2D game's HUD stays on its 320×180 grid on top. */
+html,
+body {
+  background: #78a7ff;
+}
+#game {
+  position: fixed;
+  inset: 0;
+}
+#game canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
+}
+#stage {
+  pointer-events: none;
+  z-index: 1;
+}
+.art-btn {
+  display: none !important;
+}
+
+/* Minecraft crosshair */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(9 * var(--u));
+  height: calc(9 * var(--u));
+  transform: translate(-50%, -50%);
+  pointer-events: none !important;
+  mix-blend-mode: difference;
+}
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background: #fff;
+}
+.crosshair::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: calc(1 * var(--u));
+  transform: translateY(-50%);
+}
+.crosshair::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: calc(1 * var(--u));
+  transform: translateX(-50%);
+}
+body.touch .crosshair {
+  opacity: 0.6;
+}
+
+.lock-hint {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font: 800 28px 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+  text-shadow: 0 2px 0 #000;
+  pointer-events: none;
+  z-index: 0;
+}
+.sleep-overlay {
+  position: fixed;
+  inset: 0;
+  background: #05040a;
+  opacity: 0;
+  transition: opacity 1.2s;
+  pointer-events: none;
+}
+
+/* Minecraft-grey hotbar */
+.hotbar .slot {
+  background: rgba(139, 139, 139, 0.85);
+  border-color: #373737;
+  border-radius: 0;
+}
+.hotbar .slot.selected {
+  background: rgba(198, 198, 198, 0.9);
+  border-color: #ffffff;
+}
+
+.jump-btn {
+  position: absolute;
+  right: calc(36 * var(--u));
+  bottom: calc(50 * var(--u));
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10 * var(--u));
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+  border: var(--u) solid rgba(255, 255, 255, 0.6);
+}
+body:not(.touch) .jump-btn {
+  display: none;
+}
