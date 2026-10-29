@@ -8,6 +8,7 @@ import { paintingPx } from '@v1/art/painting.ts';
 import { HD, R } from '@v1/art/style.ts';
 import { getArt } from '@v1/art/textures.ts';
 import { atlas, whole, type Picture, type Sprite } from './atlas.ts';
+import { panesOf } from './extras.ts';
 
 export interface ObjectSprites {
   frames: Sprite[];
@@ -17,6 +18,15 @@ export interface ObjectSprites {
   animated: boolean;
   /** Per frame: the window panes lit up warm, drawn over the house at night (null where there are none). */
   windows: (Sprite | null)[];
+  /** Per frame: where those panes are (pixels from the picture's top-left), for the light they cast. */
+  panes: Pane[][];
+}
+
+export interface Pane {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface Sprites {
@@ -125,17 +135,19 @@ export function loadSprites(): Sprites {
 
   // one big batch, so the shelves pack tight; remember where each part starts
   const pics: Picture[] = [...terrainPics];
-  const objectAt: Record<string, { start: number; n: number; windows: (number | null)[] }> = {};
+  const objectAt: Record<string, { start: number; n: number; windows: (number | null)[]; panes: Pane[][] }> = {};
   for (const [kind, o] of Object.entries(art.objects)) {
     const start = pics.length;
     const windows: (number | null)[] = [];
+    const panes: Pane[][] = [];
     for (const f of o.frames) pics.push(whole(f.canvas));
     if (LIT_KINDS.has(kind))
       for (const f of o.frames) {
         const lit = litWindows(f.canvas);
         windows.push(lit ? pics.push(whole(lit)) - 1 : null);
+        panes.push(lit ? panesOf(lit) : []);
       }
-    objectAt[kind] = { start, n: o.frames.length, windows };
+    objectAt[kind] = { start, n: o.frames.length, windows, panes };
   }
   const cropAt: Record<string, [number, number]> = {};
   for (const [crop, frames] of Object.entries(art.crops)) {
@@ -205,6 +217,7 @@ export function loadSprites(): Sprites {
       ox: o.ox,
       oy: o.oy,
       animated: !!o.animated,
+      panes: o.frames.map((_, i) => at.panes[i] ?? []),
       windows: o.frames.map((_, i) => {
         const w = at.windows[i];
         return w === undefined || w === null ? null : all[w]!;

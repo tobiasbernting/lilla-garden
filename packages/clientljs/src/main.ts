@@ -5,6 +5,12 @@ import { T } from '@lilla-garden/shared';
 import {
   engineInit,
   inputClear,
+  PostProcessPlugin,
+  postProcess,
+  postProcessEffects,
+  postProcessGlow,
+  postProcessTiltShift,
+  postProcessVignette,
   rgb,
   setCameraShakeAngle,
   setCameraShakeDecay,
@@ -31,6 +37,7 @@ import { Picker } from '@v1/ui/picker.ts';
 import { initRide } from '@v1/ui/ride.ts';
 import { initSound, isMuted, setMuted } from '@v1/sound.ts';
 import { Chat, SocialButtons, petCommand, weatherChip } from '@v1/ui/social.ts';
+import { on } from './features.ts';
 import { initLighting } from './lighting.ts';
 import { View, VIEW_H, VIEW_W } from './view.ts';
 
@@ -135,11 +142,29 @@ void engineInit(
   () => {
     view.init();
     initLighting(() => view.renderBright());
+    // over the finished picture: lamps and windows glow softly into the dark, the corners darken a little, and
+    // everything gets a touch warmer; or the farm as a tiny model, sharp in the middle (tilt-shift)
+    const post: string[] = [];
+    if (on('tiltshift')) post.push(postProcessTiltShift(0.5, 0.3, 6));
+    if (on('glow')) post.push(postProcessGlow('glowAt', 'glowBy', 5), postProcessVignette('vignette', 2.4), 'c.rgb = c.rgb * vec3(1.03, 1.0, 0.95) + vec3(0.012, 0.007, 0.0);');
+    if (post.length) {
+      new PostProcessPlugin(postProcessEffects(...post));
+      postProcess.values = on('glow') ? { glowAt: 0.9, glowBy: 0.3, vignette: 0.4 } : {};
+    }
     ready = true;
     if (client.world) start();
   },
   () => view.update(timeDelta),
-  () => view.placeLabels(),
+  () => {
+    view.placeLabels();
+    if (on('glow') && postProcess) {
+      // the glow is for the night: by day only the brightest things bloom, faintly
+      const night = view.darkness();
+      postProcess.values.glowAt = 0.92 - 0.37 * night;
+      postProcess.values.glowBy = 0.25 + 0.6 * night;
+      postProcess.values.vignette = 0.3 + 0.22 * night;
+    }
+  },
   () => view.render(),
   () => view.renderPost(),
   [],
