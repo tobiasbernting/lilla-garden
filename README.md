@@ -26,7 +26,7 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 pnpm install
 pnpm db:up          # Postgres 17 in a container on port 5435
 cp .env.example .env
-pnpm dev            # server on :8080, 2D client on :5173, 3D client (v2) on :5174, also on your LAN IP
+pnpm dev            # server on :8080, 2D client on :5173, 3D client (v2) on :5174, LittleJS client on :5175, also on your LAN IP
 ```
 
 Both clients talk to the same dev server, so you can play the same farm in 2D and 3D side by side.
@@ -51,6 +51,9 @@ The 3D version (v2) is the same server shipping the 3D client: `ghcr.io/tobiasbe
 (built with `docker build --build-arg CLIENT=client3d .`). Run it as its own deployment, e.g. at
 `gard2.moderskepp.lan`, with its own database so the two farms don't share (or fight over) one save.
 
+The LittleJS prototype is the same server shipping the LittleJS client: `ghcr.io/tobiasbernting/lilla-garden-ljs:latest`
+(`docker build --build-arg CLIENT=clientljs .`), run on its own like v2, e.g. at `gard-ljs.moderskepp.lan`.
+
 Environment:
 
 | Variable          | Meaning                                                   |
@@ -65,6 +68,9 @@ Environment:
 - `packages/shared` – game data, world simulation, Swedish strings (no I/O). Vitest covers the sim.
 - `packages/server` – WebSocket game server (20 Hz), Postgres via Drizzle, `/api/players`, `/admin`, `/health`
 - `packages/client` – Phaser 3 client, HTML menus, PWA (320×180 virtual resolution, integer scaled)
+- `packages/clientljs` – prototype: the 2D game drawn with [LittleJS](https://github.com/KilledByAPixel/LittleJS) instead
+  of Phaser, side by side with it. Same server, HUD, menus, sounds and pixel art (the `@v1/*` alias, like v2); the
+  view adds light and shadow (see below).
 - `packages/client3d` – v2: Three.js client that draws the same world as Minecraft-style blocks. Reuses the 2D
   client's networking, state, HUD, menus and pixel art (imported via the `@v1/*` alias); only the view is new.
 
@@ -105,3 +111,20 @@ till grannkartorna hålls platta, och skogarna är glesare med ek, björk, mörk
 
 Bytt läge på en befintlig gård får den ett blocklager men behåller sin gamla skog; en ny gård får allt.
 
+
+### LittleJS (prototype)
+
+The 2D game with the same controls, drawn by LittleJS at screen resolution instead of Phaser's 320×180 canvas, so
+things can lean and squash smoothly. Starts in "Ny grafik"; the art button still cycles the styles.
+
+- Ljus: the light map follows the day (golden morning, white noon, orange sunset, blue night, purple at Halloween),
+  greyer under clouds and darker in storms. At night lamps, torches, stoves and lit windows shine, every player
+  carries a lantern, cars have headlights, and lightning flashes the whole map.
+- Skuggor: trees, houses, people and animals cast sun shadows that lean long to the west in the morning, sit behind
+  things at noon and lean east in the evening.
+- Rörelse: trees, grass, flowers and crops sway with the wind and rustle when walked through; people bob as they
+  step, squash when they use something, swing their tool and squeeze through the middle when they turn; animals
+  hop; new things pop up, removed things shrink away, crops pop when they grow and picked-up things fly to whoever
+  took them.
+- Väder: rain with ripples, snow, hail, leaves and gusts in the wind, fog banks, cloud shadows drifting over the
+  fields and a rainbow after rain. Fireflies on summer nights.

@@ -22,6 +22,9 @@ jobs:
           # Lilla Gården v2 (3D)
           - client: client3d
             image: ghcr.io/tobiasbernting/lilla-garden-v2
+          # Lilla Gården drawn with LittleJS (prototype)
+          - client: clientljs
+            image: ghcr.io/tobiasbernting/lilla-garden-ljs
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
