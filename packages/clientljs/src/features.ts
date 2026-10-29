@@ -1,18 +1,22 @@
 // The cozy extras, each on its own so they can be compared: `?fx=seasons,smoke` in the address bar turns on just
-// those, `?fx=none` none of them. `?year=winter` (spring, summer, autumn) previews another time of year.
+// those, `?fx=none` none of them. `?year=winter` (spring, summer, autumn) previews another time of year, and
+// `?quality=high` keeps the glow and tilt-shift on even on a slow screen.
 import type { Season } from '@lilla-garden/shared';
 
-export const FEATURES = ['seasons', 'windows', 'smoke', 'indoors', 'critters', 'pond', 'mist', 'puddles', 'glow', 'tiltshift'] as const;
+export const FEATURES = ['seasons', 'windows', 'smoke', 'indoors', 'critters', 'pond', 'mist', 'puddles', 'glow', 'tiltshift', 'sounds'] as const;
 export type Feature = (typeof FEATURES)[number];
 
-/** On unless the address bar says otherwise (tilt-shift is a look to try, not a default). */
-const DEFAULT: Feature[] = FEATURES.filter((f) => f !== 'tiltshift');
+/** All on, unless the address bar says otherwise. */
+const DEFAULT: Feature[] = [...FEATURES];
 
 const params = new URLSearchParams(location.search);
 const list = params.get('fx');
 const enabled = new Set<string>(list === null ? DEFAULT : list.split(','));
 
 export const on = (f: Feature): boolean => enabled.has(f);
+
+/** Keep the glow and tilt-shift even when the screen turns out to be slow. */
+export const forceQuality = params.get('quality') === 'high';
 
 export type YearSeason = 'spring' | 'summer' | 'autumn' | 'winter';
 

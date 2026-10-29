@@ -64,6 +64,7 @@ import { loadExtras, SNOWY, type Extras } from './extras.ts';
 import { on, yearSeason, type YearSeason } from './features.ts';
 import { Homes } from './homes.ts';
 import { Nature, treeLook, type LeafyTree } from './nature.ts';
+import { CozySounds } from './sounds.ts';
 import { buildRoofs, releaseRoofs, type Roof } from './roofs.ts';
 import type { Scene } from './scene.ts';
 import { skyLight, type SkyLight } from './sky.ts';
@@ -207,6 +208,7 @@ export class View implements HudTarget {
   private critters = new Critters();
   private water = new Water();
   private homes = new Homes();
+  private sounds = new CozySounds();
   private year: YearSeason = 'summer';
   /** The zoom in use (closer inside the farmhouse), and a fade from black after moving between places. */
   private z = 4;
@@ -849,6 +851,7 @@ export class View implements HudTarget {
     this.critters.update(sc, Object.values(world.objects));
     this.water.update(sc, this.mapWeather());
     this.homes.update(sc, this.chimneys(sc));
+    this.sounds.update(sc, this.nearFire(me));
     if (this.fade > 0) this.fade = Math.max(0, this.fade - dt / 0.45);
   }
 
@@ -892,6 +895,18 @@ export class View implements HudTarget {
       out.push({ x: ov.x, y: ov.y, w: s.w, h: s.h, leaf: ov.leaf, tx: ov.o.x, ty: ov.o.y });
     }
     return out;
+  }
+
+  /** 0..1: how close the player stands to a burning torch or stove (for its crackle). */
+  private nearFire(me: PlayerState): number {
+    let best = 0;
+    for (const ov of this.objects.values()) {
+      const k = ov.o.kind;
+      if (k !== 'torch' && k !== 'cave_torch' && k !== 'stove') continue;
+      const d = Math.hypot(ov.o.x * TILE + TILE / 2 - me.x, ov.o.y * TILE + TILE / 2 - me.y);
+      if (d < 96) best = Math.max(best, 1 - d / 96);
+    }
+    return best * this.lampsOn;
   }
 
   /** Chimneys in and just below the view (their smoke drifts up into it). */

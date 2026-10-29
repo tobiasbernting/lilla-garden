@@ -26,10 +26,10 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 pnpm install
 pnpm db:up          # Postgres 17 in a container on port 5435
 cp .env.example .env
-pnpm dev            # server on :8080, 2D client on :5173, 3D client (v2) on :5174, LittleJS client on :5175, also on your LAN IP
+pnpm dev            # server on :8080, the game on :5173, 3D client (v2) on :5174, the old Phaser client on :5175, also on your LAN IP
 ```
 
-Both clients talk to the same dev server, so you can play the same farm in 2D and 3D side by side.
+All the clients talk to the same dev server, so you can play the same farm in 2D and 3D side by side.
 
 Open `http://<your-computer-ip>:5173` on the tablet. The parent page is at `/admin`
 (force a season, save, skip to the next day, make it evening/morning).
@@ -41,7 +41,7 @@ useless for a real farm.
 
 ```bash
 pnpm build                     # server bundle + client PWA
-DATABASE_URL=postgres://… node packages/server/dist/main.js   # serves the client on :8080
+DATABASE_URL=postgres://… node packages/server/dist/main.js   # serves the game (the LittleJS client) on :8080
 ```
 
 Or use the container image built by GitHub Actions: `ghcr.io/tobiasbernting/lilla-garden:latest`.
@@ -51,8 +51,9 @@ The 3D version (v2) is the same server shipping the 3D client: `ghcr.io/tobiasbe
 (built with `docker build --build-arg CLIENT=client3d .`). Run it as its own deployment, e.g. at
 `gard2.moderskepp.lan`, with its own database so the two farms don't share (or fight over) one save.
 
-The LittleJS prototype is the same server shipping the LittleJS client: `ghcr.io/tobiasbernting/lilla-garden-ljs:latest`
-(`docker build --build-arg CLIENT=clientljs .`), run on its own like v2, e.g. at `gard-ljs.moderskepp.lan`.
+The 2D game is drawn with LittleJS (`CLIENT=clientljs`, the default). The earlier Phaser client is still built as
+`ghcr.io/tobiasbernting/lilla-garden-phaser:latest` (`docker build --build-arg CLIENT=client .`), to switch back to
+with the same database. The main image is also tagged `lilla-garden-ljs`, which the `gard-ljs` trial farm runs.
 
 Environment:
 
@@ -67,10 +68,11 @@ Environment:
 
 - `packages/shared` – game data, world simulation, Swedish strings (no I/O). Vitest covers the sim.
 - `packages/server` – WebSocket game server (20 Hz), Postgres via Drizzle, `/api/players`, `/admin`, `/health`
-- `packages/client` – Phaser 3 client, HTML menus, PWA (320×180 virtual resolution, integer scaled)
-- `packages/clientljs` – prototype: the 2D game drawn with [LittleJS](https://github.com/KilledByAPixel/LittleJS) instead
-  of Phaser, side by side with it. Same server, HUD, menus, sounds and pixel art (the `@v1/*` alias, like v2); the
-  view adds light and shadow (see below).
+- `packages/clientljs` – the 2D game, drawn with [LittleJS](https://github.com/KilledByAPixel/LittleJS): light and
+  shadow, animation and the cozy extras (see below). PWA, landscape. Its HUD, menus, networking, sounds and pixel art
+  are `packages/client`'s (the `@v1/*` alias, like v2); only the view is its own.
+- `packages/client` – the earlier 2D client (Phaser 3, 320×180 virtual resolution, integer scaled), kept as a fallback;
+  also home of the HTML menus, HUD, networking, sounds and generated pixel art all the clients share
 - `packages/client3d` – v2: Three.js client that draws the same world as Minecraft-style blocks. Reuses the 2D
   client's networking, state, HUD, menus and pixel art (imported via the `@v1/*` alias); only the view is new.
 
@@ -112,10 +114,11 @@ till grannkartorna hålls platta, och skogarna är glesare med ek, björk, mörk
 Bytt läge på en befintlig gård får den ett blocklager men behåller sin gamla skog; en ny gård får allt.
 
 
-### LittleJS (prototype)
+### Grafiken (LittleJS)
 
-The 2D game with the same controls, drawn by LittleJS at screen resolution instead of Phaser's 320×180 canvas, so
-things can lean and squash smoothly. Starts in "Ny grafik"; the art button still cycles the styles.
+The 2D game is drawn by LittleJS at screen resolution (the earlier Phaser client used a 320×180 canvas), so things
+can lean and squash smoothly. It starts in "Ny grafik"; the art button still cycles the styles. It needs WebGL 2
+(and says so on a screen without it).
 
 - Ljus: the light map follows the day (golden morning, white noon, orange sunset, blue night, purple at Halloween),
   greyer under clouds and darker in storms. At night lamps, torches, stoves and lit windows shine, every player
@@ -128,3 +131,14 @@ things can lean and squash smoothly. Starts in "Ny grafik"; the art button still
   took them.
 - Väder: rain with ripples, snow, hail, leaves and gusts in the wind, fog banks, cloud shadows drifting over the
   fields and a rainbow after rain. Fireflies on summer nights.
+- Årstider: autumn colours, leaves falling and lying under the trees (by the real calendar), snow on the branches
+  when the ground is white, blossom in spring.
+- Mys: light falls out of lit windows onto the ground at night, smoke rises from chimneys, the farmhouse gets
+  sunbeams with dust (moonbeams at night) and a closer camera, butterflies and sparrows, lily pads and jumping fish,
+  the moon and stars in the pond, dawn mist and dew, puddles on the paths when it rains, a soft evening glow, a
+  tilt-shift "model village" blur, and quiet sounds: crickets, an owl, birdsong at dawn, crackling fires, rain on the
+  roof indoors.
+- Each extra can be switched off from the address bar for comparing: `?fx=none`, or a list like `?fx=seasons,smoke`
+  (`seasons`, `windows`, `smoke`, `indoors`, `critters`, `pond`, `mist`, `puddles`, `glow`, `tiltshift`, `sounds`);
+  `?year=winter` previews another season. On a slow screen (under 45 fps after a few seconds) the glow and
+  tilt-shift, the one costly pass, turn themselves off; `?quality=high` keeps them.

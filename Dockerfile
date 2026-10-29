@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
-# CLIENT picks the game client the server ships: `client` (2D, Lilla Gården), `client3d` (3D, Lilla Gården v2) or
-# `clientljs` (the 2D game drawn with LittleJS, light and shadow; a prototype next to the Phaser client).
-ARG CLIENT=client
+# CLIENT picks the game client the server ships: `clientljs` (2D, Lilla Gården, drawn with LittleJS), `client3d`
+# (3D, Lilla Gården v2) or `client` (the earlier 2D client, Phaser, kept as a fallback).
+ARG CLIENT=clientljs
 
 FROM node:24-alpine AS build
 ARG CLIENT
