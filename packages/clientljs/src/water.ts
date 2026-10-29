@@ -114,7 +114,9 @@ export class Water {
     const y0 = Math.max(0, Math.floor(sc.vy / TILE) - 1);
     const x1 = Math.min(MAP_W - 1, Math.ceil((sc.vx + sc.vw) / TILE));
     const y1 = Math.min(MAP_H - 1, Math.ceil((sc.vy + sc.vh) / TILE));
-    if (on('pond') && sc.where !== 'cave')
+    // lily pads on ponds and lakes, not on the sea or in caves
+    const sea = sc.world.biome === 'strand';
+    if (on('pond') && sc.where !== 'cave' && !sea)
       for (const [x, y] of sc.water) {
         if (x < x0 || x > x1 || y < y0 || y > y1 || cellHash(x, y, 11) > 0.22) continue;
         if (!(this.isWater(sc, x - 1, y) && this.isWater(sc, x + 1, y) && this.isWater(sc, x, y - 1) && this.isWater(sc, x, y + 1))) continue;

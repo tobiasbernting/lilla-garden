@@ -54,6 +54,25 @@ function pools(g: Painter, t: Terrain, scale: number, above: number, salt: numbe
   });
 }
 
+/**
+ * Rounds off patches of one ground on another (grass on red sand, meadows in the mountains): lone tiles
+ * and thin strips go, nooks fill in, so the patches read as soft blobs instead of pixel noise.
+ */
+function smoothPatches(g: Painter, patch: Terrain, base: Terrain, passes = 2): void {
+  for (let pass = 0; pass < passes; pass++) {
+    const flips: [number, number, Terrain][] = [];
+    g.each((x, y) => {
+      const t = g.at(x, y);
+      if (t !== patch && t !== base) return;
+      let same = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && g.at(x + dx, y + dy) === patch) same++;
+      if (t === patch && same < 3) flips.push([x, y, base]);
+      else if (t === base && same >= 6) flips.push([x, y, patch]);
+    });
+    for (const [x, y, t] of flips) g.set(x, y, t);
+  }
+}
+
 /** A spot for a landmark: open ground, away from the edges and the openings' paths. */
 function spot(g: Painter, w: number, h: number, ok: (t: Terrain) => boolean = (t) => !WALL_TERRAIN.has(t)): { x: number; y: number } | null {
   for (let tries = 0; tries < 200; tries++) {
@@ -182,6 +201,7 @@ const berg: PaintFn = (g) => {
   g.each((x, y) => {
     if (g.fbm(x, y, 10, 6) < 0.36) g.set(x, y, 'grass');
   });
+  smoothPatches(g, 'grass', 'gravel');
   cliffBelt(g, 'rock', 7);
   g.each((x, y) => {
     if (g.edge(x, y) < 3 || inEdgeGap(x, y)) return;
@@ -222,6 +242,7 @@ const strand: PaintFn = (g) => {
   g.each((x, y) => {
     if (x > shoreAt[y]! + 10 && g.fbm(x, y, 9, 13) > 0.58) g.set(x, y, 'grass');
   });
+  smoothPatches(g, 'grass', 'sand');
   // a sea cave in the cliffs by the shore, and a wreck on the beach
   if (g.chance(0.55)) {
     const y = g.int(10, 22) + (g.chance(0.5) ? 28 : 0);
@@ -292,6 +313,7 @@ const trask: PaintFn = (g) => {
   g.each((x, y) => {
     if (g.fbm(x, y, 7, 17) < 0.4) g.set(x, y, 'grass');
   });
+  smoothPatches(g, 'grass', 'mud');
   pools(g, 'bog', 6, 0.6, 18, 3);
   if (g.chance(0.3)) caveSomewhere(g, 'rock', 'rot', 0);
   belt(g, () => g.pick(['dead_tree', 'tree_pine', 'dead_tree', 'bush']), 0.6);
@@ -392,6 +414,7 @@ const svamp: PaintFn = (g) => {
   g.each((x, y) => {
     if (g.fbm(x, y, 8, 27) < 0.33) g.set(x, y, 'grass');
   });
+  smoothPatches(g, 'grass', 'moss');
   if (g.chance(0.5)) caveSomewhere(g, 'rock', 'svamp');
   const big = () => g.pick(['giant_mushroom', 'giant_mushroom', 'giant_glowshroom', 'tree', 'tree_pine']);
   belt(g, big, 0.8);
@@ -421,6 +444,7 @@ const dino: PaintFn = (g) => {
     if (g.fbm(x, y, 10, 30) > 0.65) g.set(x, y, 'sandstone');
     else if (g.fbm(x, y, 8, 31) < 0.3) g.set(x, y, 'grass');
   });
+  smoothPatches(g, 'grass', 'redsand');
   if (g.chance(0.6)) caveInCliff(g, 'sandstone', 'fossil');
   const bones = g.int(1, 2);
   for (let i = 0; i < bones; i++) {
