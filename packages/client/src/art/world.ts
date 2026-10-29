@@ -2,7 +2,8 @@
 import { CROPS, type Terrain } from '@lilla-garden/shared';
 import { Px, hash2, shade } from './px.js';
 import { NEW_ART } from './style.ts';
-import { caveWallThemed, drawBiomeObjects } from './objects2.ts';
+import { drawBiomeObjects } from './objects2.ts';
+import { caveWallThemed, drawLandmarks } from './landmarks.ts';
 import { addBiomeTerrain, edgeGroup } from './terrain2.ts';
 
 export const OUTLINE = '#2b2419';
@@ -973,6 +974,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('cave_rock', [rock(true)]);
   set('treasure', [treasure()]);
   drawBiomeObjects(set);
+  drawLandmarks(set);
   return art;
 }
 
