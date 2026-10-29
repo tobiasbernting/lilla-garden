@@ -11,6 +11,8 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:8080',
       '/admin': 'http://localhost:8080',
+      '/access': 'http://localhost:8080',
+      '/join': 'http://localhost:8080',
       '/health': 'http://localhost:8080',
       '/ws': { target: 'ws://localhost:8080', ws: true },
     },
@@ -37,7 +39,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
-        navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^\/ws/, /^\/health/],
+        navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^\/ws/, /^\/health/, /^\/access/, /^\/join/],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
     }),

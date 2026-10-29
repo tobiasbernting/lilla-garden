@@ -68,3 +68,11 @@ A Minecraft-looking version of the same game, deployed separately (`lilla-garden
 - Players carry a height (`z`): shared step/gravity/jump physics runs on the client and the server checks each move against the blocks. Animals and villagers stay on the surface and treat steep steps as walls.
 - Dig/place messages: anything digs soft blocks, the pickaxe digs stone and ore (coal, gold, gems). Dirt, sand, gravel, cobblestone (from stone) and planks (from wood) can be placed. Nothing is dug from under trees, buildings or crops.
 - Forests in voxel worlds are thinned so you can walk through them, with mixed oak, birch, dark oak, cherry, spruce and redwood.
+
+## Access control (2026-10-29)
+Sharing the world beyond the family. Default on; `ACCESS=open` restores the old open LAN behaviour.
+- Device-based: an approved device holds a long random token in an `HttpOnly`, `SameSite=Strict` cookie (only its sha256 is stored, in `devices`). Everything but the gate pages (`/access`, `/join`, `/admin/login`, `/health`, the app manifest and icons) requires an approved device that may play right now.
+- Invite → waiting → approval: one-time invite links (`invites`, hashed token in the URL fragment) create a pending device with a 6-digit code; a parent approves it on `/admin`. Kinds: family (all characters) and guest (only characters it created or was given; creates 0–3).
+- Rules: mode closed / family only / family + guests, play hours in Europe/Stockholm, pause/remove per device. The server re-checks open sockets on every change and every 15 s and closes them with code 4003; the clients then go to `/access`.
+- Parents: `PARENT_PASSWORD` (scrypt-compared), optional TOTP stored in `settings`, in-memory 8 h sessions, per-IP and global rate limits. Gate events go to `access_log`.
+- Sharing it publicly is meant to happen through a tunnel/proxy (`PUBLIC_URL`, `TRUST_PROXY=1`), not by opening ports.
