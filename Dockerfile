@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-# CLIENT picks the game client the server ships: `client` (2D, Lilla Gården) or `client3d` (3D, Lilla Gården v2).
+# CLIENT picks the game client the server ships: `client` (2D, Lilla Gården), `client3d` (3D, Lilla Gården v2) or
+# `clientljs` (the 2D game drawn with LittleJS, light and shadow; a prototype next to the Phaser client).
 ARG CLIENT=client
 
 FROM node:24-alpine AS build
@@ -11,6 +12,7 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY packages/client3d/package.json packages/client3d/
+COPY packages/clientljs/package.json packages/clientljs/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm -r run typecheck && pnpm -r run test && pnpm --filter @lilla-garden/server --filter "@lilla-garden/${CLIENT}" run build
