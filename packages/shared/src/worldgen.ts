@@ -119,6 +119,8 @@ export function landmarkFronts(world: WorldState): { x: number; y: number }[] {
 export interface PathStyle {
   /** Ground trails are painted with (null: paths keep whatever ground they cross). */
   trail: Terrain | null;
+  /** Trails one tile wide (boardwalks) instead of two. */
+  narrow?: boolean;
   /** Lay trails from every opening to the middle for the look of it (else only where something is cut off). */
   trails: boolean;
   /** What a path becomes where it crosses water, bog, chocolate or lava. */
@@ -356,7 +358,7 @@ function carve(g: Painter, path: number[], style: PathStyle, paint: boolean): vo
     else if (paint && style.trail && BASE_GROUND.has(t)) {
       g.T[i] = style.trail;
       // two tiles wide: also the tile beside the path (to the right of the way it runs)
-      const next = path[k + 1] ?? path[k - 1];
+      const next = style.narrow ? undefined : (path[k + 1] ?? path[k - 1]);
       if (next !== undefined) {
         const nx = next % MAP_W;
         const ny = (next - nx) / MAP_W;

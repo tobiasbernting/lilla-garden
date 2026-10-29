@@ -1,4 +1,5 @@
 // The ground: which tile picture each cell shows (the 2D game's choice, edges and all), drawn for the cells in view.
+// Under ground the rock around a cave is solid darkness (in the farm's monster cave that rock is 'water').
 import { MAP_H, MAP_W, TILE, type Terrain, type WorldState } from '@lilla-garden/shared';
 import { getArt } from '@v1/art/textures.ts';
 import type { Sprite } from './atlas.ts';
@@ -9,11 +10,14 @@ export class Ground {
   private frames = [new Int32Array(MAP_W * MAP_H), new Int32Array(MAP_W * MAP_H)];
   /** Cells of open water (glints) in this map. */
   water: [number, number][] = [];
+  /** Cells of lava (they glow). */
+  lava: [number, number][] = [];
   snowy = false;
 
   constructor(
     private world: WorldState,
-    private cave: boolean,
+    /** 'dungeon': the farm's monster cave; 'cave': a cave out in the world; 'out': everywhere else. */
+    private under: 'dungeon' | 'cave' | 'out',
     private tiles: Sprite[],
   ) {}
 
@@ -29,14 +33,12 @@ export class Ground {
   private tileIndexFor(x: number, y: number, frame: number): number {
     const art = getArt();
     const t = this.world.terrain[y * MAP_W + x]!;
-    if (this.cave) return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
-    const snowy = this.snowy;
-    if (!art.terrain.edges) return art.terrain.index(t, x, y, snowy, 0, t === 'water' || t === 'pool' ? frame : 0);
-    if (t === 'water') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'water' || n === undefined), frame);
-    if (t === 'pool') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'pool'), frame);
-    if (t === 'soil' || t === 'soil_wet') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'soil' || n === 'soil_wet' || n === undefined));
-    if (t === 'road' || t === 'crossing') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'road' || n === 'crossing'));
-    return art.terrain.index(t, x, y, snowy);
+    if (this.under === 'dungeon') return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
+    if (this.under === 'cave' && t === 'rock') return art.terrain.rock;
+    // ice-age rock and Christmas: snow on the cliffs too
+    const snowy = this.snowy || (t === 'rock' && this.world.biome === 'is');
+    const same = art.terrain.edges ? art.terrain.edgeGroup(t) : null;
+    return art.terrain.index(t, x, y, snowy, same ? this.edgeMask(x, y, same) : 0, frame);
   }
 
   private setCell(x: number, y: number): void {
@@ -47,10 +49,13 @@ export class Ground {
 
   rebuild(): void {
     this.water = [];
+    this.lava = [];
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
         this.setCell(x, y);
-        if (!this.cave && this.world.terrain[y * MAP_W + x] === 'water') this.water.push([x, y]);
+        const t = this.world.terrain[y * MAP_W + x];
+        if (this.under !== 'dungeon' && t === 'water') this.water.push([x, y]);
+        if (t === 'lava') this.lava.push([x, y]);
       }
   }
 
@@ -60,7 +65,7 @@ export class Ground {
     for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const)
       if (x + dx >= 0 && y + dy >= 0 && x + dx < MAP_W && y + dy < MAP_H) this.setCell(x + dx, y + dy);
     this.water = this.water.filter(([wx, wy]) => wx !== x || wy !== y);
-    if (!this.cave && this.world.terrain[y * MAP_W + x] === 'water') this.water.push([x, y]);
+    if (this.under !== 'dungeon' && this.world.terrain[y * MAP_W + x] === 'water') this.water.push([x, y]);
   }
 
   isWater(x: number, y: number): boolean {

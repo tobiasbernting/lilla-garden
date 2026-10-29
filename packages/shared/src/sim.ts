@@ -1726,13 +1726,14 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'greta', kind: 'product', items: ['egg', 'milk', 'wool'], count: [1, 2], stars: 2 },
   { npc: 'greta', kind: 'material', items: ['wood', 'stone', 'fiber'], count: [6, 12], stars: 1 },
   { npc: 'greta', kind: 'dish', items: ['bread', 'pancakes', 'carrot_cake', 'strawberry_jam'], count: [1, 2], stars: 3 },
+  { npc: 'greta', kind: 'explore', items: ['blueberry', 'cloudberry', 'banana', 'mushroom'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'fish', items: ['fish_roach', 'fish_perch', 'fish_pike'], count: [1, 3], stars: 2 },
   { npc: 'elsa', kind: 'kid', items: ['strawberry', 'carrot', 'egg', 'bread', 'hay'], count: [1, 3], stars: 1 },
   { npc: 'elsa', kind: 'flowers', items: ['fiber'], count: [3, 6], stars: 1 },
   { npc: 'bo', kind: 'bake', items: ['wheat', 'egg', 'milk', 'honey'], count: [2, 4], stars: 2 },
   { npc: 'pino', kind: 'pizza', items: ['tomato', 'wheat'], count: [2, 4], stars: 2 },
-  { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem'], count: [1, 6], stars: 2 },
-  { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry'], count: [2, 5], stars: 2 },
+  { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem', 'crystal', 'obsidian'], count: [1, 6], stars: 2 },
+  { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry', 'glowshroom', 'blueberry'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
 ];
 
@@ -1930,8 +1931,9 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   }
   if (target !== farm) out.push({ t: 'areaData', to: p.id, key: keyStr, world: target });
   out.push(playerChange(p));
-  if (firstVisit && keyStr !== 'farm') out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })), fx(tx, ty, 'sparkle'));
-  if (firstVisit) discoverBiome(farm, p, target, out);
+  // the first time somewhere: a cheer for a new kind of place, else a hello (caves greet you themselves)
+  if (firstVisit && keyStr !== 'farm' && !discoverBiome(farm, p, target, out) && !isCaveKey(keyStr)) out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })));
+  if (firstVisit && keyStr !== 'farm') out.push(fx(tx, ty, 'sparkle'));
   return true;
 }
 
@@ -2320,23 +2322,24 @@ function openTreasure(d: WorldState, p: PlayerState, chest: WorldObject, ctx: Si
 // The wider world: discoveries, caves, treasure, fairy rings and the rocket to the moon
 // ---------------------------------------------------------------------------
 
-/** First time in a map of a new biome: +1 star and a cheer. The count is rebuilt from the maps visited. */
-function discoverBiome(farm: WorldState, p: PlayerState, target: WorldState, out: Change[]): void {
+/** First time in a map of a new biome: +1 star and a cheer (returns whether it was new). The count is rebuilt from the maps visited. */
+function discoverBiome(farm: WorldState, p: PlayerState, target: WorldState, out: Change[]): boolean {
   const b = target.biome;
-  if (!isBiome(b)) return;
+  if (!isBiome(b)) return false;
   const seen = new Set<string>();
   for (const k of p.visited ?? []) {
     if (k === 'farm' || isCaveKey(k) || isBathKey(k)) continue;
     const bm = farm.areas?.[k]?.biome;
     if (isBiome(bm)) seen.add(bm);
   }
-  const before = (p.stats?.biomes ?? 0);
-  if (seen.size <= before) return; // nothing new (or counted already)
+  const before = p.stats?.biomes ?? 0;
+  if (seen.size <= before) return false; // nothing new (or counted already)
   if (!p.stats) p.stats = {};
   p.stats.biomes = seen.size - 1;
   bump(p, 'biomes', 1, out);
   p.stars += 1;
   out.push(toast(p.id, fmt(T.newBiome, { emoji: BIOME_EMOJI[b], name: BIOME_NAMES[b], n: seen.size, total: DISCOVERABLE.length })), playerChange(p));
+  return true;
 }
 
 /** Rolls a loot table and gives it to the player; returns what they got, for the toast. */
@@ -2466,8 +2469,8 @@ export function flyRocket(world: WorldState, playerId: string): Change[] {
   if (!placeIn(farm, p, dest, front.x, ty, 'down', out)) return [];
   if (toMoon) {
     bump(p, 'moon', 1, out);
-    out.push(toast(p.id, T.onTheMoon));
-  } else out.push(toast(p.id, T.backOnEarth));
+    if ((p.stats.moon ?? 0) > 1) out.push(toast(p.id, T.onTheMoon));
+  }
   return out;
 }
 

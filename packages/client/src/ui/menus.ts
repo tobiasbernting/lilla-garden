@@ -4,13 +4,16 @@ import {
   isVehicle,
   ACHIEVEMENT_TEXT,
   ANIMALS,
-  BIOME_EMOJI,
-  BIOME_NAMES,
   CHEST_SIZE,
+  MOON_KEY,
+  SPACEPORT_KEY,
   areaCoords,
   areaKey,
   biomeAt,
-  type Biome,
+  parseCaveKey,
+  placeEmoji,
+  placeName,
+  villageOfBath,
   COOKING,
   HELP,
   NPCS,
@@ -36,6 +39,7 @@ import {
   isBathKey,
   isCallable,
   localWeather,
+  noWeatherHere,
   talkNode,
   type Talk,
 } from '@lilla-garden/shared';
@@ -489,7 +493,10 @@ export class Menus {
 
   private renderMap(body: HTMLElement): void {
     const me = myPlayer()!;
-    const here = me.area === 'dungeon' ? 'farm' : me.area;
+    // in a cave, the bath house or on the moon, the map shows the place you came from
+    const cave = parseCaveKey(me.area);
+    const outside = me.area === 'dungeon' ? 'farm' : cave ? cave.parent : isBathKey(me.area) ? villageOfBath(me.area) : me.area === MOON_KEY ? SPACEPORT_KEY : me.area;
+    const here = parseCaveKey(outside)?.parent ?? (outside === MOON_KEY ? SPACEPORT_KEY : outside);
     const c = areaCoords(here) ?? { ax: 0, ay: 0 };
     const visited = new Set(me.visited ?? ['farm']);
     const R = 3;
@@ -500,9 +507,16 @@ export class Menus {
         const ay = c.ay + dy;
         const k = ax === 0 && ay === 0 ? 'farm' : areaKey(ax, ay);
         const known = visited.has(k);
-        const biome = k === 'farm' ? 'farm' : known ? ((client.areas[k]?.biome as Biome | undefined) ?? biomeAt(ax, ay)) : null;
-        const cell = h('div', { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: known ? BIOME_NAMES[biome!] : T.notVisited }, known ? h('span', { class: 'em' }, BIOME_EMOJI[biome!]) : h('span', { class: 'em' }, '❔'), known ? h('span', { class: 'nm' }, BIOME_NAMES[biome!]) : null);
-        if (known && k !== here && me.area !== 'dungeon') {
+        const biome = k === 'farm' ? 'farm' : known ? (client.biomes[k] ?? client.areas[k]?.biome ?? biomeAt(ax, ay)) : null;
+        // the rocket is rumoured about before anyone finds it
+        const rumour = !known && k === SPACEPORT_KEY;
+        const cell = h(
+          'div',
+          { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: known ? placeName(biome!) : rumour ? T.spaceportRumour : T.notVisited },
+          h('span', { class: 'em' }, known ? placeEmoji(biome!) : rumour ? '🚀' : '❔'),
+          known ? h('span', { class: 'nm' }, placeName(biome!)) : rumour ? h('span', { class: 'nm' }, '?') : null,
+        );
+        if (known && k !== me.area && me.area !== 'dungeon') {
           onTap(cell, () => {
             net.send({ t: 'teleport', to: k });
             this.close();
@@ -515,9 +529,21 @@ export class Menus {
       net.send({ t: 'teleport', to: 'farm' });
       this.close();
     });
+    const buttons = [home];
+    if (visited.has(MOON_KEY) && me.area !== MOON_KEY && me.area !== 'dungeon') {
+      const moon = h('button', {}, `🌙 ${placeName('mane')}`);
+      onTap(moon, () => {
+        net.send({ t: 'teleport', to: MOON_KEY });
+        this.close();
+      });
+      buttons.push(moon);
+    }
     const mini = h('button', { class: 'alt' }, '🧭 Minikarta av/på');
     onTap(mini, () => document.dispatchEvent(new CustomEvent('lilla:minimap')));
-    body.append(h('p', { class: 'help-intro' }, `${T.youAreHere}: ${BIOME_EMOJI[(client.areas[here]?.biome as Biome | undefined) ?? (here === 'farm' ? 'farm' : 'ang')]} ${here === 'farm' ? BIOME_NAMES.farm : BIOME_NAMES[(client.areas[here]?.biome as Biome | undefined) ?? 'ang']} · Norr är uppåt. Kallare norrut, varmare söderut.`), grid, h('div', { class: 'tabs' }, home, mini));
+    buttons.push(mini);
+    const place = me.area === 'farm' ? 'farm' : me.area === 'dungeon' ? 'dungeon' : client.areas[me.area]?.biome;
+    const where = isBathKey(me.area) ? `🏊 ${T.bathhouseName}` : `${placeEmoji(place)} ${placeName(place)}`;
+    body.append(h('p', { class: 'help-intro' }, `${T.youAreHere}: ${where} · Norr är uppåt. Kallt i norr, varmt i söder, hav i väster och berg i öster.`), grid, h('div', { class: 'tabs' }, ...buttons));
   }
 
   // ---- gårdsbok ----
@@ -601,7 +627,7 @@ export class Menus {
     const pets: { name: string; species: string }[] = [];
     for (const w of [client.world, ...Object.values(client.areas)])
       for (const a of Object.values(w?.animals ?? {})) if (a.owner === me.id && isCallable(a) && a.name) pets.push({ name: a.name, species: a.species });
-    const outdoors = me.area !== 'dungeon' && !isBathKey(me.area);
+    const outdoors = !noWeatherHere(me.area) && !isBathKey(me.area);
     const weather = client.weather && outdoors ? localWeather(client.weather.kind, activeWorld()?.biome) : null;
     this.talk = talkNode(npcId, node, { name: me.name, weather, dayFraction: client.timeMs / DAY_LENGTH_MS, season: client.season, pets, rnd: Math.random });
     this.said = said;

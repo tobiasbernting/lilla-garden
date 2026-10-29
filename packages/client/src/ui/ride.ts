@@ -36,13 +36,26 @@ function trainPx(): Px {
   return p.outline(OUT);
 }
 
+function rocketPx(): Px {
+  const p = new Px(20, 44);
+  p.rect(6, 8, 8, 26, '#f4f4f8').rect(6, 8, 2, 26, '#ffffff').rect(12, 8, 2, 26, '#c8ccd8'); // body
+  p.rect(7, 4, 6, 4, '#d9453b').rect(8, 2, 4, 2, '#d9453b').rect(9, 0, 2, 2, '#d9453b'); // nose
+  p.circle(10, 14, 2.5, '#3a6ad0').px(9, 13, '#bfeaff'); // window
+  p.rect(6, 22, 8, 2, '#d9453b');
+  p.rect(2, 28, 4, 6, '#d9453b').rect(14, 28, 4, 6, '#d9453b').rect(8, 34, 4, 2, '#3a3e48'); // fins and nozzle
+  p.rect(8, 36, 4, 4, '#ffd45a').rect(9, 40, 2, 3, '#f5a623').px(10, 43, '#d9453b'); // flame
+  return p.outline(OUT);
+}
+
 let busUrl: string | null = null;
 let trainUrl: string | null = null;
+let rocketUrl: string | null = null;
 
 /** Mounts the cutscene listener. */
 export function initRide(ui: HTMLElement): void {
   bus.on('change', (c) => {
     if (c.t !== 'ride') return;
+    if (c.via === 'rocket') return launch(ui, c.place);
     if (c.via === 'train') trainUrl ??= trainPx().dataUrl();
     else busUrl ??= busPx().dataUrl();
     const img = h('img', { class: 'ride-vehicle', src: (c.via === 'train' ? trainUrl : busUrl)!, alt: '' });
@@ -60,4 +73,22 @@ export function initRide(ui: HTMLElement): void {
     setTimeout(() => overlay.classList.remove('show'), RIDE_MS);
     setTimeout(() => overlay.remove(), RIDE_MS + 500);
   });
+}
+
+/** The rocket: a countdown on the pad, then up through the sky into the stars. */
+function launch(ui: HTMLElement, place: string): void {
+  rocketUrl ??= rocketPx().dataUrl();
+  const overlay = h(
+    'div',
+    { class: 'ride rocket' },
+    h('div', { class: 'ride-sky' }),
+    h('div', { class: 'ride-ground' }),
+    h('img', { class: 'ride-rocket', src: rocketUrl, alt: '' }),
+    h('div', { class: 'ride-text' }, fmt(T.rocketTrip, { place })),
+  );
+  ui.append(overlay);
+  if (!isMuted()) SFX.rocket();
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  setTimeout(() => overlay.classList.remove('show'), RIDE_MS + 400);
+  setTimeout(() => overlay.remove(), RIDE_MS + 900);
 }

@@ -308,7 +308,7 @@ const trask: PaintFn = (g) => {
   g.scatter('cloudberry', g.int(6, 10), (x, y) => open(g, x, y, 'mud', 'grass'));
   g.scatter('wisp', g.int(4, 7), (x, y) => open(g, x, y, 'mud', 'grass') && byBog(x, y));
   g.scatter('mushroom', g.int(3, 5), (x, y) => open(g, x, y, 'grass', 'mud'));
-  connect(g, { trail: 'floor_wood', trails: true, bridge: plankBridge, pass: 'mud' });
+  connect(g, { trail: 'floor_wood', narrow: true, trails: true, bridge: plankBridge, pass: 'mud' });
 };
 
 // ---------------------------------------------------------------------------- Djungeln
