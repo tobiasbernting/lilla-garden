@@ -19,6 +19,14 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - 2D: prata med alla bybor (Prata! i bybons fönster): frågor, berättelser, skämt, gåtor och sten, sax, påse med Elsa.
 - 2D: väder som skiftar av sig självt – sol, moln, regn, åska, snö, hagel, blåst och dimma. Regnet vattnar åkrarna,
   snön gör marken vit och efter regn kan det bli regnbåge. Föräldrasidan kan välja väder.
+- Utforska en oändlig värld med 15 sorters platser: skog, äng, berg med klippor, isvidder, strand, öken, träsk med
+  spänger och irrbloss, djungel med tempel, vulkaner med lava, svampskog med älvringar, Dinodalen med fossil,
+  städer, Rymdbasen – och långt borta Godislandet. Varje ny sorts plats ger en stjärna.
+- Grottor överallt (kristallgrottor, isgrottor, sjörövargrottor, pyramider, tempel, lavagrottor…) med en skattkista
+  för varje spelare varje vecka, ett hemligt rum bakom rasade stenar och kristaller och guld som växer tillbaka.
+- Gräv upp skatter där det är ett kryss, dansa i älvringar, fånga dinosaurier och gelébjörnar med lasso, kläck ett
+  drakägg – och åk raket till månen (månost, stjärnkristaller, rymdvarelser och ett kraschat ufo).
+- Gör souvenirer av fynden: kristallampa, svamplampa och ett dinosaurieskelett. Nya kläder finns i skattkistorna.
 
 ## Develop
 
