@@ -2413,7 +2413,7 @@ function danceInRing(world: WorldState, p: PlayerState, ring: WorldObject, ctx: 
     return;
   }
   ring.openedBy = { ...ring.openedBy, [p.id]: today };
-  p.emote = { id: 'hjarta', until: ctx.now + EMOTE_MS };
+  p.emote = { id: 'dans', until: ctx.now + EMOTE_MS };
   const got = grantLoot(world, p, 'fairy', ctx, out);
   out.push({ t: 'object', id: ring.id, obj: ring }, fx(ring.x, ring.y, 'sparkle'), fx(ring.x + 1, ring.y + 1, 'sparkle'), fx(ring.x + 1, ring.y, 'heart'), toast(p.id, fmt(T.fairyDance, { loot: got.join(' + ') })));
 }

@@ -1226,4 +1226,5 @@ export const EMOTE_GLYPH: Record<string, string> = {
   fiske: '🎣',
   napp: '❗',
   vissla: '🎵',
+  dans: '💃',
 };
