@@ -115,10 +115,19 @@ const NEAR_HOME: Record<string, Biome> = {
   '2,2': 'vulkan',
 };
 
+/** Picks from weighted choices with a 0..1 roll. */
+const weighted = (roll: number, table: [Biome, number][]): Biome => {
+  const total = table.reduce((n, [, w]) => n + w, 0);
+  let r = roll * total;
+  for (const [b, w] of table) if ((r -= w) <= 0) return b;
+  return table[table.length - 1]![0];
+};
+
 /**
  * Which biome an area has. Cities stay exactly where they always were. Near the farm the biomes are
- * fixed; further out the north is cold, the south hot, the sea to the west and mountains to the east,
- * with the odd swamp, mushroom forest or dinosaur valley in between, and Godislandet far, far away.
+ * fixed; further out it gets colder to the north and hotter to the south (a few maps at a time), the
+ * sea is to the west and the mountains to the east, with every kind of place mixed in along the way,
+ * and Godislandet now and then, far, far away.
  */
 export function biomeAt(ax: number, ay: number): Biome {
   if (ax === 1 && ay === 0) return 'by'; // Byn, right next door
@@ -126,21 +135,58 @@ export function biomeAt(ax: number, ay: number): Biome {
   if (ax === SPACEPORT.ax && ay === SPACEPORT.ay) return 'rymdbas';
   const near = NEAR_HOME[`${ax},${ay}`];
   if (near) return near;
-  const far = Math.abs(ax) + Math.abs(ay);
-  if (far >= 5 && noise(ax, ay, 21) < 0.07) return 'godis';
-  const cold = -ay + (noise(ax, ay, 1) - 0.5) * 2; // ay < 0 is north
-  const hot = ay + (noise(ax, ay, 2) - 0.5) * 2;
-  const wet = -ax + (noise(ax, ay, 3) - 0.5) * 2; // the sea is to the west
-  if (cold >= 2.5) return noise(ax, ay, 4) < 0.25 ? 'berg' : 'is';
-  if (hot >= 2.5) {
-    if (wet >= 0.8) return 'djungel';
-    if (wet <= -1.2) return noise(ax, ay, 5) < 0.6 ? 'vulkan' : 'oken';
-    return noise(ax, ay, 6) < 0.45 ? 'dino' : 'oken';
+  if (Math.abs(ax) + Math.abs(ay) >= 5 && noise(ax, ay, 21) < 0.035) return 'godis';
+  const cold = -ay / 4 + (noise(ax, ay, 1) - 0.5) * 1.6; // north is cold
+  const wet = -ax / 4 + (noise(ax, ay, 3) - 0.5) * 1.6; // the sea is to the west
+  const roll = noise(ax, ay, 10);
+  if (cold > 1.1)
+    return weighted(roll, [
+      ['is', 6],
+      ['berg', 2],
+      ['skog', 2],
+    ]);
+  if (cold < -1.1) {
+    if (wet > 0.4)
+      return weighted(roll, [
+        ['djungel', 6],
+        ['trask', 2],
+        ['strand', 2],
+      ]);
+    if (wet < -0.4)
+      return weighted(roll, [
+        ['vulkan', 5],
+        ['oken', 3],
+        ['dino', 2],
+      ]);
+    return weighted(roll, [
+      ['oken', 4],
+      ['dino', 3],
+      ['djungel', 2],
+      ['vulkan', 1],
+    ]);
   }
-  if (wet >= 2) return noise(ax, ay, 7) < 0.65 ? 'strand' : 'trask';
-  if (wet <= -2) return noise(ax, ay, 8) < 0.75 ? 'berg' : 'svamp';
-  const r = noise(ax, ay, 10);
-  return r < 0.3 ? 'skog' : r < 0.5 ? 'ang' : r < 0.65 ? 'trask' : r < 0.8 ? 'svamp' : r < 0.9 ? 'dino' : 'skog';
+  if (wet > 1)
+    return weighted(roll, [
+      ['strand', 6],
+      ['trask', 3],
+      ['ang', 2],
+      ['skog', 1],
+    ]);
+  if (wet < -1)
+    return weighted(roll, [
+      ['berg', 6],
+      ['skog', 2],
+      ['svamp', 2],
+      ['ang', 1],
+    ]);
+  return weighted(roll, [
+    ['skog', 5],
+    ['ang', 5],
+    ['trask', 3],
+    ['svamp', 3],
+    ['berg', 2],
+    ['dino', 2],
+  ]);
 }
 
 export { EDGE_GAP, arrivalTile, inEdgeGap } from './worldgen.ts';
