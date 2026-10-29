@@ -525,6 +525,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private putAnimal(a: AnimalState): void {
+    if (!ANIMAL_SIZE[a.species]) return; // a kind of animal this version has no picture for
     const texture = animalKey(a.species, isBaby(a), client.season === 'jul', (a.variant ?? 0) % (ANIMAL_VARIANTS[a.species] ?? 1));
     this.ensureAnimalAnims(texture);
     let actor = this.animals.get(a.id);

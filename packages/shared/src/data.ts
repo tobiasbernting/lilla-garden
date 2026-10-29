@@ -846,7 +846,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('tame_bear', 'tame_bear', 1, 2, 'fur'),
   A('tame_5', 'tame_species', 5, 3, 'animal_dog'),
   A('biomes_5', 'biomes', 5, 2, 'signpost'),
-  A('biomes_all', 'biomes', 14, 6, 'star_crystal'),
+  A('biomes_all', 'biomes', 15, 6, 'star_crystal'),
   A('caves_1', 'caves', 1, 1, 'crystal'),
   A('caves_10', 'caves', 10, 3, 'gem'),
   A('loot_5', 'loot', 5, 2, 'old_coin'),

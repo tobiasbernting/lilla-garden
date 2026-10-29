@@ -434,3 +434,10 @@ describe('gamla kartor', () => {
     expect(JSON.stringify(up.area.terrain)).toBe(before);
   });
 });
+
+describe('bragder', () => {
+  it('the "every kind of place" badge needs exactly all discoverable places', async () => {
+    const { ACHIEVEMENTS } = await import('./index.ts');
+    expect(ACHIEVEMENTS.find((a) => a.id === 'biomes_all')?.goal).toBe(DISCOVERABLE.length);
+  });
+});
