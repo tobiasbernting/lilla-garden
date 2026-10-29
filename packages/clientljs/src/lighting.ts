@@ -161,7 +161,7 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       return { color: WARM, radius: 4, strength: 0.7, flicker: 0.1, glow: 1.8 };
     case 'loot_chest':
       // a closed chest (frame even) glints so it can be found in the dark; an emptied one doesn't
-      return (variant ?? 0) % 2 === 0 ? { color: [1, 0.85, 0.35], radius: 2, strength: 0.65, flicker: 0.3, glow: 1, always: true } : null;
+      return (variant ?? 0) % 2 === 0 ? { color: [1, 0.85, 0.35], radius: 1.8, strength: 0.5, flicker: 0.3, glow: 0.4, always: true } : null;
     case 'house':
     case 'house_small':
     case 'apartment':

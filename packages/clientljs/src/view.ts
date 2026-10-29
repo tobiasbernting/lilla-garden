@@ -1064,7 +1064,9 @@ export class View implements HudTarget {
     this.outdoor = sky;
     let on = smooth((sky.dark - 0.12) / 0.5);
     if (this.cave) {
-      sky = { ...sky, ambient: [0.2, 0.19, 0.27], dark: 1, shadowAlpha: 0, wind: 0 };
+      // the caves out in the world are for exploring, not fighting: a little less pitch black than the troll cave
+      const amb: [number, number, number] = this.area === 'dungeon' ? [0.2, 0.19, 0.27] : [0.3, 0.28, 0.37];
+      sky = { ...sky, ambient: amb, dark: 1, shadowAlpha: 0, wind: 0 };
       on = 1;
     } else if (this.moon) {
       // the sun shines on the moon from a black sky: pale cool light, long crisp shadows, the crystals aglow
