@@ -109,6 +109,8 @@ const SWAY: Record<string, number> = {
 };
 /** Small things that cast no sun shadow. */
 const FLAT_LOOKING = new Set(['grass_tuft', 'flower', 'wild_flower_mid', 'rock_small', 'mushroom', 'shell', 'rug', 'painting', 'clock', 'stump', 'ore', 'egg_basket', 'wild_pumpkin', 'iceberry', 'cloudberry', 'moon_rock', 'moon_cheese', 'gold_vein', 'gem_vein', 'fossil_rock', 'obsidian_rock', 'dragon_egg', 'wisp', 'loot_chest']);
+/** Places where the trees never turn: the tropics, the desert, the volcano, candy land, the moon, the caves. */
+const TIMELESS = new Set(['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane']);
 /** How high animals hop as they walk (pixels). */
 const HOP: Record<string, number> = { rabbit: 3, hare: 3.5, hen: 1.6, dog: 1.2, cat: 1, sheep: 0.9, goat: 1.2, pig: 0.8, fox: 1.4, deer: 1.6, lizard: 0.4, crab: 0.3, penguin: 1, slime: 2.5, wolf: 1.2, lynx: 1.2, boar: 0.8, frog: 3.5, parrot: 1, monkey: 1.8, salamander: 0.3, hedgehog: 0.4, dino: 1.2, gummy: 2.8, alien: 1.4, dragon: 1.6 };
 
@@ -306,7 +308,8 @@ export class View implements HudTarget {
     this.bath = isBathKey(this.area);
     this.inside = false;
     this.snowGround = this.wantSnowGround();
-    this.year = yearSeason(client.season);
+    // the real calendar's seasons turn the trees only where there are seasons
+    this.year = TIMELESS.has(world.biome ?? '') ? 'summer' : yearSeason(client.season);
     if (on('indoors')) this.fade = 1;
     this.ground = new Ground(world, this.area === 'dungeon' ? 'dungeon' : this.cave ? 'cave' : 'out', this.art.terrain);
     this.ground.snowy = this.snowGround;
@@ -667,7 +670,7 @@ export class View implements HudTarget {
   }
 
   private wantSnowGround(): boolean {
-    if (client.season === 'jul') return true;
+    if (client.season === 'jul') return !this.cave && !TIMELESS.has(this.world?.biome ?? '');
     return this.mapWeather() === 'snow' && serverNow() - (client.weather?.since ?? 0) > 25_000;
   }
 

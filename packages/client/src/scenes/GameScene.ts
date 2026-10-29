@@ -644,7 +644,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private wantSnowGround(): boolean {
-    if (client.season === 'jul') return true;
+    if (client.season === 'jul') return !isUnderground(this.area) && !['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane'].includes(this.world.biome ?? '');
     return this.mapWeather() === 'snow' && serverNow() - (client.weather?.since ?? 0) > 25_000;
   }
 
