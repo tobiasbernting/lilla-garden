@@ -109,6 +109,8 @@ const SWAY: Record<string, number> = {
 };
 /** Small things that cast no sun shadow. */
 const FLAT_LOOKING = new Set(['grass_tuft', 'flower', 'wild_flower_mid', 'rock_small', 'mushroom', 'shell', 'rug', 'painting', 'clock', 'stump', 'ore', 'egg_basket', 'wild_pumpkin', 'iceberry', 'cloudberry', 'moon_rock', 'moon_cheese', 'gold_vein', 'gem_vein', 'fossil_rock', 'obsidian_rock', 'dragon_egg', 'wisp', 'loot_chest']);
+/** How far above the middle of its footprint a thing's light sits (pixels): the glowing part is up high. */
+const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8 };
 /** Places where the trees never turn: the tropics, the desert, the volcano, candy land, the moon, the caves. */
 const TIMELESS = new Set(['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane']);
 /** How high animals hop as they walk (pixels). */
@@ -450,7 +452,7 @@ export class View implements HudTarget {
     }
     // lamps and torches shine from their flame, a little above the middle of their tile
     const lx = o.x * TILE + (def.w * TILE) / 2;
-    const ly = o.y * TILE + (def.h * TILE) / 2 - (o.kind.includes('lamp') || o.kind.includes('torch') ? 6 : 0);
+    const ly = o.y * TILE + (def.h * TILE) / 2 - (LAMP_LIFT[o.kind] ?? (o.kind.includes('lamp') || o.kind.includes('torch') ? 6 : 0));
     if (spec && !lamp) lamp = new Lamp(lx, ly, spec);
     else lamp?.moveTo(lx, ly);
     const chimney = on('smoke') ? (o.kind === 'house' ? { x: x + 62, y: y + 2 } : o.kind === 'house_small' ? { x: x + 34.5, y: y + 4 } : undefined) : undefined;
