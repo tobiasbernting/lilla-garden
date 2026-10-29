@@ -19,13 +19,14 @@ export const shared = {
 const vertex = /* glsl */ `
 attribute vec2 light;
 attribute vec3 color;
+uniform vec2 uUvOffset;
 varying vec2 vUv;
 varying vec3 vColor;
 varying vec2 vLight;
 varying float vFogDepth;
 varying vec3 vWorld;
 void main() {
-  vUv = uv;
+  vUv = uv + uUvOffset;
   vColor = color;
   vLight = light;
   vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -53,6 +54,7 @@ uniform vec3 uTint;
 uniform float uFlash;
 uniform vec3 uLanternPos;
 uniform float uLantern;
+uniform float uGlow;
 varying vec3 vWorld;
 varying vec2 vUv;
 varying vec3 vColor;
@@ -66,7 +68,7 @@ void main() {
   vec3 sky = uSkyTint * (curve(L.x) * uDaylight);
   vec3 block = uBlockTint * curve(L.y) * step(0.01, L.y);
   float lantern = uLantern * clamp(1.0 - distance(vWorld, uLanternPos) / 7.0, 0.0, 1.0);
-  vec3 light = max(max(max(sky, block), uBlockTint * lantern), vec3(uMinLight));
+  vec3 light = max(max(max(max(sky, block), uBlockTint * lantern), vec3(uMinLight)), vec3(uGlow));
   vec3 col = t.rgb * vColor * uTint * light;
   col = mix(col, vec3(1.0, 0.25, 0.2), uFlash);
   float f = smoothstep(uFogNear, uFogFar, vFogDepth);
@@ -82,6 +84,8 @@ export interface MatOpts {
   /** Use one light value for the whole mesh (actors); set via `setActorLight`. */
   actor?: boolean;
   depthWrite?: boolean;
+  /** Shines by itself, whatever the light around it (lava). */
+  glow?: boolean;
 }
 
 export function makeMaterial(map: THREE.Texture, opts: MatOpts = {}): THREE.ShaderMaterial {
@@ -97,6 +101,8 @@ export function makeMaterial(map: THREE.Texture, opts: MatOpts = {}): THREE.Shad
       uUseActorLight: { value: opts.actor ? 1 : 0 },
       uTint: { value: new THREE.Color(1, 1, 1) },
       uFlash: { value: 0 },
+      uUvOffset: { value: new THREE.Vector2() },
+      uGlow: { value: opts.glow ? 1 : 0 },
     },
     transparent: opts.transparent ?? false,
     depthWrite: opts.depthWrite ?? !opts.transparent,

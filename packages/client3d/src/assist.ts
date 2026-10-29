@@ -1,6 +1,6 @@
 // Forgiving tool use: how worthwhile it is to use the held item on a tile, mirroring the server's
 // performAction rules, so aim assist only snaps to things that will actually react.
-import { CROPS, ITEMS, WALL_KINDS, key, objectDef, tileIndex, type CropState, type PlayerState, type WorldState } from '@lilla-garden/shared';
+import { CROPS, ITEMS, WALL_KINDS, WALL_TERRAIN, isFishWater, key, objectDef, tileIndex, type CropState, type PlayerState, type WorldState } from '@lilla-garden/shared';
 
 export interface Use {
   /** 0 = nothing happens; higher = more clearly what the player means. */
@@ -27,6 +27,7 @@ export function usefulness(world: WorldState, p: PlayerState, tx: number, ty: nu
   const id = world.occupancy[key(tx, ty)];
   const obj = id === undefined ? undefined : world.objects[id];
   const odef = obj ? objectDef(obj.kind) : undefined;
+  // (only the farm's monster cave has fighting rules; a cave out in the world works like any other map)
   if (world.area === 'dungeon') {
     if (odef?.interact === 'exit' || odef?.interact === 'treasure') return { score: 3, repeat: false };
     if (who.animal && tool === 'sword') return { score: 4, repeat: true };
@@ -39,7 +40,7 @@ export function usefulness(world: WorldState, p: PlayerState, tx: number, ty: nu
     if (!(odef?.interact || (who.animal && !who.hostile))) return tool === 'bow' ? { score: 0.5, repeat: false } : NONE;
   }
   const terrain = world.terrain[tileIndex(tx, ty)];
-  if (tool === 'rod') return terrain === 'water' ? { score: 2, repeat: false } : NONE;
+  if (tool === 'rod') return isFishWater(terrain) ? { score: 2, repeat: false } : NONE;
   if (who.animal) return { score: 3, repeat: false };
   if (obj && odef) {
     if (def?.paint !== undefined) return PAINTABLE.has(obj.kind) ? { score: 3, repeat: false } : NONE;
@@ -61,7 +62,7 @@ export function usefulness(world: WorldState, p: PlayerState, tx: number, ty: nu
     case 'hoe':
       return terrain === 'grass' && !obj ? { score: 1.5, repeat: true } : NONE;
     case 'can':
-      if (terrain === 'water') return { score: (held.charges ?? 0) < 20 ? 2 : 0.5, repeat: false };
+      if (isFishWater(terrain)) return { score: (held.charges ?? 0) < 20 ? 2 : 0.5, repeat: false };
       return terrain === 'soil' && (held.charges ?? 0) > 0 ? { score: 1.5, repeat: true } : NONE;
     case 'scythe':
       return NONE; // turning soil back to grass is never what you meant by accident
@@ -74,7 +75,7 @@ export function usefulness(world: WorldState, p: PlayerState, tx: number, ty: nu
   }
   if (def?.category === 'seed' && def.crop) return (terrain === 'soil' || terrain === 'soil_wet') && !obj ? { score: 2, repeat: true } : NONE;
   if (def?.category === 'placeable' && def.places) {
-    if (own || terrain === 'water' || terrain === 'pool') return NONE;
+    if (own || terrain === 'pool' || (terrain && WALL_TERRAIN.has(terrain))) return NONE;
     if (FLOORS.has(def.places)) return terrain !== def.places && !(obj && objectDef(obj.kind).solid) && !crop ? { score: 1, repeat: true } : NONE;
     return obj ? NONE : { score: 1, repeat: true };
   }
