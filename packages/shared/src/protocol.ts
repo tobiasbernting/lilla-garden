@@ -28,8 +28,8 @@ export type Change =
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
   | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria' | 'travel'; id?: number; npc?: string }
-  /** Private: the rider boards a bus or train (the client plays the trip). */
-  | { t: 'ride'; to: string; via: 'bus' | 'train'; place: string }
+  /** Private: the rider boards a bus, a train or the rocket (the client plays the trip). */
+  | { t: 'ride'; to: string; via: 'bus' | 'train' | 'rocket'; place: string }
   | { t: 'quests'; quests: Quest[] }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso' | 'honk'; area?: string; from?: { x: number; y: number } }
   /** 2D game: someone said something. `old` marks history sent to a player who just came online. */
@@ -104,7 +104,8 @@ export interface AnimalSnap {
 }
 
 export type ServerMsg =
-  | { t: 'welcome'; you: string; world: WorldState; season: Season; now: number; tick: number }
+  /** `biomes`: the biome of every explored map (for the world map). */
+  | { t: 'welcome'; you: string; world: WorldState; season: Season; now: number; tick: number; biomes?: Record<string, string> }
   | { t: 'state'; timeMs: number; day: number; season: Season; players: PlayerSnap[]; animals: AnimalSnap[]; npcs: NpcSnap[]; now: number; weather?: WeatherState }
   | { t: 'changes'; changes: Change[] }
   | { t: 'error'; text: string }

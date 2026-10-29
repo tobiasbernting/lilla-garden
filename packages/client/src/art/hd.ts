@@ -4,6 +4,7 @@ import { Px, hash2, shade } from './px.js';
 import { R } from './style.ts';
 import { PAINT_COLORS, type ObjectArt, type TerrainTiles } from './world.js';
 import type { Terrain } from '@lilla-garden/shared';
+import { addBiomeTerrain, edgeGroup } from './terrain2.ts';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -354,6 +355,8 @@ export function drawTerrainTilesHD(): TerrainTiles {
     ctx.fillRect(0, 0, 16, 16);
     scatter(ctx, 120, 4, (x, y) => ellipse(ctx, x, y, 3, 2, 'rgba(255,255,255,0.03)'));
   });
+  // the wider world's grounds: the pixel tiles, scaled up
+  const biome = addBiomeTerrain((p) => add(upscale(p)), true);
 
   // several rows: a single row would exceed the GPU's texture width limit
   const cols = 32;
@@ -364,9 +367,12 @@ export function drawTerrainTilesHD(): TerrainTiles {
     count: tiles.length,
     rock,
     edges: true,
+    edgeGroup,
     waterFrames: [water[0]![0]!, water[0]![1]!],
     index: (t: Terrain, x: number, y: number, snowy: boolean, mask = 0, frame = 0) => {
       const h = hash2(x, y);
+      const wider = biome.index(t, x, y, snowy, mask, frame);
+      if (wider !== null) return wider;
       switch (t) {
         case 'grass':
           return snowy ? snow[h % 2]! : grass[h % grass.length]!;
@@ -404,6 +410,8 @@ export function drawTerrainTilesHD(): TerrainTiles {
           return crossing[mask & 5 ? 0 : 1]!;
         case 'rail':
           return rail;
+        default:
+          return grass[0]!;
       }
     },
   };

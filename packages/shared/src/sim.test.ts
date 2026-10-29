@@ -1209,7 +1209,7 @@ describe('världen utanför', () => {
   it('generates areas with open edges and biome specials', () => {
     const a = generateArea(0, -6);
     expect(a.biome).toBe('is');
-    expect(a.terrain[tileIndex(32, 32)]).toBe('snow');
+    expect(a.terrain.filter((t) => t === 'snow').length).toBeGreaterThan(a.terrain.length / 2);
     for (const side of ['n', 's', 'e', 'w'] as const) {
       const t = arrivalTile(side);
       expect(isSolidForPlayer(a, t.x, t.y)).toBe(false);

@@ -60,6 +60,20 @@ const SURFACE: Record<Terrain, string> = {
   rail: 'rail',
   dirt: 'dirt',
   stone: 'stone',
+  // the wider world (rough stand-ins until they get blocks of their own)
+  rock: 'stone',
+  sandstone: 'terracotta',
+  basalt: 'stone_dark',
+  lava: 'glowstone',
+  ash: 'gravel',
+  mud: 'dirt',
+  bog: 'water',
+  moss: 'mossy_cobble',
+  redsand: 'terracotta',
+  candy: 'smooth_stone',
+  choco: 'dirt',
+  moon: 'smooth_stone',
+  space: 'stone_dark',
 };
 
 /** The shared block layer's blocks (3D game) as the client's blocks. */
