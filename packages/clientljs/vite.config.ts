@@ -3,11 +3,11 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  // The HUD, menus, networking, sounds and pixel art are the 2D client's; only the view is LittleJS
+  // The HUD, menus, networking, sounds and pixel art come from packages/client (the Phaser client); the view is LittleJS
   resolve: { alias: { '@v1': fileURLToPath(new URL('../client/src', import.meta.url)) } },
   server: {
     host: true,
-    port: 5175,
+    port: 5173,
     proxy: {
       '/api': 'http://localhost:8080',
       '/admin': 'http://localhost:8080',
@@ -21,9 +21,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Lilla Gården (LittleJS)',
-        short_name: 'Gården LJS',
-        description: 'Ett litet bondgårdsspel för hela familjen – med LittleJS, ljus och skuggor',
+        name: 'Lilla Gården',
+        short_name: 'Lilla Gården',
+        description: 'Ett litet bondgårdsspel för hela familjen',
         lang: 'sv',
         start_url: '/',
         display: 'fullscreen',

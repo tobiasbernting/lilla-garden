@@ -3,8 +3,16 @@
 import './prefs.ts';
 import { T } from '@lilla-garden/shared';
 import {
+  averageFPS,
   engineInit,
+  glEnable,
   inputClear,
+  PostProcessPlugin,
+  postProcess,
+  postProcessEffects,
+  postProcessGlow,
+  postProcessTiltShift,
+  postProcessVignette,
   rgb,
   setCameraShakeAngle,
   setCameraShakeDecay,
@@ -18,6 +26,7 @@ import {
   setTilesPixelated,
   setTouchInputEnable,
   timeDelta,
+  timeReal,
 } from 'littlejsengine';
 import '@v1/style.css';
 import './style.css';
@@ -31,6 +40,7 @@ import { Picker } from '@v1/ui/picker.ts';
 import { initRide } from '@v1/ui/ride.ts';
 import { initSound, isMuted, setMuted } from '@v1/sound.ts';
 import { Chat, SocialButtons, petCommand, weatherChip } from '@v1/ui/social.ts';
+import { forceQuality, on } from './features.ts';
 import { initLighting } from './lighting.ts';
 import { View, VIEW_H, VIEW_W } from './view.ts';
 
@@ -111,6 +121,8 @@ window.addEventListener('keydown', (e) => {
 // ---- LittleJS ----
 let ready = false;
 let started = false;
+let startedAt = 0;
+let speedChecked = false;
 setShowSplashScreen(false);
 setSoundEnable(false); // the game's own synthesised sounds play through sound.ts
 setCanvasPixelRatio(1);
@@ -125,6 +137,7 @@ setCameraShakeAngle(0.004);
 setCameraShakeDecay(2.5);
 
 function start(): void {
+  if (!started) startedAt = timeReal;
   started = true;
   view.load();
   hud.root.style.display = '';
@@ -135,11 +148,39 @@ void engineInit(
   () => {
     view.init();
     initLighting(() => view.renderBright());
+    // over the finished picture: lamps and windows glow softly into the dark, the corners darken a little, and
+    // everything gets a touch warmer; or the farm as a tiny model, sharp in the middle (tilt-shift)
+    const post: string[] = [];
+    if (on('tiltshift')) post.push(postProcessTiltShift(0.5, 0.3, 6));
+    if (on('glow')) post.push(postProcessGlow('glowAt', 'glowBy', 5), postProcessVignette('vignette', 2.4), 'c.rgb = c.rgb * vec3(1.03, 1.0, 0.95) + vec3(0.012, 0.007, 0.0);');
+    if (post.length) {
+      new PostProcessPlugin(postProcessEffects(...post));
+      postProcess.values = on('glow') ? { glowAt: 0.9, glowBy: 0.3, vignette: 0.4 } : {};
+    }
+    // without WebGL 2 LittleJS falls back to a plain canvas, which the world isn't drawn on: say so
+    if (!glEnable) ui.append(h('div', { class: 'status' }, T.noWebgl));
     ready = true;
     if (client.world) start();
   },
   () => view.update(timeDelta),
-  () => view.placeLabels(),
+  () => {
+    view.placeLabels();
+    // on a slow screen the glow and tilt-shift pass (the one costly extra) goes first
+    if (postProcess?.enabled && !speedChecked && started && timeReal - startedAt > 8) {
+      speedChecked = true;
+      if (averageFPS < 45 && !forceQuality) {
+        postProcess.enabled = false;
+        console.info(`Lilla Gården: ${Math.round(averageFPS)} fps, glow and tilt-shift turned off`);
+      }
+    }
+    if (on('glow') && postProcess?.enabled) {
+      // the glow is for the night: by day only the brightest things bloom, faintly
+      const night = view.darkness();
+      postProcess.values.glowAt = 0.92 - 0.37 * night;
+      postProcess.values.glowBy = 0.25 + 0.6 * night;
+      postProcess.values.vignette = 0.3 + 0.22 * night;
+    }
+  },
   () => view.render(),
   () => view.renderPost(),
   [],

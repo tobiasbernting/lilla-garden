@@ -279,6 +279,7 @@ export const T = {
   rotateDevice: 'Vänd plattan på längden',
   connecting: 'Ansluter…',
   disconnected: 'Tappade kontakten. Försöker igen…',
+  noWebgl: 'Den här skärmen kan inte rita spelet (WebGL 2 saknas). Be en vuxen om hjälp.',
   inventory: 'Ryggsäck',
   chest: 'Kista',
   catalogue: 'Katalog',

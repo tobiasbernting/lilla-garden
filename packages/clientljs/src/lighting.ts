@@ -1,7 +1,7 @@
 // LittleJS's 2D light system: the world is drawn at full brightness, then multiplied by a light map that starts at
 // the sky's ambient colour and gets every lamp, torch, window and lantern added in. Glows go on top after that, and
 // the things that shine by themselves (lit windows, flames, fireflies, lightning) are drawn last, unlit.
-import { Light, LightSystemPlugin, engineAddPlugin, lightSystem, rgb, vec2 } from 'littlejsengine';
+import { EngineObject, Light, LightSystemPlugin, engineAddPlugin, lightSystem, rgb, vec2 } from 'littlejsengine';
 import { TILE } from '@lilla-garden/shared';
 
 export interface LampSpec {
@@ -64,6 +64,20 @@ export class Lamp {
 
   destroy(): void {
     this.light.destroy();
+  }
+}
+
+/** Paints light of its own straight into the light map each frame (light falling out of windows onto the ground). */
+export class LightPainter extends EngineObject {
+  constructor(private paint: () => void) {
+    super(vec2(), vec2(0));
+    this.mass = 0;
+  }
+
+  render(): void {}
+
+  renderLight(): void {
+    this.paint();
   }
 }
 

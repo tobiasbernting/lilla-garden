@@ -58,10 +58,18 @@ import { animalSprites, characterSprites, loadSprites, paintingSprite, type Obje
 import type { Sprite } from './atlas.ts';
 import { Effects } from './fx.ts';
 import { alpha, clamp01, DrawQueue, drawSheared, drawSprite, easeOutBack, easeOutElastic, lerp, rgba, smooth, WHITE } from './gfx.ts';
-import { Lamp, lampFor, setAmbient } from './lighting.ts';
+import { Lamp, lampFor, LightPainter, setAmbient } from './lighting.ts';
+import { Critters } from './critters.ts';
+import { loadExtras, SNOWY, type Extras } from './extras.ts';
+import { on, yearSeason, type YearSeason } from './features.ts';
+import { Homes } from './homes.ts';
+import { Nature, treeLook, type LeafyTree } from './nature.ts';
+import { CozySounds } from './sounds.ts';
 import { buildRoofs, releaseRoofs, type Roof } from './roofs.ts';
+import type { Scene } from './scene.ts';
 import { skyLight, type SkyLight } from './sky.ts';
 import { Ground } from './terrain.ts';
+import { Water } from './water.ts';
 import { WeatherView } from './weather.ts';
 
 export const VIEW_W = 320;
@@ -97,6 +105,11 @@ interface ObjView {
   /** When it appeared (seconds), for the pop-in; -1 for things that were already there. */
   born: number;
   lamp?: Lamp;
+  /** Autumn: the colour of its leaves (they fall and lie around it). */
+  leaf: [number, number, number] | null;
+  /** Top of its chimney, where smoke rises; `ownChimney` if it is drawn on (the village houses have none). */
+  chimney?: { x: number; y: number };
+  ownChimney?: boolean;
 }
 
 interface CropView {
@@ -172,6 +185,7 @@ export class View implements HudTarget {
   private weather!: WeatherView;
   private flashLamps: { lamp: Lamp; fl: { t: number; dur: number } }[] = [];
   private sky: SkyLight = skyLight(0, null, 'none');
+  private outdoor: SkyLight = this.sky;
   /** How much lamps shine now (0 daylight … 1 night or underground). */
   private lampsOn = 0;
   private snowGround = false;
@@ -189,6 +203,17 @@ export class View implements HudTarget {
   private t = 0;
   private loading = false;
   private fireflies: { x: number; y: number; vx: number; vy: number; phase: number }[] = [];
+  private extras!: Extras;
+  private nature = new Nature();
+  private critters = new Critters();
+  private water = new Water();
+  private homes = new Homes();
+  private sounds = new CozySounds();
+  private year: YearSeason = 'summer';
+  /** The zoom in use (closer inside the farmhouse), and a fade from black after moving between places. */
+  private z = 4;
+  private fade = 0;
+  private scene: Scene | null = null;
 
   /** The view lives as long as the page: it listens for good. */
   constructor(
@@ -222,12 +247,19 @@ export class View implements HudTarget {
   /** Called once the engine is up. */
   init(): void {
     this.art = loadSprites();
+    this.extras = loadExtras();
+    new LightPainter(() => this.paintLight());
     this.fx = new Effects(this.art);
     this.weather = new WeatherView(this.art);
   }
 
   setZoom(z: number): void {
     this.zoom = z;
+  }
+
+  /** 0 bright day … 1 night (or indoors at night, or the cave). */
+  darkness(): number {
+    return this.cave ? 1 : smooth((this.sky.dark - 0.2) / 0.6);
   }
 
   // ------------------------------------------------------------------ loading a map
@@ -244,6 +276,8 @@ export class View implements HudTarget {
     this.bath = isBathKey(this.area);
     this.inside = false;
     this.snowGround = this.wantSnowGround();
+    this.year = yearSeason(client.season);
+    if (on('indoors')) this.fade = 1;
     this.ground = new Ground(world, this.cave, this.art.terrain);
     this.ground.snowy = this.snowGround;
     this.ground.rebuild();
@@ -284,6 +318,11 @@ export class View implements HudTarget {
     this.fx?.clear();
     this.weather?.reset();
     this.fireflies = [];
+    this.nature.clear();
+    this.critters.clear();
+    this.water.clear();
+    this.homes.clear();
+    this.scene = null;
     this.world = null;
   }
 
@@ -357,7 +396,10 @@ export class View implements HudTarget {
     }
     if (refresh && (o.kind === 'fence' || o.kind === 'gate' || isWall)) this.refreshNeighbours(o.x, o.y);
     const painting = o.kind === 'painting' && o.data !== undefined;
-    const sprite = painting ? paintingSprite(o.data!) : (art.frames[variant] ?? art.frames[0]!);
+    // trees through the year: autumn colours, snow on the branches, blossom
+    const look = painting ? null : treeLook(o.kind, o.x, o.y, this.year, this.snowGround, this.extras);
+    const frames = look?.frames ?? art.frames;
+    const sprite = painting ? paintingSprite(o.data!) : (frames[variant] ?? frames[0]!);
     const x = painting ? o.x * TILE - 2 : o.x * TILE + art.ox;
     const y = painting ? o.y * TILE - 8 : o.y * TILE + art.oy;
     const tall = sprite.h >= 14 && !def.flat && !FLAT_LOOKING.has(o.kind);
@@ -373,6 +415,7 @@ export class View implements HudTarget {
     const ly = o.y * TILE + (def.h * TILE) / 2 - (o.kind.includes('lamp') || o.kind.includes('torch') ? 6 : 0);
     if (spec && !lamp) lamp = new Lamp(lx, ly, spec);
     else lamp?.moveTo(lx, ly);
+    const chimney = on('smoke') ? (o.kind === 'house' ? { x: x + 62, y: y + 2 } : o.kind === 'house_small' ? { x: x + 34.5, y: y + 4 } : undefined) : undefined;
     const view: ObjView = {
       o,
       art: painting ? null : art,
@@ -389,6 +432,9 @@ export class View implements HudTarget {
       rustle: old?.rustle ?? 0,
       born: animate && !this.loading && !old ? this.t : (old?.born ?? -1),
       lamp,
+      leaf: look?.leaf ?? null,
+      chimney,
+      ownChimney: o.kind === 'house_small',
     };
     this.objects.set(o.id, view);
   }
@@ -604,8 +650,8 @@ export class View implements HudTarget {
   private screenToTile(clientX: number, clientY: number): { tx: number; ty: number } {
     const offX = (innerWidth - mainCanvasSize.x) / 2;
     const offY = (innerHeight - mainCanvasSize.y) / 2;
-    const px = this.camX + (clientX - offX - mainCanvasSize.x / 2) / this.zoom;
-    const py = this.camY + (clientY - offY - mainCanvasSize.y / 2) / this.zoom;
+    const px = this.camX + (clientX - offX - mainCanvasSize.x / 2) / this.z;
+    const py = this.camY + (clientY - offY - mainCanvasSize.y / 2) / this.z;
     return { tx: tileOf(px), ty: tileOf(py) };
   }
 
@@ -777,6 +823,7 @@ export class View implements HudTarget {
     if (insideNow !== this.inside) {
       this.inside = insideNow;
       this.snapCamera = true;
+      if (on('indoors')) this.fade = 1;
       if (insideNow) bus.emit('toast', T.enteredHouse);
     }
 
@@ -797,6 +844,77 @@ export class View implements HudTarget {
     this.updateWeather(dt);
     this.updateLight(me, dt);
     this.fx.update(dt);
+
+    const sc = this.makeScene(world, dt);
+    this.scene = sc;
+    this.nature.update(sc, this.leafyTrees(sc));
+    this.critters.update(sc, Object.values(world.objects));
+    this.water.update(sc, this.mapWeather());
+    this.homes.update(sc, this.chimneys(sc));
+    this.sounds.update(sc, this.nearFire(me));
+    if (this.fade > 0) this.fade = Math.max(0, this.fade - dt / 0.45);
+  }
+
+  /** What the cozy extras need to know this frame. */
+  private makeScene(world: WorldState, dt: number): Scene {
+    const [vx, vy, vw, vh] = this.viewRect();
+    const movers: { x: number; y: number }[] = [];
+    for (const a of this.players.values()) movers.push(a);
+    for (const a of this.animals.values()) movers.push(a);
+    for (const a of this.npcs.values()) movers.push(a);
+    return {
+      world,
+      art: this.art,
+      extras: this.extras,
+      t: this.t,
+      dt,
+      day: (((client.timeMs / DAY_LENGTH_MS) % 1) + 1) % 1,
+      sky: this.sky,
+      outdoor: this.outdoor,
+      lampsOn: this.lampsOn,
+      weather: this.mapWeather(),
+      year: this.year,
+      snowGround: this.snowGround,
+      vx,
+      vy,
+      vw,
+      vh,
+      where: this.cave ? 'cave' : this.inside ? 'inside' : this.bath ? 'bath' : 'out',
+      movers,
+      water: this.ground?.water ?? [],
+    };
+  }
+
+  /** The turned trees in and around the view, whose leaves fall. */
+  private leafyTrees(sc: Scene): LeafyTree[] {
+    const out: LeafyTree[] = [];
+    for (const ov of this.objects.values()) {
+      if (!ov.leaf) continue;
+      const s = ov.sprite;
+      if (ov.x + s.w < sc.vx - 30 || ov.x > sc.vx + sc.vw + 30 || ov.y + s.h < sc.vy - 30 || ov.y > sc.vy + sc.vh + 30) continue;
+      out.push({ x: ov.x, y: ov.y, w: s.w, h: s.h, leaf: ov.leaf, tx: ov.o.x, ty: ov.o.y });
+    }
+    return out;
+  }
+
+  /** 0..1: how close the player stands to a burning torch or stove (for its crackle). */
+  private nearFire(me: PlayerState): number {
+    let best = 0;
+    for (const ov of this.objects.values()) {
+      const k = ov.o.kind;
+      if (k !== 'torch' && k !== 'cave_torch' && k !== 'stove') continue;
+      const d = Math.hypot(ov.o.x * TILE + TILE / 2 - me.x, ov.o.y * TILE + TILE / 2 - me.y);
+      if (d < 96) best = Math.max(best, 1 - d / 96);
+    }
+    return best * this.lampsOn;
+  }
+
+  /** Chimneys in and just below the view (their smoke drifts up into it). */
+  private chimneys(sc: Scene): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    for (const ov of this.objects.values())
+      if (ov.chimney && ov.chimney.x > sc.vx - 40 && ov.chimney.x < sc.vx + sc.vw + 40 && ov.chimney.y > sc.vy - 10 && ov.chimney.y < sc.vy + sc.vh + 80) out.push(ov.chimney);
+    return out;
   }
 
   /** Walk cycle, turning, squash-and-stretch and dust for one actor. */
@@ -847,8 +965,15 @@ export class View implements HudTarget {
       tx += me.facing === 'left' ? -10 : me.facing === 'right' ? 10 : 0;
       ty += me.facing === 'up' ? -7 : me.facing === 'down' ? 7 : 0;
     }
-    const vw = mainCanvasSize.x / this.zoom;
-    const vh = mainCanvasSize.y / this.zoom;
+    // inside the farmhouse the camera comes closer, so the little room fills the screen
+    let z = this.zoom;
+    if (this.inside && on('indoors')) {
+      const fit = Math.min(mainCanvasSize.x / ((INTERIOR.w + 2) * TILE), mainCanvasSize.y / ((INTERIOR.h + 2.5) * TILE));
+      z = Math.max(z, Math.min(HD ? Math.floor(fit * 4) / 4 : Math.floor(fit), this.zoom * 2));
+    }
+    this.z = z;
+    const vw = mainCanvasSize.x / z;
+    const vh = mainCanvasSize.y / z;
     const clampTo = (v: number, lo: number, size: number, view: number) => (view >= size ? lo + size / 2 : Math.min(lo + size - view / 2, Math.max(lo + view / 2, v)));
     tx = clampTo(tx, bx, bw, vw);
     ty = clampTo(ty, by, bh, vh);
@@ -862,9 +987,9 @@ export class View implements HudTarget {
       this.camY += (ty - this.camY) * k;
     }
     // whole screen pixels, so the pixel art stays crisp
-    const cx = Math.round(this.camX * this.zoom) / this.zoom;
-    const cy = Math.round(this.camY * this.zoom) / this.zoom;
-    setCameraScale(TILE * this.zoom);
+    const cx = Math.round(this.camX * z) / z;
+    const cy = Math.round(this.camY * z) / z;
+    setCameraScale(TILE * z);
     setCameraPos(vec2(cx / TILE, -cy / TILE));
   }
 
@@ -879,6 +1004,7 @@ export class View implements HudTarget {
       this.snowGround = snowy;
       this.ground.snowy = snowy;
       this.ground.rebuild();
+      if (on('seasons')) for (const ov of [...this.objects.values()]) if (SNOWY.has(ov.o.kind)) this.putObject(ov.o, false, false);
     }
   }
 
@@ -886,6 +1012,7 @@ export class View implements HudTarget {
   private updateLight(me: PlayerState, dt: number): void {
     const kind = this.mapWeather();
     let sky = skyLight(client.timeMs, kind, client.season);
+    this.outdoor = sky;
     let on = smooth((sky.dark - 0.12) / 0.5);
     if (this.cave) {
       sky = { ...sky, ambient: [0.2, 0.19, 0.27], dark: 1, shadowAlpha: 0, wind: 0 };
@@ -963,10 +1090,31 @@ export class View implements HudTarget {
     this.flashLamps.push({ lamp, fl: { t: dur, dur } });
   }
 
+  /** Straight into the light map: at night the lit windows throw soft patches of light onto the ground in front. */
+  private paintLight(): void {
+    if (!on('windows') || !this.world || this.inside || this.bath || this.cave) return;
+    const lit = this.lampsOn;
+    if (lit < 0.02) return;
+    const [vx, vy, vw, vh] = this.viewRect();
+    const beam = this.extras.beam;
+    for (const ov of this.objects.values()) {
+      const panes = ov.art?.panes[ov.frame];
+      if (!panes?.length) continue;
+      const s = ov.sprite;
+      if (ov.x + s.w < vx - 40 || ov.x > vx + vw + 40 || ov.y + s.h < vy - 40 || ov.y > vy + vh + 60) continue;
+      const fl = 0.92 + 0.08 * Math.sin(this.t * 1.3 + ov.phase * 3);
+      for (const p of panes) {
+        // from the foot of the wall under the pane, fading out over the ground
+        const len = 20 + p.w * 1.4;
+        drawSprite(beam, ov.x + p.x + p.w / 2, ov.y + s.h - 2 + len / 2, p.w * 1.5 + 6, len, 0, rgba(1, 0.72, 0.4, 0.5 * lit * fl));
+      }
+    }
+  }
+
   /** The visible part of the world in world pixels: x, y, width, height. */
   private viewRect(): [number, number, number, number] {
-    const vw = mainCanvasSize.x / this.zoom;
-    const vh = mainCanvasSize.y / this.zoom;
+    const vw = mainCanvasSize.x / this.z;
+    const vh = mainCanvasSize.y / this.z;
     return [this.camX - vw / 2, this.camY - vh / 2, vw, vh];
   }
 
@@ -1086,6 +1234,15 @@ export class View implements HudTarget {
 
     // --- ground ---
     this.ground.draw(Math.floor(vx / TILE) - 1, Math.floor(vy / TILE) - 1, Math.ceil((vx + vw) / TILE), Math.ceil((vy + vh) / TILE), waterFrame);
+    const sc = this.scene;
+    if (sc) {
+      // lily pads, wet earth and puddles, fallen leaves; dew in the morning sun
+      this.water.drawGround(sc);
+      this.nature.drawGround(sc, this.leafyTrees(sc));
+      setAdditiveBlendMode(true);
+      this.nature.drawDew(sc);
+      setAdditiveBlendMode(false);
+    }
     // sunlight glinting on water (warm at golden hour)
     if (this.sky.shadowAlpha > 0.05 && !this.cave) {
       const sp = art.fx.sparkle?.[1];
@@ -1235,9 +1392,19 @@ export class View implements HudTarget {
       const pulse = 1 + Math.sin(t * 5) * 0.04;
       q.push(9000, cursor, target.tx * TILE + TILE / 2, target.ty * TILE + TILE / 2, cursor.w * pulse, cursor.h * pulse, 0, alpha(0.85));
     }
+    // the village houses get a chimney to smoke from
+    if (on('smoke'))
+      for (const ov of this.objects.values())
+        if (ov.ownChimney && ov.chimney && inView(ov.x, ov.y, ov.sprite.w, ov.sprite.h)) q.push(ov.depth + 0.01, this.extras.chimney, ov.chimney.x, ov.chimney.y + 4);
+    if (sc) this.critters.queue(sc, q);
     this.fx.draw(q);
     q.flush();
     this.fx.drawRopes();
+    if (sc) {
+      this.water.drawOver(sc);
+      this.homes.drawOver(sc);
+      this.nature.drawOver(sc);
+    }
 
     // --- weather over everything (lit like the rest) ---
     this.weather.draw(vx, vy, vw, vh);
@@ -1345,6 +1512,15 @@ export class View implements HudTarget {
         // a gentle flicker, as if someone walks past the lamp now and then
         const fl = 0.9 + 0.1 * Math.sin(this.t * 1.3 + ov.phase * 3);
         drawSprite(win, ov.x + win.w / 2, ov.y + win.h / 2, win.w, win.h, 0, rgba(1, 1, 1, night * fl));
+        // and a warm haze around each pane
+        if (on('windows')) {
+          setAdditiveBlendMode(true);
+          for (const p of ov.art?.panes[ov.frame] ?? []) {
+            const size = Math.max(p.w, p.h) * 3.2;
+            drawSprite(this.art.glow, ov.x + p.x + p.w / 2, ov.y + p.y + p.h / 2, size, size, 0, rgba(1, 0.7, 0.35, 0.32 * night * fl));
+          }
+          setAdditiveBlendMode(false);
+        }
       }
       // fireflies
       setAdditiveBlendMode(true);
@@ -1357,6 +1533,15 @@ export class View implements HudTarget {
       setAdditiveBlendMode(false);
     }
     if (outdoors) this.weather.drawBright(vx, vy);
+    const sc = this.scene;
+    if (sc && !me?.sleeping) {
+      setAdditiveBlendMode(true);
+      this.water.drawBright(sc);
+      this.homes.drawBright(sc);
+      setAdditiveBlendMode(false);
+    }
+    // a soft fade from black after going in or out
+    if (this.fade > 0) drawRect(vec2((vx + vw / 2) / TILE, -(vy + vh / 2) / TILE), vec2(vw / TILE + 2, vh / TILE + 2), rgb(0, 0, 0, smooth(this.fade)));
   }
 
   // ------------------------------------------------------------------ labels (DOM)
@@ -1366,7 +1551,7 @@ export class View implements HudTarget {
     const world = this.world;
     const me = myPlayer();
     if (!world || !me) return;
-    const z = this.zoom;
+    const z = this.z;
     const offX = (innerWidth - mainCanvasSize.x) / 2 + mainCanvasSize.x / 2;
     const offY = (innerHeight - mainCanvasSize.y) / 2 + mainCanvasSize.y / 2;
     const cx = Math.round(this.camX * z) / z;
