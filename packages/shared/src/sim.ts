@@ -1589,8 +1589,9 @@ export function placeBlock(world: WorldState, playerId: string, x: number, y: nu
   ].some(([dx, dy, dh]) => blockAt(world, x + dx!, y + dy!, h + dh!) !== VB.air);
   if (!touches) return out;
   const top = columnTop(world, x, y);
-  // never bury things standing on the tile, nor the water
-  const thingThere = objectAt(world, x, y) || world.crops[key(x, y)] || world.terrain[tileIndex(x, y)] === 'water' || world.terrain[tileIndex(x, y)] === 'pool';
+  // never bury things standing on the tile, nor water, the swamp, lava or chocolate
+  const ground = world.terrain[tileIndex(x, y)]!;
+  const thingThere = objectAt(world, x, y) || world.crops[key(x, y)] || ground === 'water' || ground === 'pool' || ground === 'bog' || ground === 'lava' || ground === 'choco';
   if ((thingThere && h >= top && h <= top + 2) || cellTaken(world, x, y, h, p)) {
     out.push(toast(p.id, T.cantPlaceHere));
     return out;

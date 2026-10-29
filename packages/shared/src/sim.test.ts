@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CROPS,
   DAY_LENGTH_MS,
@@ -1110,7 +1110,10 @@ describe('grottan', () => {
     weapons(p);
     const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
     standAt(world, p, cave.x, cave.y + 2);
+    // the cave's layout comes from the clock; pin it so the troll always has the same way to walk
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    now.mockRestore();
     const d = world.dungeon!;
     const slime = spawnMob(d, 'slime', Math.floor(p.x / 16) + 1, Math.floor(p.y / 16));
     p.facing = 'right';

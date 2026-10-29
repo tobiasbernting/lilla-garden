@@ -70,7 +70,8 @@ export function upgradeSavedArea(a: WorldState, k: string): { area: WorldState; 
     return { area: a, rebuilt: false };
   }
   if (untouched(a)) return { area: buildArea(c.ax, c.ay), rebuilt: true };
-  addCave(a, k);
+  // (the 3D game's maps already have their own caves to dig; a painted hill there would stay flat)
+  if (!a.voxel) addCave(a, k);
   ensureSpaceport(a);
   const have = countRenewables(a);
   const want = OLD_RENEW[a.biome ?? ''] ?? {};

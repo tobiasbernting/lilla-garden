@@ -48,6 +48,7 @@ import {
   type SimCtx,
   type WorldState,
 } from './index.ts';
+import { biomeAt } from './biomes.ts';
 
 const ctx = (): SimCtx => ({ season: 'none', rnd: mulberry32(7), now: 1_000_000 });
 
@@ -399,8 +400,10 @@ describe('the wider world in blocks (3D game)', () => {
     const world = generateWorld(1);
     const risen = new Set<string>();
     let liquids = 0;
-    // Svampskogen, Dinodalen, Vulkanen, Träsket, Godislandet
-    for (const k of ['a:1,-1', 'a:1,1', 'a:2,2', 'a:-1,0', 'a:-5,-5']) {
+    // Svampskogen, Dinodalen, Vulkanen, Träsket, and the nearest Godislandet
+    let godis = '';
+    for (let r = 1; r < 12 && !godis; r++) for (let ay = -r; ay <= r && !godis; ay++) for (let ax = -r; ax <= r && !godis; ax++) if (biomeAt(ax, ay) === 'godis') godis = `a:${ax},${ay}`;
+    for (const k of ['a:1,-1', 'a:1,1', 'a:2,2', 'a:-1,0', godis]) {
       const a = getArea(world, k)!;
       for (let y = 0; y < MAP_H; y++)
         for (let x = 0; x < MAP_W; x++) {
