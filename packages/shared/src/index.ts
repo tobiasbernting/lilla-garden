@@ -14,3 +14,6 @@ export * from './city.ts';
 export * from './paint.ts';
 export * from './rooms.ts';
 export * from './voxel.ts';
+export * from './weather.ts';
+export * from './chat.ts';
+export * from './dialogue.ts';

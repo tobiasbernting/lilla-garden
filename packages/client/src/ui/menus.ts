@@ -32,6 +32,12 @@ import {
   type RecipeDef,
   type SlotRef,
   transportDestinations,
+  DAY_LENGTH_MS,
+  isBathKey,
+  isCallable,
+  localWeather,
+  talkNode,
+  type Talk,
 } from '@lilla-garden/shared';
 import { portraitUrl, getArt } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
@@ -41,6 +47,7 @@ import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
+import { SFX } from '../sound.ts';
 
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel';
 
@@ -58,6 +65,12 @@ export class Menus {
   private picked: SlotRef | null = null;
   private tab: (typeof TABS)[number] = 'seeds';
   private wardrobeTab: ClothingSlot = 'hat';
+  /** Villager conversation in progress (null: the greeting and quests). */
+  private talk: Talk | null = null;
+  /** What you said last, shown above the villager's answer. */
+  private said = '';
+  /** 2D game only: villager conversations and the 2D help topics. */
+  features2d = false;
   onChange: (open: boolean) => void = () => {};
 
   constructor(private ui: HTMLElement) {
@@ -114,6 +127,8 @@ export class Menus {
     this.kind = null;
     this.chestId = null;
     this.animalId = null;
+    this.talk = null;
+    this.said = '';
     this.onChange(false);
   }
 
@@ -539,9 +554,18 @@ export class Menus {
       return;
     }
     const quests = openQuests(client.world!, me, npc.id);
+    if (this.features2d && this.talk) {
+      this.renderTalk(body, npc.id, quests.length > 0);
+      return;
+    }
     const greeting = npc.greeting[(client.day + npc.name.length) % npc.greeting.length]!;
     const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length ? greeting : T.questAllDone));
     body.append(talk);
+    if (this.features2d) {
+      const chat = h('button', null, '💬 Prata!');
+      onTap(chat, () => this.say(npc.id, 'start', ''));
+      body.append(h('div', { class: 'npc-actions' }, chat));
+    }
     const rows = h('div', { class: 'rows' });
     for (const q of quests) {
       const have = countItem(me.inventory, q.want.item);
@@ -563,6 +587,52 @@ export class Menus {
       );
     }
     body.append(rows);
+  }
+
+  // ---- conversations (2D game) ----
+
+  private say(npcId: string, node: string, said: string): void {
+    const me = myPlayer();
+    if (!me) return;
+    if (!node) {
+      this.close();
+      return;
+    }
+    const pets: { name: string; species: string }[] = [];
+    for (const w of [client.world, ...Object.values(client.areas)])
+      for (const a of Object.values(w?.animals ?? {})) if (a.owner === me.id && isCallable(a) && a.name) pets.push({ name: a.name, species: a.species });
+    const outdoors = me.area !== 'dungeon' && !isBathKey(me.area);
+    const weather = client.weather && outdoors ? localWeather(client.weather.kind, activeWorld()?.biome) : null;
+    this.talk = talkNode(npcId, node, { name: me.name, weather, dayFraction: client.timeMs / DAY_LENGTH_MS, season: client.season, pets, rnd: Math.random });
+    this.said = said;
+    SFX.talk();
+    this.rerender();
+  }
+
+  private renderTalk(outer: HTMLElement, npcId: string, hasQuests: boolean): void {
+    const npc = NPCS[npcId]!;
+    const t = this.talk!;
+    // a fixed width, so the window does not jump around between answers
+    const body = h('div', { class: 'talk' });
+    outer.append(body);
+    if (this.said) body.append(h('div', { class: 'talk-said' }, `Du: ${this.said}`));
+    body.append(h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, t.say)));
+    const opts = h('div', { class: 'talk-opts' });
+    for (const o of t.options) {
+      const b = h('button', { class: o.go === '' || o.go === 'bye' ? 'bye' : '' }, o.text);
+      onTap(b, () => this.say(npcId, o.go, o.text));
+      opts.append(b);
+    }
+    body.append(opts);
+    if (hasQuests) {
+      const back = h('button', { class: 'alt' }, '📜 Uppdrag');
+      onTap(back, () => {
+        this.talk = null;
+        this.said = '';
+        this.rerender();
+      });
+      body.append(h('div', { class: 'npc-actions', style: { marginTop: 'calc(2 * var(--u))' } }, back));
+    }
   }
 
   // ---- help ----
@@ -589,7 +659,8 @@ export class Menus {
   private renderHelp(panel: HTMLElement, body: HTMLElement): void {
     const touch = document.body.classList.contains('touch');
     const tabs = h('div', { class: 'tabs' });
-    for (const t of HELP) {
+    const topics = HELP.filter((t) => this.features2d || !t.only2d);
+    for (const t of topics) {
       const b = h('button', { class: this.helpTopic === t.id ? 'on' : '' }, `${t.emoji} ${t.title}`);
       onTap(b, () => {
         this.helpTopic = t.id;
@@ -598,7 +669,7 @@ export class Menus {
       tabs.append(b);
     }
     panel.insertBefore(tabs, body);
-    const topic = HELP.find((t) => t.id === this.helpTopic) ?? HELP[0]!;
+    const topic = topics.find((t) => t.id === this.helpTopic) ?? topics[0]!;
     if (topic.intro) body.append(h('p', { class: 'help-intro' }, topic.intro));
     const list = h('ol', { class: 'help-steps' });
     for (const step of topic.steps) {

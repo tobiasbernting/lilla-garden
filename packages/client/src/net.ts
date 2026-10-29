@@ -67,6 +67,8 @@ export class Net {
         client.season = msg.season;
         client.serverOffset = Date.now() - msg.now;
         client.timeMs = msg.world.timeMs;
+        client.weather = msg.world.weather ?? null;
+        bus.emit('weather', client.weather);
         client.day = msg.world.day;
         client.snaps.players.clear();
         client.snaps.animals.clear();
@@ -80,6 +82,10 @@ export class Net {
         client.day = msg.day;
         client.lastStateAt = performance.now();
         client.serverOffset = Date.now() - msg.now;
+        if (msg.weather && (msg.weather.kind !== client.weather?.kind || msg.weather.since !== client.weather?.since)) {
+          client.weather = msg.weather;
+          bus.emit('weather', msg.weather);
+        }
         if (msg.season !== client.season) {
           client.season = msg.season;
           bus.emit('season', msg.season);

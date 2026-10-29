@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { isSeason, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
+import { WEATHER_NAMES, isSeason, isWeatherKind, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
 import type { Game, Link } from './game.ts';
 import { adminPage } from './admin.ts';
 
@@ -93,6 +93,11 @@ export function createServer(game: Game, opts: { clientDist: string | null; seas
         } else if (p === '/admin/morning') {
           game.setTimeOfDay(0.05);
           m = 'God morgon';
+        } else if (p === '/admin/weather') {
+          if (isWeatherKind(form.weather)) {
+            game.setWeather(form.weather);
+            m = `Vädret: ${WEATHER_NAMES[form.weather]}`;
+          }
         } else if (p === '/admin/time') {
           const f = Number(form.fraction);
           if (Number.isFinite(f)) game.setTimeOfDay(f);

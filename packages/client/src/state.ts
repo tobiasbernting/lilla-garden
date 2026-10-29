@@ -1,5 +1,6 @@
 // Client-side mirror of the world plus a tiny event bus.
 import {
+  CHAT_BUBBLE_MS,
   objectDef,
   rebuildOccupancy,
   setBlock,
@@ -10,6 +11,7 @@ import {
   type PlayerSnap,
   type PlayerState,
   type Season,
+  type WeatherState,
   type WorldObject,
   type WorldState,
 } from '@lilla-garden/shared';
@@ -32,6 +34,10 @@ export interface Events {
   day: number;
   /** The local player moved to another map (key). */
   area: string;
+  /** 2D game: someone wrote in the chat. */
+  chat: Extract<Change, { t: 'chat' }>;
+  /** 2D game: the weather turned. */
+  weather: WeatherState | null;
 }
 
 class Bus {
@@ -67,6 +73,9 @@ export const client = {
   timeMs: 0,
   day: 1,
   lastStateAt: 0,
+  weather: null as WeatherState | null,
+  /** 2D game: the latest chat line of each player, for the bubble over their head. */
+  chatBubbles: new Map<string, { text: string; until: number }>(),
 };
 
 export const serverNow = (): number => Date.now() - client.serverOffset;
@@ -180,6 +189,10 @@ export function applyChange(c: Change): void {
       break;
     case 'fx':
       bus.emit('fx', c);
+      break;
+    case 'chat':
+      if (!c.old) client.chatBubbles.set(c.from, { text: c.text, until: performance.now() + CHAT_BUBBLE_MS });
+      bus.emit('chat', c);
       break;
   }
   bus.emit('change', c);

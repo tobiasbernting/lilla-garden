@@ -289,6 +289,16 @@ export const T = {
   cook: 'Laga mat',
   cooked: 'Lagade: {item}',
   petArrived: '{name} följer nu med dig överallt!',
+  and: 'och',
+  weatherRainbow: 'Solen tittar fram efter regnet – titta, en regnbåge! 🌈',
+  petsStay: '{names}: Sitt! Stanna här så länge.',
+  petsCome: 'Fiiiiiu! {names} kommer springande.',
+  horseWaitsHome: '{names} väntar hemma på gården och följer med dig när du kommer hem.',
+  petsCantHear: 'Dina djur hör inte visslan här nere i grottan.',
+  noPetsHere: 'Inga av dina djur är här just nu.',
+  noPets: 'Du har inga husdjur eller hästar än. Köp en hund, katt eller häst i brevlådan!',
+  petsStayBtn: 'Stanna!',
+  petsComeBtn: 'Vissla',
   wardrobe: 'Garderob',
   buy: 'Köp',
   coins: 'kr',
@@ -532,6 +542,8 @@ export interface HelpStep {
 
 export interface HelpTopic {
   id: string;
+  /** Only shown in the 2D game. */
+  only2d?: boolean;
   emoji: string;
   title: string;
   intro?: string;
@@ -727,6 +739,22 @@ export const HELP: HelpTopic[] = [
     ],
   },
   {
+    id: 'friends',
+    only2d: true,
+    emoji: '💬',
+    title: 'Prata, djur och väder',
+    steps: [
+      { icon: 'emoji:💬', text: 'Pratbubblan skriver till alla som spelar. Tryck Enter eller T på datorn. Färdiga ord finns att trycka på om du inte vill skriva.' },
+      { icon: 'emoji:🗨️', text: 'Det du skriver syns i en bubbla över ditt huvud och i listan längst ner.' },
+      { icon: 'emoji:👵', text: 'Gå fram till en bybo och använd hen, precis som när du hämtar uppdrag. Tryck sedan på Prata! så kan ni prata om allt möjligt – de berättar skämt, gåtor och hemligheter.' },
+      { icon: 'emoji:✋', text: 'Stanna!-knappen gör att din hund, katt eller häst stannar där den är. Bra när du ska in i grottan eller jobba ifred. Tangent X.' },
+      { icon: 'emoji:🎵', text: 'Vissla så kommer de springande och följer med dig igen, även från en annan karta. Hästen följer dig på gården när du visslat på den. Tangent V.' },
+      { icon: 'emoji:🌧️', text: 'Vädret ändrar sig hela tiden: sol, moln, regn, åska, snö, hagel, blåst och dimma. Uppe i hörnet ser du vilket väder det är.' },
+      { icon: 'emoji:💧', text: 'När det regnar vattnar regnet alla åkrar åt dig!' },
+      { icon: 'emoji:🌈', text: 'Kommer solen fram efter regnet blir det kanske en regnbåge.' },
+    ],
+  },
+  {
     id: 'money',
     emoji: '💰',
     title: 'Sälja och köpa',
@@ -749,3 +777,39 @@ export const HELP: HelpTopic[] = [
     ],
   },
 ];
+
+// ---- Weather (2D game) ----
+
+export const WEATHER_NAMES: Record<string, string> = {
+  sun: 'Sol',
+  cloudy: 'Molnigt',
+  rain: 'Regn',
+  storm: 'Åska',
+  snow: 'Snö',
+  hail: 'Hagel',
+  wind: 'Blåsigt',
+  fog: 'Dimma',
+};
+
+export const WEATHER_EMOJI: Record<string, string> = {
+  sun: '☀️',
+  cloudy: '☁️',
+  rain: '🌧️',
+  storm: '⛈️',
+  snow: '🌨️',
+  hail: '🧊',
+  wind: '💨',
+  fog: '🌫️',
+};
+
+/** Told to everyone outside when the weather turns. */
+export const WEATHER_NEWS: Record<string, string> = {
+  sun: 'Solen tittar fram! ☀️',
+  cloudy: 'Nu kommer molnen. ☁️',
+  rain: 'Det börjar regna! Regnet vattnar åkrarna åt dig. 🌧️',
+  storm: 'Åskväder! Det mullrar och blixtrar. ⛈️',
+  snow: 'Titta, det snöar! ❄️',
+  hail: 'Hagel! Små isbollar studsar överallt. 🧊',
+  wind: 'Nu blåser det rejält! 💨',
+  fog: 'Dimman rullar in. Ser du något? 🌫️',
+};

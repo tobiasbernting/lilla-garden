@@ -14,6 +14,11 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - Fiska i dammen med fiskespöet du får av Sven.
 - Byt kläder i garderoben. Halloween, jul, påsk och midsommar följer kalendern.
 - Allt tillsammans med upp till åtta spelare på samma gård. Inget dör, inget går sönder.
+- 2D: chatta med alla som spelar (Enter/T eller 💬, färdiga ord för den som inte vill skriva).
+- 2D: säg åt hund, katt och häst att stanna (✋, X) och vissla så kommer de igen (🎵, V) – även från en annan karta.
+- 2D: prata med alla bybor (Prata! i bybons fönster): frågor, berättelser, skämt, gåtor och sten, sax, påse med Elsa.
+- 2D: väder som skiftar av sig självt – sol, moln, regn, åska, snö, hagel, blåst och dimma. Regnet vattnar åkrarna,
+  snön gör marken vit och efter regn kan det bli regnbåge. Föräldrasidan kan välja väder.
 
 ## Develop
 
@@ -65,7 +70,7 @@ Environment:
 
 ## Controls
 
-- Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Esc` stänger.
+- Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Enter`/`T` chatt, `X` husdjuren stannar, `V` vissla, `Esc` stänger.
 - Surfplatta: styrspak till vänster, stor handknapp till höger, tryck på en ruta bredvid dig.
 - `?` i hörnet öppnar hjälpen (visas automatiskt första gången på en enhet).
 

@@ -1,6 +1,11 @@
 // The running game: world state, connected clients, tick + broadcast loops.
 import {
+  CHAT_COOLDOWN_MS,
+  CHAT_HISTORY,
   DAY_LENGTH_MS,
+  callPets,
+  cleanChat,
+  setWeather,
   MAX_PLAYERS,
   NPCS,
   TICK_HZ,
@@ -45,6 +50,7 @@ import {
   type PlayerSummary,
   type Season,
   type ServerMsg,
+  type WeatherKind,
   type SimCtx,
   type WorldState,
 } from '../../shared/src/index.ts';
@@ -77,6 +83,9 @@ export class Game {
   private timers: NodeJS.Timeout[] = [];
   private lastTick = Date.now();
   private flushCounter = 0;
+  /** Recent chat lines for players who come online (not saved). */
+  private chatLog: Extract<Change, { t: 'chat' }>[] = [];
+  private lastChat = new Map<string, number>();
   tickCount = 0;
 
   constructor(
@@ -156,7 +165,9 @@ export class Game {
       const st = npcState(w, n.id);
       npcs.push({ id: n.id, x: st.x, y: st.y, facing: st.facing, moving: st.moving, ...(k !== 'farm' ? { area: k } : {}) });
     }
-    this.broadcast({ t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() });
+    const msg: ServerMsg = { t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() };
+    if (this.world.weather) msg.weather = this.world.weather;
+    this.broadcast(msg);
   }
 
   async flush(): Promise<void> {
@@ -226,6 +237,13 @@ export class Game {
   /** Admin: jump to a time of day (fraction 0..1). */
   setTimeOfDay(fraction: number): void {
     this.world.timeMs = Math.max(0, Math.min(0.99, fraction)) * DAY_LENGTH_MS;
+    this.broadcastState();
+  }
+
+  /** Admin: change the weather now (it lasts its usual time, then the random pattern goes on). */
+  setWeather(kind: WeatherKind): void {
+    this.pending.push(...setWeather(this.world, kind, this.ctx(), true));
+    this.dispatchPending();
     this.broadcastState();
   }
 
@@ -302,6 +320,7 @@ export class Game {
       }
       this.pending.push(...setOnline(this.world, p.id, true));
       this.dispatchPending();
+      if (this.chatLog.length) client.link.send({ t: 'changes', changes: this.chatLog.map((c) => ({ ...c, old: true })) });
       return;
     }
     const pid = client.playerId;
@@ -373,6 +392,20 @@ export class Game {
       case 'quest':
         changes = completeQuest(w, pid, String(msg.id ?? ''));
         break;
+      case 'pets':
+        changes = callPets(this.world, pid, msg.cmd, this.ctx());
+        break;
+      case 'chat': {
+        const text = cleanChat(msg.text);
+        const now = Date.now();
+        if (!text || now - (this.lastChat.get(pid) ?? 0) < CHAT_COOLDOWN_MS) return;
+        this.lastChat.set(pid, now);
+        const line: Extract<Change, { t: 'chat' }> = { t: 'chat', from: pid, name: me.name, text, at: now };
+        this.chatLog.push(line);
+        if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
+        changes = [line];
+        break;
+      }
     }
     if (changes.length) {
       this.pending.push(...changes);

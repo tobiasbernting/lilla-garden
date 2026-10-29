@@ -13,6 +13,7 @@ import { PAINTED_SELL, isValidPainting } from './paint.ts';
 import { WALL_KINDS, findRooms, type Room } from './rooms.ts';
 import { ACHIEVEMENT_TEXT, DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
 import type { Change, SlotRef } from './protocol.ts';
+import { tickWeather } from './weather.ts';
 import { DIG_REACH, EYE_HEIGHT, PLAYER_HEIGHT, VB, VH, initVoxel, thinForest, voxelMode, blockAt, blockTerrain, bodyFree, cellBlock, columnTop, setBlock, standHeight, steepTile, type VoxelBlock } from './voxel.ts';
 import type {
   AnimalState,
@@ -117,6 +118,9 @@ export const isPetAnimal = (a: AnimalState): boolean => {
   const def = ANIMALS[a.species];
   return !!def && (!!def.pet || (!!def.wild && !!a.owner));
 };
+
+/** Animals that listen to their owner's "stay" and whistle: pets and the owner's horses. */
+export const isCallable = (a: AnimalState): boolean => !!a.owner && !isVehicle(a) && (isPetAnimal(a) || a.species === 'horse');
 
 /** Cars, mopeds (and city traffic): parked where they stand, driven like a horse. */
 
@@ -725,6 +729,7 @@ function mount(world: WorldState, p: PlayerState, a: AnimalState, out: Change[])
   }
   p.riding = a.id;
   delete p.fishing;
+  delete a.stay;
   a.x = p.x;
   a.y = p.y;
   a.facing = p.facing;
@@ -764,6 +769,70 @@ export function honk(world: WorldState, playerId: string): Change[] {
   const a = world.animals[p.riding];
   if (!a || !isVehicle(a)) return [];
   return [fx(tileOf(p.x), tileOf(p.y), 'honk')];
+}
+
+/** "Ann, Bo och Cecilia" */
+const joinNames = (names: string[]): string => (names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} ${T.and} ${names[names.length - 1]}`);
+
+/**
+ * 2D game: tell your pets and horses to stay where they are, or whistle so they come back and follow you.
+ * Only the animals on your map can hear "stay"; a whistle reaches pets left on any map (not in the cave).
+ */
+export function callPets(world: WorldState, playerId: string, cmd: 'stay' | 'come', ctx: SimCtx): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || (cmd !== 'stay' && cmd !== 'come')) return [];
+  const out: Change[] = [];
+  if (cmd === 'come') p.emote = { id: 'vissla', until: ctx.now + EMOTE_MS };
+  if (p.area === 'dungeon') {
+    out.push(toast(p.id, cmd === 'come' ? T.petsCantHear : T.noPetsHere));
+    return out;
+  }
+  const here = areaOf(farm, p);
+  const hereKey = p.area ?? 'farm';
+  const near: string[] = [];
+  const waiting: string[] = [];
+  const maps = [farm, ...Object.values(farm.areas ?? {})];
+  for (const m of maps) {
+    const mk = m.area ?? 'farm';
+    for (const a of Object.values(m.animals)) {
+      if (a.owner !== p.id || !isCallable(a) || riderOf(m, a)) continue;
+      const tag = (c: Change): Change => {
+        if (mk !== 'farm' && (c.t === 'animal' || c.t === 'fx')) c.area = mk;
+        return c;
+      };
+      const name = animalDisplayName(a);
+      if (cmd === 'stay') {
+        if (mk !== hereKey) continue;
+        a.stay = { x: a.x, y: a.y };
+        delete a.follow;
+        delete a.tx;
+        delete a.ty;
+        a.moving = false;
+        a.waitMs = 2000;
+        near.push(name);
+        out.push(tag({ t: 'animal', id: a.id, animal: a }), tag(fx(tileOf(a.x), tileOf(a.y), 'heart')));
+        continue;
+      }
+      delete a.stay;
+      if (a.species === 'horse') {
+        // horses stay on the farm: one whistled for elsewhere waits there and follows you once you are home
+        a.follow = true;
+        out.push(tag({ t: 'animal', id: a.id, animal: a }));
+        if (mk === hereKey) near.push(name);
+        else waiting.push(name);
+        continue;
+      }
+      if (mk !== hereKey) moveAnimalAlong(m, here, hereKey, a, p, out);
+      else out.push(tag({ t: 'animal', id: a.id, animal: a }));
+      near.push(name);
+    }
+  }
+  if (near.length) out.push(toast(p.id, fmt(cmd === 'stay' ? T.petsStay : T.petsCome, { names: joinNames(near) })));
+  if (waiting.length) out.push(toast(p.id, fmt(T.horseWaitsHome, { names: joinNames(waiting) })));
+  if (!near.length && !waiting.length) out.push(toast(p.id, cmd === 'stay' ? T.noPetsHere : T.noPets));
+  out.push(playerChange(p));
+  return out;
 }
 
 const DIR_VEC: Record<Facing, { dx: number; dy: number }> = { up: { dx: 0, dy: -1 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 } };
@@ -1821,7 +1890,7 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
 function movePetsAlong(from: WorldState, to: WorldState, toKey: string, p: PlayerState, out: Change[]): void {
   if (to.area === 'dungeon') return;
   for (const a of Object.values(from.animals)) {
-    if (a.owner !== p.id || !isPetAnimal(a)) continue;
+    if (a.owner !== p.id || !isPetAnimal(a) || a.stay) continue;
     moveAnimalAlong(from, to, toKey, a, p, out);
   }
 }
@@ -2510,6 +2579,7 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickFishing(world, ctx, out);
   tickHearts(world, ctx, out);
   tickSleep(world, ctx, out);
+  tickWeather(world, ctx, out);
   tickOtherAreas(world, dtMs, ctx, out);
   for (const p of Object.values(world.players)) {
     if (p.emote && p.emote.until < ctx.now) delete p.emote;
@@ -2533,10 +2603,17 @@ const LEASH = 7 * TILE;
 
 const PET_FOLLOW = 26;
 const PET_TELEPORT = 7 * TILE;
+/** A called horse trots after its owner (its wandering speed is a slow walk). */
+const HORSE_FOLLOW_SPEED = 60;
+/** How far a staying animal potters around the spot it was told to stay on. */
+const STAY_LEASH = 1.5 * TILE;
 
 function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
   const owner = a.owner ? world.players[a.owner] : undefined;
   if (!owner || !owner.online || owner.area !== (world.area ?? 'farm')) return false;
+  const horse = a.species === 'horse';
+  // a horse waits outside while you are indoors
+  if (horse && isFarm(world) && inInterior(tileOf(owner.x), tileOf(owner.y))) return false;
   const dx = owner.x - a.x;
   const dy = owner.y - a.y;
   const dist = Math.hypot(dx, dy);
@@ -2553,7 +2630,7 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
     delete a.ty;
     return true;
   }
-  const speed = ANIMALS[a.species]?.speed ?? 60;
+  const speed = horse ? HORSE_FOLLOW_SPEED : (ANIMALS[a.species]?.speed ?? 60);
   const step = Math.min(dist - PET_FOLLOW + 1, (speed * dtMs) / 1000);
   const nx = a.x + (dx / dist) * step;
   const ny = a.y + (dy / dist) * step;
@@ -2577,7 +2654,7 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
       } else a.moving = false;
       continue;
     }
-    if (isPetAnimal(a) && tickPet(world, a, dtMs)) continue;
+    if (!a.stay && (isPetAnimal(a) || (a.species === 'horse' && a.follow)) && tickPet(world, a, dtMs)) continue;
     if (tickFlee(world, a, dtMs, ctx)) continue;
     if (isHostile(a) && tickMob(world, a, dtMs, ctx, out)) continue;
     if (a.waitMs > 0) {
@@ -2586,9 +2663,9 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
       continue;
     }
     if (a.tx === undefined || a.ty === undefined) {
-      const c = homeCenter(world, a);
+      const c = a.stay ?? homeCenter(world, a);
       const ang = ctx.rnd() * Math.PI * 2;
-      const r = ctx.rnd() * LEASH;
+      const r = ctx.rnd() * (a.stay ? STAY_LEASH : LEASH);
       a.tx = Math.min(MAP_W * TILE - 8, Math.max(8, c.x + Math.cos(ang) * r));
       a.ty = Math.min(MAP_H * TILE - 8, Math.max(8, c.y + Math.sin(ang) * r));
     }

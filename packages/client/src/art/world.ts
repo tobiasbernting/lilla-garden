@@ -1211,4 +1211,5 @@ export const EMOTE_GLYPH: Record<string, string> = {
   sova: '💤',
   fiske: '🎣',
   napp: '❗',
+  vissla: '🎵',
 };
