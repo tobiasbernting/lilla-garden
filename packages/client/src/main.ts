@@ -12,6 +12,7 @@ import { Menus } from './ui/menus.js';
 import { Picker } from './ui/picker.js';
 import { initRide } from './ui/ride.ts';
 import { initSound, isMuted, setMuted } from './sound.ts';
+import { Chat, SocialButtons, petCommand, weatherChip } from './ui/social.ts';
 
 const ui = document.getElementById('ui')!;
 const stage = document.getElementById('stage')!;
@@ -52,6 +53,16 @@ hud.root.style.display = 'none';
 menus.onChange = (open) => {
   if (scene) scene.uiOpen = open;
 };
+// 2D-only: chat, pets that stay or come when you whistle, weather, villager conversations
+menus.features2d = true;
+hud.topExtras.push(weatherChip);
+bus.on('weather', () => hud.renderTop());
+const chat = new Chat(hud.root);
+chat.onToggle = (open) => {
+  // keys pressed when the box opened would otherwise stay "held" in the game
+  if (open) scene?.input.keyboard?.resetKeys();
+};
+new SocialButtons(hud.root, chat);
 
 const status = h('div', { class: 'status', style: { display: 'none' } }, T.disconnected);
 ui.append(status);
@@ -64,7 +75,14 @@ bus.on('connection', (s) => {
 window.addEventListener('keydown', (e) => {
   if (!scene) return;
   if (e.target instanceof HTMLInputElement) return;
+  if ((e.key === 'Enter' || e.key === 't' || e.key === 'T') && !menus.isOpen()) {
+    e.preventDefault();
+    chat.open();
+    return;
+  }
   if (e.key === 'Escape') menus.close();
+  else if ((e.key === 'x' || e.key === 'X') && !menus.isOpen()) petCommand('stay');
+  else if ((e.key === 'v' || e.key === 'V') && !menus.isOpen()) petCommand('come');
   else if (e.key === 'q' || e.key === 'Q' || e.key === 'i' || e.key === 'I' || e.key === 'Tab') {
     e.preventDefault();
     menus.toggle('inventory');

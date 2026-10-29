@@ -9,6 +9,7 @@ import type {
   Quest,
   Season,
   Terrain,
+  WeatherState,
   WorldObject,
   WorldState,
 } from './types.ts';
@@ -31,6 +32,8 @@ export type Change =
   | { t: 'ride'; to: string; via: 'bus' | 'train'; place: string }
   | { t: 'quests'; quests: Quest[] }
   | { t: 'fx'; x: number; y: number; kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'arrow' | 'rocket' | 'boom' | 'splash' | 'lasso' | 'honk'; area?: string; from?: { x: number; y: number } }
+  /** 2D game: someone said something. `old` marks history sent to a player who just came online. */
+  | { t: 'chat'; from: string; name: string; text: string; at: number; old?: boolean }
   /** Sent to one player when they enter another map (full state) or when it is torn down (null). */
   | { t: 'areaData'; to: string; key: string; world: WorldState | null };
 
@@ -63,6 +66,10 @@ export type ClientMsg =
   | { t: 'teleport'; to: string }
   | { t: 'ride'; via: 'bus' | 'train'; to: string }
   | { t: 'paint'; pixels: string }
+  /** 2D game: tell your pets and horses to stay, or whistle for them. */
+  | { t: 'pets'; cmd: 'stay' | 'come' }
+  /** 2D game: a chat line to everyone. */
+  | { t: 'chat'; text: string }
   | { t: 'ping' };
 
 export interface PlayerSnap {
@@ -98,7 +105,7 @@ export interface AnimalSnap {
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; world: WorldState; season: Season; now: number; tick: number }
-  | { t: 'state'; timeMs: number; day: number; season: Season; players: PlayerSnap[]; animals: AnimalSnap[]; npcs: NpcSnap[]; now: number }
+  | { t: 'state'; timeMs: number; day: number; season: Season; players: PlayerSnap[]; animals: AnimalSnap[]; npcs: NpcSnap[]; now: number; weather?: WeatherState }
   | { t: 'changes'; changes: Change[] }
   | { t: 'error'; text: string }
   | { t: 'pong' };

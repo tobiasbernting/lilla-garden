@@ -35,6 +35,8 @@ import {
   inPool,
   isBathKey,
   tileOf,
+  localWeather,
+  type WeatherKind,
   type AnimalState,
   type Change,
   type DropState,
@@ -49,6 +51,8 @@ import { EMOTE_GLYPH, PAINT_COLORS } from '../art/world.js';
 import { HD, NEW_ART, R } from '../art/style.ts';
 import { paintingTexture } from '../art/painting.ts';
 import { net } from '../net.js';
+import { WeatherView } from './weather.ts';
+import { SFX } from '../sound.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '../state.js';
 
 export const VIEW_W = 320;
@@ -69,6 +73,8 @@ interface Actor {
   /** The item in the player's hand. */
   held?: Phaser.GameObjects.Image;
   heldKey?: string;
+  /** The whistle emote we already played a sound for. */
+  whistled?: number;
 }
 
 export interface InputSource {
@@ -117,6 +123,9 @@ export class GameScene extends Phaser.Scene {
   private night!: Phaser.GameObjects.RenderTexture;
   private glow!: string;
   private snow: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private weather: WeatherView | null = null;
+  /** Ground drawn white: Christmas, or after it has snowed a while. */
+  private snowGround = false;
   private labels!: HTMLElement;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private lastMoveSent = 0;
@@ -151,6 +160,8 @@ export class GameScene extends Phaser.Scene {
     this.npcs.clear();
     this.talk.clear();
     this.snow = null;
+    this.weather = null;
+    this.snowGround = client.season === 'jul';
     this.hoverTile = null;
     this.area = myArea();
     this.world = activeWorld()!;
@@ -203,6 +214,8 @@ export class GameScene extends Phaser.Scene {
     this.bathMask = this.make.image({ key: 'fx-white', add: false }).setOrigin(0).setDisplaySize(BATH_ROOM.w * TILE, (BATH_ROOM.h + 1) * TILE); // the room incl. the wall caps above it
     this.inside = false;
     this.bath = isBathKey(this.area);
+    this.weather = new WeatherView(this, ovx, ovy, VIEW_W, VIEW_H);
+    this.snowGround = this.wantSnowGround();
     this.applySeason();
 
     // --- camera ---
@@ -260,7 +273,7 @@ export class GameScene extends Phaser.Scene {
     const art = getArt();
     const t = this.world.terrain[y * MAP_W + x]!;
     if (this.area === 'dungeon') return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
-    const snowy = client.season === 'jul';
+    const snowy = this.snowGround;
     if (!art.terrain.edges) return art.terrain.index(t, x, y, snowy, 0, t === 'water' || t === 'pool' ? frame : 0);
     if (t === 'water') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'water' || n === undefined), frame);
     if (t === 'pool') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'pool'), frame);
@@ -618,7 +631,31 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** The weather over this map (whether or not you are indoors); null in the cave and the bath house. */
+  private mapWeather(): WeatherKind | null {
+    const w = client.weather;
+    if (!w || this.area === 'dungeon' || this.bath) return null;
+    return localWeather(w.kind, this.world.biome);
+  }
+
+  private wantSnowGround(): boolean {
+    if (client.season === 'jul') return true;
+    return this.mapWeather() === 'snow' && serverNow() - (client.weather?.since ?? 0) > 25_000;
+  }
+
+  private updateWeather(dt: number): void {
+    const kind = this.mapWeather();
+    const w = client.weather;
+    this.weather?.update(dt, this.inside ? null : kind, w?.prev, serverNow() - (w?.since ?? 0));
+    const snowy = this.wantSnowGround();
+    if (snowy !== this.snowGround) {
+      this.snowGround = snowy;
+      this.rebuildTerrain();
+    }
+  }
+
   private applySeason(): void {
+    this.snowGround = this.wantSnowGround();
     this.rebuildTerrain();
     for (const a of Object.values(this.world.animals)) this.putAnimal(a);
     if (client.season === 'jul' && this.area === 'farm' && !this.snow) {
@@ -936,7 +973,8 @@ export class GameScene extends Phaser.Scene {
 
     this.updateDoors();
 
-    // --- night ---
+    // --- weather, then night on top ---
+    this.updateWeather(dt);
     this.drawNight();
   }
 
@@ -1090,19 +1128,28 @@ export class GameScene extends Phaser.Scene {
 
   private updateBubble(actor: Actor, p: PlayerState): void {
     const glyph = p.sleeping ? EMOTE_GLYPH.sova! : p.emote && p.emote.until > serverNow() ? (EMOTE_GLYPH[p.emote.id] ?? p.emote.id) : null;
-    if (glyph && !actor.bubble) {
-      actor.bubble = this.makeLabel(glyph, 'bubble emote');
-    } else if (!glyph && actor.bubble) {
-      actor.bubble.remove();
+    if (p.emote?.id === 'vissla' && actor.whistled !== p.emote.until) {
+      actor.whistled = p.emote.until;
+      const me = myPlayer();
+      if (me && Math.hypot(me.x - actor.x, me.y - actor.y) < 12 * TILE) SFX.whistle();
+    }
+    // a fresh chat line wins over an emote
+    const chat = client.chatBubbles.get(p.id);
+    const said = chat && chat.until > performance.now() ? chat.text : null;
+    const text = said ?? glyph;
+    if (!text) {
+      actor.bubble?.remove();
       actor.bubble = undefined;
+      return;
     }
-    if (actor.bubble && glyph) {
-      const cam = this.cameras.main;
-      const zoom = this.scale.zoom * cam.zoom;
-      actor.bubble.textContent = glyph;
-      this.placeLabel(actor.bubble, (actor.x - cam.worldView.x) * zoom, (actor.y - 34 - cam.worldView.y) * zoom);
-    }
+    if (!actor.bubble) actor.bubble = this.makeLabel(text, 'bubble');
+    actor.bubble.className = `label bubble ${said ? 'chat' : 'emote'}`;
+    if (actor.bubble.textContent !== text) actor.bubble.textContent = text;
+    const cam = this.cameras.main;
+    const zoom = this.scale.zoom * cam.zoom;
+    this.placeLabel(actor.bubble, (actor.x - cam.worldView.x) * zoom, (actor.y - 34 - cam.worldView.y) * zoom);
   }
+
 
   private makeGlowTexture(): string {
     const key = 'fx-glow';

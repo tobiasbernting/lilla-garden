@@ -40,6 +40,8 @@ export class Hud {
   private joy: HTMLElement;
   private joyKnob: HTMLElement;
   minimap!: Minimap;
+  /** Extra chips after the built-in ones (the 2D game adds the weather). */
+  topExtras: (() => HTMLElement | null)[] = [];
 
   constructor(
     private ui: HTMLElement,
@@ -159,7 +161,7 @@ export class Hud {
     this.render();
   }
 
-  private renderTop(): void {
+  renderTop(): void {
     const me = myPlayer();
     clear(this.top);
     const f = client.timeMs / (10 * 60 * 1000);
@@ -177,6 +179,10 @@ export class Hud {
     if (client.season !== 'none') {
       const glyph = { halloween: '🎃', jul: '🎄', pask: '🐣', midsommar: '🌸', none: '' }[client.season];
       this.top.append(h('div', { class: 'chip' }, glyph));
+    }
+    for (const extra of this.topExtras) {
+      const el = extra();
+      if (el) this.top.append(el);
     }
   }
 

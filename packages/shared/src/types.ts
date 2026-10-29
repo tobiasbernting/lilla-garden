@@ -327,6 +327,10 @@ export interface AnimalState {
   homeId: number; // object id of its house
   /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
+  /** Told to stay (2D game): waits around this spot until the owner whistles. */
+  stay?: { x: number; y: number };
+  /** Horses: whistled for, so it follows its owner around the farm like a pet. */
+  follow?: boolean;
   /** Vehicles: colour variant. */
   variant?: number;
   /** Mobs and predators: remaining hit points and next time it may attack. */
@@ -391,8 +395,26 @@ export interface WorldState {
   areas?: Record<string, WorldState>;
   /** 3D game: the block layer (see voxel.ts). */
   voxel?: VoxelData;
+  /** 2D game: today's weather, the same everywhere in the world (not persisted). */
+  weather?: WeatherState;
   /** Dungeon: seed, size, whether the boss is beaten. */
   dungeonInfo?: { seed: number; w: number; h: number; cleared: boolean; level: number; start: { x: number; y: number }; bossRoom: { x: number; y: number; w: number; h: number } };
+}
+
+/** 2D game: what the sky is doing. */
+export type WeatherKind = 'sun' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'hail' | 'wind' | 'fog';
+
+export interface WeatherState {
+  kind: WeatherKind;
+  /** Wall clock (ms) when this weather began and when it changes. */
+  since: number;
+  until: number;
+  /** The weather before this one (sun after rain shows a rainbow). */
+  prev?: WeatherKind;
+  /** Chosen on the parent page: lasts its time and then the random pattern takes over again. */
+  forced?: boolean;
+  /** When the rain last watered the fields. */
+  rainedAt?: number;
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;

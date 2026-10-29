@@ -989,3 +989,133 @@ body:not(.touch) .run-btn {
   color: #fff;
   text-shadow: 0 calc(1 * var(--u)) 0 var(--ink), 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.5);
 }
+
+/* ---- 2D game: chat, pet buttons, weather chip, villager conversations ---- */
+.social {
+  position: absolute;
+  left: calc(2 * var(--u));
+  bottom: calc(3 * var(--u));
+  display: flex;
+  gap: calc(1.5 * var(--u));
+}
+.round.pet-btn {
+  position: relative;
+}
+.round.pet-btn i {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-style: normal;
+  font-weight: 800;
+  font-size: calc(2.6 * var(--u));
+  color: #fff;
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+  white-space: nowrap;
+  display: none;
+}
+body.touch .round.pet-btn i {
+  display: block;
+}
+.chat-log {
+  position: absolute;
+  left: calc(2 * var(--u));
+  bottom: calc(16 * var(--u));
+  width: calc(78 * var(--u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.5 * var(--u));
+  pointer-events: none !important;
+}
+.chat-log.open {
+  width: calc(150 * var(--u));
+}
+.chat-line {
+  background: rgba(43, 36, 25, 0.72);
+  color: #fff;
+  border-radius: calc(2 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
+  font-size: calc(3.6 * var(--u));
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  transition: opacity 0.6s;
+}
+.chat-line b {
+  color: #ffd98a;
+}
+.chat-line.mine b {
+  color: #b8f08a;
+}
+.chat-line.gone {
+  opacity: 0;
+  display: none;
+}
+.chat-box {
+  position: absolute;
+  left: 50%;
+  top: calc(16 * var(--u));
+  transform: translateX(-50%);
+  width: calc(200 * var(--u));
+  background: var(--panel);
+  border: var(--u) solid var(--ink);
+  border-radius: calc(3 * var(--u));
+  box-shadow: 0 var(--u) 0 var(--ink);
+  padding: calc(2 * var(--u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.5 * var(--u));
+}
+.chat-phrases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--u);
+}
+.chat-phrases button {
+  font-size: calc(3.8 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(2 * var(--u));
+}
+.chat-row {
+  display: flex;
+  gap: calc(1.5 * var(--u));
+  align-items: center;
+}
+.chat-row input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.label.bubble.chat {
+  font-size: calc(4 * var(--u));
+  max-width: calc(70 * var(--u));
+}
+.talk-said {
+  font-size: calc(4 * var(--u));
+  font-style: italic;
+  color: #6a5a40;
+  margin: 0 0 var(--u) calc(30 * var(--u));
+}
+.talk-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(1.5 * var(--u));
+}
+.talk-opts button {
+  text-align: left;
+  font-size: calc(4.2 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2.5 * var(--u));
+}
+.talk-opts button.bye {
+  background: var(--panel-dark);
+  color: var(--ink);
+}
+.npc-actions {
+  display: flex;
+  gap: calc(1.5 * var(--u));
+  margin-bottom: calc(2 * var(--u));
+}
+.talk {
+  width: calc(230 * var(--u));
+  max-width: 100%;
+}

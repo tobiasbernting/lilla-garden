@@ -11,7 +11,8 @@ Agreed design (2026-10-24). A 2D pixel top-down farm game in Swedish for one par
 ## Co-op
 - One persistent shared world. Each player on their own device.
 - Character picker ("Vem är du?"), no passwords, max 8 characters, device remembers last pick.
-- Emote wheel (hjärta, skratt, hej, hjälp, titta, sova); names over heads. No text chat.
+- Emote wheel (hjärta, skratt, hej, hjälp, titta, sova); names over heads.
+- 2D (2026-10-29): text chat to everyone in the world (80 characters, ready-made phrases, bubble over the head, last 20 lines for whoever logs in; not saved).
 
 ## World
 - Handmade 64×64 tile map: farmhouse (brevlåda = Katalog, garderob, kista, arbetsbänk, säljlåda), open fields, forest edge (trees/rocks/grass regrow after a few days), pond.
@@ -68,3 +69,9 @@ A Minecraft-looking version of the same game, deployed separately (`lilla-garden
 - Players carry a height (`z`): shared step/gravity/jump physics runs on the client and the server checks each move against the blocks. Animals and villagers stay on the surface and treat steep steps as walls.
 - Dig/place messages: anything digs soft blocks, the pickaxe digs stone and ore (coal, gold, gems). Dirt, sand, gravel, cobblestone (from stone) and planks (from wood) can be placed. Nothing is dug from under trees, buildings or crops.
 - Forests in voxel worlds are thinned so you can walk through them, with mixed oak, birch, dark oak, cherry, spruce and redwood.
+
+## 2D additions (2026-10-29)
+Only the 2D client shows these; the 3D client never sends the new messages and the weather is off in `WORLD_MODE=voxel`.
+- Pets and horses: "Stanna!" makes your pets and horses on your map potter around where they are (they are left behind when you change map); "Vissla" calls them back, fetching pets from any map (not into the cave). A whistled horse follows you around the farm like a pet until told to stay.
+- Villager conversations: a "Prata!" button in the villager window opens a dialogue tree (`shared/src/dialogue.ts`): each villager has their own stories, a question for the player and opinions on the weather; jokes, riddles, "how are you" and the weather are shared. Elsa plays sten, sax, påse. Client-side only.
+- Weather (`shared/src/weather.ts`): one sky for the world, not saved. Kinds drift in a weighted random pattern (sun, cloudy, rain, storm, snow, hail, wind, fog), 0.5–7 real minutes each; snow is likely in winter months and rare in summer. Ice areas get snow instead of rain, the desert only wind. Rain waters every field after a few seconds; after 25 s of snow the ground turns white; sun after rain gives a rainbow. Toasts announce changes; `/admin` can pick the weather.
