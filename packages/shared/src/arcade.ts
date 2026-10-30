@@ -35,3 +35,29 @@ export const MAX_TICKETS_PER_DAY = 300;
 /** Tickets a score gives in Spelhallen (before the daily limit). */
 export const ticketsFor = (score: number): number =>
   score <= 0 ? 0 : Math.max(1, Math.min(MAX_TICKETS_PER_GAME, Math.floor(score / POINTS_PER_TICKET)));
+
+/** A score only counts this long (ms) after the TV or machine was turned on, so it comes from a real game. */
+export const MIN_GAME_MS = 5000;
+/** Finding a cartridge for a game the family already has gives tickets instead. */
+export const SPARE_CART_TICKETS = 20;
+
+/** The games every family's TV comes with; the others are found out in the world or won in Spelhallen. */
+export const TV_GAMES: readonly ArcadeGame[] = ['hen', 'golf'];
+
+/** The game cartridge item for a game. */
+export const cartOf = (game: ArcadeGame): string => `cart_${game}`;
+
+/** Spelhallen's prize counter: what the tickets buy, cheapest first. */
+export const PRIZES: { item: string; tickets: number }[] = [
+  { item: 'lollipop', tickets: 5 },
+  { item: 'polkagris', tickets: 5 },
+  { item: 'plush_hen', tickets: 30 },
+  { item: 'plush_cow', tickets: 40 },
+  { item: 'lava_lamp', tickets: 60 },
+  { item: 'trophy', tickets: 80 },
+  { item: 'neon_sign', tickets: 90 },
+  ...ARCADE_GAMES.filter((g) => !TV_GAMES.includes(g)).map((g) => ({ item: cartOf(g), tickets: 100 })),
+  { item: 'disco_ball', tickets: 120 },
+  { item: 'plush_dragon', tickets: 150 },
+  { item: 'tv', tickets: 200 },
+];

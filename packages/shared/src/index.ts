@@ -22,3 +22,4 @@ export * from './weather.ts';
 export * from './chat.ts';
 export * from './dialogue.ts';
 export * from './arcade.ts';
+export * from './hall.ts';

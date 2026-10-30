@@ -27,7 +27,7 @@ export type Change =
   | { t: 'player'; id: string; player: PlayerState | null }
   | { t: 'day'; day: number }
   | { t: 'toast'; to: string | null; text: string }
-  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria' | 'travel'; id?: number; npc?: string }
+  | { t: 'open'; to: string; ui: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'nameAnimal' | 'npc' | 'cook' | 'paint' | 'pizzeria' | 'travel' | 'arcade' | 'prizes' | 'scores'; id?: number; npc?: string }
   /** Private: the rider boards a bus, a train or the rocket (the client plays the trip). */
   | { t: 'ride'; to: string; via: 'bus' | 'train' | 'rocket'; place: string }
   | { t: 'quests'; quests: Quest[] }
@@ -66,6 +66,10 @@ export type ClientMsg =
   | { t: 'teleport'; to: string }
   | { t: 'ride'; via: 'bus' | 'train'; to: string }
   | { t: 'paint'; pixels: string }
+  /** A minigame run ended (TV or a machine in Spelhallen). */
+  | { t: 'arcade'; game: string; score: number }
+  /** Swap tickets for a prize at Spelhallen's prize counter. */
+  | { t: 'prize'; item: string }
   /** 2D game: tell your pets and horses to stay, or whistle for them. */
   | { t: 'pets'; cmd: 'stay' | 'come' }
   /** 2D game: a chat line to everyone. */

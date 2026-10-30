@@ -105,6 +105,7 @@ export function ensureInterior(world: WorldState): boolean {
   addObject(world, 'chair', INTERIOR.x + 8, INTERIOR.y + 1);
   addObject(world, 'stove', INTERIOR.x + 9, INTERIOR.y);
   addObject(world, 'bookshelf', INTERIOR.x + 2, INTERIOR.y);
+  addObject(world, 'tv', INTERIOR.x + 4, INTERIOR.y);
   addObject(world, 'plant', INTERIOR.x + 9, INTERIOR.y + 4);
   return true;
 }

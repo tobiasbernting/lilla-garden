@@ -31,6 +31,8 @@ import {
   newDay,
   npcState,
   performAction,
+  arcadeScore,
+  buyPrize,
   seasonForDate,
   selectSlot,
   sell,
@@ -390,6 +392,12 @@ export class Game {
         break;
       case 'paint':
         changes = paint(w, pid, String(msg.pixels ?? ''));
+        break;
+      case 'arcade':
+        changes = arcadeScore(this.world, pid, String(msg.game ?? ''), Number(msg.score), this.ctx());
+        break;
+      case 'prize':
+        changes = buyPrize(this.world, pid, String(msg.item ?? ''));
         break;
       case 'quest':
         changes = completeQuest(w, pid, String(msg.id ?? ''));

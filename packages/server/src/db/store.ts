@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, initVoxel, rebuildOccupancy, voxelMode, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, initVoxel, isHallKey, rebuildOccupancy, voxelMode, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -112,6 +112,8 @@ export class PgStore implements Store {
     }
     world.areas = {};
     for (const row of await this.db.select().from(s.areas)) {
+      // Spelhallen is rebuilt from its plan each time, so it always has the latest machines
+      if (isHallKey(row.key)) continue;
       const a = row.data;
       a.players = {};
       a.area = row.key;
@@ -153,10 +155,15 @@ export class PgStore implements Store {
         this.dirtyAreas.add(k);
         console.log(`added the bus stop and station to ${k}`);
       }
+      if (ensureArcadeHall(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`added Spelhallen to ${k}`);
+      }
     }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers
     const before = Object.keys(world.objects).length;
     if (ensureInterior(world)) console.log('added the farmhouse interior to the saved world');
+    if (ensureTv(world)) console.log('put a TV in the farmhouse');
     ensureVillagers(world);
     if (ensureCave(world)) console.log('added the cave to the saved world');
     ensureFarmExits(world);

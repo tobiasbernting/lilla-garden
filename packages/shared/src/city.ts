@@ -23,6 +23,8 @@ export const TRAIN_STATION = { x: 35, y: 7 };
 export const PIZZERIA = { x: 39, y: 21 };
 /** The bath house south of the main street (3×2); its door is below the middle tile. */
 export const BATHHOUSE = { x: 38, y: 37 };
+/** Spelhallen, the arcade, a little further east on the same street (3×2, door below the middle tile). */
+export const ARCADE_HALL = { x: 46, y: 37 };
 /** The bus stop on the sidewalk of the main street. */
 export const BUS_STOP = { x: 37, y: 35 };
 /** The square (path_stone) north-east of the central junction. */
@@ -241,6 +243,8 @@ export function buildCity(world: WorldState): void {
   place('town_well', 40, 27, 1, 1);
   place('bathhouse', BATHHOUSE.x, BATHHOUSE.y, 3, 2);
   for (let y = BATHHOUSE.y + 2; y <= BATHHOUSE.y + 3; y++) for (let x = BATHHOUSE.x; x <= BATHHOUSE.x + 2; x++) set(x, y, 'path_stone');
+  place('arcade_hall', ARCADE_HALL.x, ARCADE_HALL.y, 3, 2);
+  for (let y = ARCADE_HALL.y + 2; y <= ARCADE_HALL.y + 3; y++) for (let x = ARCADE_HALL.x; x <= ARCADE_HALL.x + 2; x++) set(x, y, 'path_stone');
   // the square: plaza tiles must stay stone under the furniture
   for (let y = PLAZA.y0; y <= PLAZA.y1; y++) for (let x = PLAZA.x0; x <= PLAZA.x1; x++) if (!objectAt(world, x, y)) set(x, y, 'path_stone');
   for (const [x, y] of [

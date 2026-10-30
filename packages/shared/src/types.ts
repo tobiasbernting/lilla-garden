@@ -49,7 +49,9 @@ export type Terrain =
   | 'candy' // Godislandet's sugar ground
   | 'choco' // Godislandet's chocolate river
   | 'moon' // moon dust
-  | 'space'; // the starry sky around the moon
+  | 'space' // the starry sky around the moon
+  // Minigames (2026-10-30)
+  | 'carpet'; // Spelhallen's patterned arcade carpet
 
 /** Ground nobody walks on or builds on: water and the like, cliffs, and the sky around the moon. */
 export const WALL_TERRAIN: ReadonlySet<Terrain> = new Set<Terrain>(['water', 'bog', 'lava', 'choco', 'rock', 'sandstone', 'basalt', 'space']);
@@ -110,6 +112,8 @@ export interface ItemDef {
   tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
   paint?: number;
+  /** Game cartridges: the minigame it adds to the family's TV (never kept in the bag). */
+  game?: string;
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -141,7 +145,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores';
   /** A loot table (LOOT in data.ts) rolled when it is broken, dug up or opened. */
   loot?: string;
   /** Gives light at night (client). */
@@ -262,6 +266,22 @@ export interface PlayerState {
   sleeping?: boolean;
   /** Unlocked achievement ids. */
   achievements: string[];
+  /** Minigames: best scores, tickets and the TV games this player found. */
+  arcade?: ArcadeState;
+}
+
+export interface ArcadeState {
+  /** Best score per game. */
+  best: Record<string, number>;
+  /** Tickets to spend at Spelhallen's prize counter. */
+  tickets: number;
+  /** TV games this player found or won (the family's TV has everyone's). */
+  games: string[];
+  /** Tickets won on `day` (a daily limit keeps the prizes special). */
+  day: number;
+  won: number;
+  /** The TV or machine last opened (wall clock), so scores come from a real game. */
+  open?: { where: 'tv' | 'hall'; game?: string; at: number; last?: number };
 }
 
 export interface Achievement {
