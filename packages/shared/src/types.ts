@@ -34,8 +34,8 @@ export type Terrain =
   | 'sidewalk'
   | 'crossing' // zebra crossing
   | 'rail'
-  | 'dirt' // bare earth (3D game: a dug or placed dirt block on top)
-  | 'stone' // bare rock (3D game: mountains, dug rock)
+  | 'dirt' // bare earth
+  | 'stone' // bare rock
   // The wider world (2026-10-29): biome grounds, and ground nobody walks on (see WALL_TERRAIN)
   | 'rock' // a cliff, or the rock around a cave
   | 'sandstone' // red cliffs (the desert and Dinodalen)
@@ -106,8 +106,6 @@ export interface ItemDef {
   species?: string;
   /** Vehicles: colour variant of the bought vehicle. */
   variant?: number;
-  /** 3D game: the block placed when building with this item. */
-  block?: 'dirt' | 'sand' | 'gravel' | 'cobble' | 'planks';
   /** For tools. */
   tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
@@ -240,8 +238,6 @@ export interface PlayerState {
   fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
   /** Lifetime counters for the Gårdsbok (harvest, chop, …). */
   stats: Record<string, number>;
-  /** 3D game: height of the feet in blocks (undefined = standing on the ground). */
-  z?: number;
   /** Which map the player is on: 'farm', 'dungeon' or an area key 'a:x,y'. */
   area: string;
   /** Area keys the player has been to (for the world map and teleport). */
@@ -442,8 +438,6 @@ export interface WorldState {
   dungeon?: WorldState;
   /** Loaded overworld areas by key (farm world only). */
   areas?: Record<string, WorldState>;
-  /** 3D game: the block layer (see voxel.ts). */
-  voxel?: VoxelData;
   /** 2D game: today's weather, the same everywhere in the world (not persisted). */
   weather?: WeatherState;
   /** Dungeon: seed, size, whether the boss is beaten. */
@@ -488,10 +482,3 @@ export interface WeatherState {
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;
-
-/** 3D game: generated column heights (MAP_W × MAP_H) and every block players changed ("x,y,h" → block). */
-export interface VoxelData {
-  heights: number[];
-  edits: Record<string, number>;
-  seed: number;
-}

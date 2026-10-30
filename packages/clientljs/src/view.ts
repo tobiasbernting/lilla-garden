@@ -877,7 +877,7 @@ export class View implements HudTarget {
     if (this.roofsDirty) {
       this.roofsDirty = false;
       releaseRoofs(this.roofs);
-      this.roofs = world.voxel || this.cave ? [] : buildRoofs(world, myTile);
+      this.roofs = this.cave ? [] : buildRoofs(world, myTile);
     }
     for (const r of this.roofs) {
       const target = r.tiles.has(myTile) ? 0 : 1;

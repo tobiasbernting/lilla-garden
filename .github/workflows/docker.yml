@@ -15,8 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE: ghcr.io/tobiasbernting/lilla-garden
-      # also tagged for the gard-ljs trial farm
-      ALIAS: ghcr.io/tobiasbernting/lilla-garden-ljs
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -35,6 +33,5 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.ALIAS }}:latest
           cache-from: type=gha,scope=clientljs
           cache-to: type=gha,mode=max,scope=clientljs

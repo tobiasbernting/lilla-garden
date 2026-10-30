@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  // The HUD, menus, networking, sounds and pixel art come from packages/client (the Phaser client); the view is LittleJS
+  // The HUD, menus, networking, sounds and pixel art come from packages/client; the view is LittleJS
   resolve: { alias: { '@v1': fileURLToPath(new URL('../client/src', import.meta.url)) } },
   server: {
     host: true,

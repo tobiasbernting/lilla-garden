@@ -3,8 +3,8 @@
 
 import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, LOOT, LOOT_REFILL_DAYS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
-import { AREA_GEN, BIOME_EMOJI, BIOME_NAMES, DISCOVERABLE, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, isBiome, placeName, spawnWildAnimals } from './biomes.ts';
-import { caveKey, countRenewables, entranceFront, generateCave, isCaveKey, isUnderground, parseCaveKey, regrow, themeOfEntrance } from './caves.ts';
+import { BIOME_EMOJI, BIOME_NAMES, DISCOVERABLE, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, isBiome, placeName, spawnWildAnimals } from './biomes.ts';
+import { caveKey, entranceFront, generateCave, isCaveKey, isUnderground, parseCaveKey, regrow, themeOfEntrance } from './caves.ts';
 import { MOON_KEY, MOON_ROCKET, SPACEPORT_KEY, BASE_ROCKET, generateMoon, isMoonKey, rocketFront } from './space.ts';
 import { landmarkFronts, reachableFrom } from './worldgen.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
@@ -13,13 +13,12 @@ import { INDOOR_EXIT, familyBest, familyGames, generateHall, hallDoorTile, hallK
 import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
-import { mulberry32, randInt } from './rng.ts';
+import { randInt } from './rng.ts';
 import { PAINTED_SELL, isValidPainting } from './paint.ts';
 import { WALL_KINDS, findRooms, type Room } from './rooms.ts';
 import { ACHIEVEMENT_TEXT, DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
 import type { Change, SlotRef } from './protocol.ts';
 import { tickWeather } from './weather.ts';
-import { DIG_REACH, EYE_HEIGHT, PLAYER_HEIGHT, VB, VH, initVoxel, thinForest, voxelMode, blockAt, blockTerrain, bodyFree, cellBlock, columnTop, setBlock, standHeight, steepTile, type VoxelBlock } from './voxel.ts';
 import { WALL_TERRAIN, isFishWater } from './types.ts';
 import type {
   AnimalState,
@@ -176,7 +175,6 @@ export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boo
   if (WALL_TERRAIN.has(t) || t === 'pool' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields (and out of the pool)
   if (world.crops[key(tx, ty)]) return true;
   if (npcAt(world, tx, ty) || portalAt(tx, ty)) return true;
-  if (steepTile(world, tx, ty)) return true; // 3D game: no climbing cliffs or falling into holes
   const obj = objectAt(world, tx, ty);
   if (!obj) return false;
   const def = objectDef(obj.kind);
@@ -468,8 +466,6 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   const ptx = tileOf(p.x);
   const pty = tileOf(p.y);
   if (Math.abs(tx - ptx) > REACH || Math.abs(ty - pty) > REACH) return out;
-  // 3D game: the ground of a tile far above or below you (from a tunnel, up on a cliff) is out of reach
-  if (world.voxel && p.z !== undefined && Math.abs(columnTop(world, tx, ty) - p.z) > 2.5) return out;
   if (p.riding !== undefined) {
     dismount(world, p, out);
     return out;
@@ -1142,8 +1138,8 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     if (odef.interact === 'chest') extra.items = makeInventory(CHEST_SIZE);
     if (odef.interact === 'feed') extra.items = makeInventory(1);
     if (held.data !== undefined) extra.data = held.data;
-    // 2D game: remember which tiles were indoors, to tell when this piece closes a new room
-    const indoorsBefore = WALL_KINDS.has(def.places) && !voxelMode() ? new Set(findRooms(world).flatMap((r) => r.tiles)) : null;
+    // remember which tiles were indoors, to tell when this piece closes a new room
+    const indoorsBefore = WALL_KINDS.has(def.places) ? new Set(findRooms(world).flatMap((r) => r.tiles)) : null;
     const obj = addObject(world, def.places, tx, ty, extra);
     if (!obj) {
       out.push(toast(p.id, T.cantPlaceHere));
@@ -1400,13 +1396,9 @@ export function setOnline(world: WorldState, playerId: string, online: boolean):
   return [playerChange(p)];
 }
 
-export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean, z?: number): void {
+export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean): void {
   const p = world.players[playerId];
   if (!p || !Number.isFinite(x) || !Number.isFinite(y) || p.sleeping) return;
-  if (world.voxel) {
-    applyMoveVoxel(world, p, x, y, z, facing, moving);
-    return;
-  }
   if (p.moveLock && p.moveLock > 0) {
     // just arrived on another map: the client's old positions are meaningless; accept only nearby ones
     if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
@@ -1443,181 +1435,6 @@ export function applyMove(world: WorldState, playerId: string, x: number, y: num
       a.waitMs = 1500;
     }
   }
-}
-
-/**
- * 3D game: the tile rules (water, trees, houses, fences, villagers…) apply to a body standing at about
- * the height of that tile's ground, not to someone in a tunnel below or up on a pillar above.
- */
-export function blockedByTiles(world: WorldState, px: number, py: number, z: number): boolean {
-  const hw = PLAYER_HALF_W;
-  const hh = PLAYER_HALF_H;
-  for (let ty = tileOf(py - hh); ty <= tileOf(py + hh - 0.01); ty++)
-    for (let tx = tileOf(px - hw); tx <= tileOf(px + hw - 0.01); tx++) {
-      if (!inBounds(tx, ty)) return true;
-      const top = columnTop(world, tx, ty);
-      if (z + PLAYER_HEIGHT <= top - 0.2 || z >= top + tileHeight(world, tx, ty)) continue;
-      if (isFarm(world) && portalAt(tx, ty)) continue;
-      if (isSolidForPlayer(world, tx, ty)) return true;
-    }
-  return false;
-}
-
-/** How tall (blocks) whatever makes a tile solid stands: you can only get past it by being higher. */
-function tileHeight(world: WorldState, tx: number, ty: number): number {
-  const o = objectAt(world, tx, ty);
-  if (!o) return 1; // water, a villager
-  if (o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'cactus' || o.kind.startsWith('wall') || o.kind === 'window') return 12;
-  const d = objectDef(o.kind);
-  return d.w > 1 || d.h > 1 ? 12 : 1.5; // buildings / fences, chests, rocks
-}
-
-/** 3D game: accept a move that ends somewhere free, close to where the player was. */
-function applyMoveVoxel(world: WorldState, p: PlayerState, x: number, y: number, z: number | undefined, facing: Facing, moving: boolean): void {
-  if (p.moveLock && p.moveLock > 0) {
-    if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
-    delete p.moveLock;
-  }
-  const portal = isFarm(world) ? PORTALS.find((pt) => Math.hypot(p.x - (pt.from.x + 0.5) * TILE, p.y - (pt.from.y + 0.5) * TILE) <= 3 * TILE && Math.hypot(x - (pt.to.x + 0.5) * TILE, y - (pt.to.y + 0.5) * TILE) <= 3 * TILE) : undefined;
-  const zz = z !== undefined && Number.isFinite(z) ? z : standHeight(world, x, y);
-  const close = portal || (Math.hypot(x - p.x, y - p.y) <= 2 * TILE && Math.abs(zz - (p.z ?? zz)) <= 8);
-  if (close && bodyFree(world, x, y, zz) && !blockedByTiles(world, x, y, zz)) {
-    if ((x !== p.x || y !== p.y) && p.fishing) delete p.fishing;
-    p.x = x;
-    p.y = y;
-    p.z = zz;
-  } else if (p.z === undefined || !bodyFree(world, p.x, p.y, p.z)) p.z = standHeight(world, p.x, p.y);
-  p.facing = facing;
-  p.moving = moving;
-  if (applyPortal(p, world)) {
-    p.z = standHeight(world, p.x, p.y);
-    if (p.riding !== undefined) {
-      const a = world.animals[p.riding];
-      delete p.riding;
-      if (a) {
-        a.x = x;
-        a.y = y;
-        a.moving = false;
-        a.waitMs = 1500;
-      }
-    }
-  }
-}
-
-/** What digging a block gives you (nothing for snow). */
-const BLOCK_DROP: Partial<Record<VoxelBlock, string>> = {
-  dirt: 'dirt',
-  sand: 'sand',
-  gravel: 'gravel',
-  stone: 'stone',
-  cobble: 'stone',
-  coal_ore: 'coal',
-  gold_ore: 'gold',
-  crystal_ore: 'gem',
-  planks: 'wood',
-};
-/** Blocks that need the pickaxe (everything else digs with any tool, or bare hands). */
-const HARD = new Set<VoxelBlock>(['stone', 'cobble', 'coal_ore', 'gold_ore', 'crystal_ore']);
-
-const eyeDistance = (p: PlayerState, x: number, y: number, h: number): number =>
-  Math.hypot(x + 0.5 - p.x / TILE, y + 0.5 - p.y / TILE, h + 0.5 - ((p.z ?? 0) + EYE_HEIGHT));
-
-/** Something living stands in the cell (other players' bodies, animals and villagers on their tile's ground). */
-function cellTaken(world: WorldState, x: number, y: number, h: number, builder: PlayerState): boolean {
-  for (const q of Object.values(world.players)) {
-    if (!q.online || q.z === undefined || q === builder) continue;
-    if (Math.abs(q.x / TILE - (x + 0.5)) < 0.5 + 0.3 && Math.abs(q.y / TILE - (y + 0.5)) < 0.5 + 0.3 && h + 1 > q.z && h < q.z + PLAYER_HEIGHT) return true;
-  }
-  const top = columnTop(world, x, y);
-  if ((h === top || h === top + 1) && (animalAtTile(world, x, y) || npcAt(world, x, y))) return true;
-  return false;
-}
-const animalAtTile = (world: WorldState, tx: number, ty: number): AnimalState | undefined => {
-  for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return a;
-  return undefined;
-};
-
-/** Sets a block and keeps the tile's terrain describing whatever is on top now. */
-function changeBlock(world: WorldState, x: number, y: number, h: number, b: number, out: Change[]): void {
-  const topChanged = setBlock(world, x, y, h, b);
-  out.push({ t: 'block', x, y, h, b });
-  if (topChanged) {
-    const top = columnTop(world, x, y);
-    const below = top > 0 ? cellBlock(world, x, y, top - 1) : 'stone';
-    const terrain = blockTerrain(VB[below]);
-    world.terrain[tileIndex(x, y)] = terrain;
-    out.push({ t: 'terrain', x, y, terrain });
-  }
-}
-
-/** 3D game: dig out one block. The pickaxe digs everything; any tool or bare hands dig soft blocks. */
-export function digBlock(world: WorldState, playerId: string, x: number, y: number, h: number, ctx: SimCtx): Change[] {
-  const p = world.players[playerId];
-  const out: Change[] = [];
-  if (!world.voxel || !p || !inBounds(x, y) || h <= 0 || h >= VH || p.sleeping || p.riding !== undefined) return out;
-  if (eyeDistance(p, x, y, h) > DIG_REACH + 1.5) return out; // (+ slack: the server sees you a moment late)
-  const raw = blockAt(world, x, y, h);
-  if (raw === VB.air || raw === VB.bedrock) return out;
-  const top = columnTop(world, x, y);
-  const onTop = h === top - 1;
-  if (onTop && world.terrain[tileIndex(x, y)] === 'water') return out;
-  const on = onTop ? objectAt(world, x, y) : undefined;
-  if (on && objectDef(on.kind).flat && !objectDef(on.kind).interact) {
-    // a tuft, a flower, a shell lying on top: it goes first (and gives what it gives)
-    breakObject(world, p, on, ctx, out);
-  } else if (onTop && (on || world.crops[key(x, y)])) {
-    out.push(toast(p.id, T.digOccupied));
-    return out;
-  }
-  const kind = cellBlock(world, x, y, h);
-  const tool = heldItem(p) ? item(heldItem(p)!.item).tool : undefined;
-  if (HARD.has(kind) && tool !== 'pick') {
-    out.push(toast(p.id, fmt(T.needTool, { tool: itemName(toolItemId('pick')) })));
-    return out;
-  }
-  changeBlock(world, x, y, h, VB.air, out);
-  const drop = BLOCK_DROP[kind];
-  if (drop) giveItems(world, p, drop, 1, out);
-  bump(p, 'dig', 1, out);
-  out.push(fx(x, y, 'chop'), playerChange(p));
-  return out;
-}
-
-/** 3D game: build a block from the held item (dirt, sand, gravel, stone, wood) into an empty cell. */
-export function placeBlock(world: WorldState, playerId: string, x: number, y: number, h: number): Change[] {
-  const p = world.players[playerId];
-  const out: Change[] = [];
-  if (!world.voxel || !p || !inBounds(x, y) || h <= 0 || h >= VH || p.sleeping || p.riding !== undefined) return out;
-  const held = heldItem(p);
-  const name = held ? item(held.item).block : undefined;
-  if (!held || !name) return out;
-  if (eyeDistance(p, x, y, h) > DIG_REACH + 1.5) return out; // (+ slack: the server sees you a moment late)
-  if (blockAt(world, x, y, h) !== VB.air) return out;
-  // it has to lean on something
-  const touches = [
-    [1, 0, 0],
-    [-1, 0, 0],
-    [0, 1, 0],
-    [0, -1, 0],
-    [0, 0, 1],
-    [0, 0, -1],
-  ].some(([dx, dy, dh]) => blockAt(world, x + dx!, y + dy!, h + dh!) !== VB.air);
-  if (!touches) return out;
-  const top = columnTop(world, x, y);
-  // never bury things standing on the tile, nor water, the swamp, lava or chocolate
-  const ground = world.terrain[tileIndex(x, y)]!;
-  const thingThere = objectAt(world, x, y) || world.crops[key(x, y)] || ground === 'water' || ground === 'pool' || ground === 'bog' || ground === 'lava' || ground === 'choco';
-  if ((thingThere && h >= top && h <= top + 2) || cellTaken(world, x, y, h, p)) {
-    out.push(toast(p.id, T.cantPlaceHere));
-    return out;
-  }
-  changeBlock(world, x, y, h, VB[name], out);
-  // built under your own feet (jumping up a pillar, like in Minecraft): you end up on top of it
-  if (p.z !== undefined && !bodyFree(world, p.x, p.y, p.z)) p.z = standHeight(world, p.x, p.y);
-  takeFromSlot(p.inventory, p.selected, 1);
-  bump(p, 'build', 1, out);
-  out.push(playerChange(p));
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1711,7 +1528,6 @@ const isSolidForNpc = (world: WorldState, tx: number, ty: number): boolean => {
   const t = world.terrain[tileIndex(tx, ty)];
   if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true;
   if (world.crops[key(tx, ty)] || portalAt(tx, ty)) return true;
-  if (steepTile(world, tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
   return !!obj && objectDef(obj.kind).solid;
 };
@@ -1861,16 +1677,8 @@ const linkToFarm = (child: WorldState, farm: WorldState): void => {
   Object.defineProperty(child, 'farm', { value: farm, enumerable: false, writable: true, configurable: true });
 };
 
-/** Generates the overworld map at (ax, ay), with its block layer in the 3D game. */
-export function buildArea(ax: number, ay: number): WorldState {
-  const a = generateArea(ax, ay);
-  if (voxelMode()) {
-    const seed = (ax * 7919 + ay * 104729 + 1337) >>> 0;
-    thinForest(a, mulberry32(seed));
-    initVoxel(a, seed);
-  }
-  return a;
-}
+/** Generates the overworld map at (ax, ay). */
+export const buildArea = (ax: number, ay: number): WorldState => generateArea(ax, ay);
 
 /** Loads (or generates) an overworld area. The server may pre-fill world.areas from the database. */
 export function getArea(world: WorldState, keyStr: string): WorldState | null {
@@ -2773,7 +2581,7 @@ function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: 
 export function tagArea(changes: Change[], keyStr: string): Change[] {
   if (keyStr === 'farm') return changes;
   for (const c of changes) {
-    if (c.t === 'terrain' || c.t === 'block' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop' || c.t === 'fx') c.area = keyStr;
+    if (c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop' || c.t === 'fx') c.area = keyStr;
   }
   return changes;
 }

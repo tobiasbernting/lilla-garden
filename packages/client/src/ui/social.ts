@@ -34,7 +34,7 @@ export class Chat {
       phrases.append(b);
     }
     this.box = h('div', { class: 'chat-box', style: { display: 'none' } }, phrases, h('div', { class: 'chat-row' }, this.input, send, close));
-    // keep keys away from the game while typing (Phaser listens on window)
+    // keep keys away from the game while typing (it listens on window)
     for (const ev of ['keydown', 'keyup', 'keypress'] as const)
       this.input.addEventListener(ev, (e) => {
         e.stopPropagation();
