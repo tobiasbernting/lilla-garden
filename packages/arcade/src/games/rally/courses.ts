@@ -453,7 +453,7 @@ const BEACH_COURSE: CourseDef = {
   },
   layout: layout({
     // the open sea to the south
-    lake: { cx: 0, cz: -170 * KB - 620, rx: 2200, rz: 600, rot: 0 },
+    lake: { cx: 0, cz: -170 * KB - 604, rx: 2200, rz: 600, rot: 0 },
     lakeKind: 'sea',
     waterY: 0.5,
     forests: [

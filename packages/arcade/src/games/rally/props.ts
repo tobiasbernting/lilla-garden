@@ -486,7 +486,7 @@ export function buildThemeScenery(track: Track, terrain: Terrain, course: Course
     // the lighthouse on the point, beach huts and umbrellas along the sand
     if (L.lake) {
       const lx = track.minX + 30;
-      const lz = L.lake.cz + L.lake.rz + 18;
+      const lz = L.lake.cz + L.lake.rz + 6;
       statAt(keep(lighthouse()), lx, lz, 0, 6, 0.3);
       const beamGeo = keep(new THREE.ConeGeometry(4, 60, 12, 1, true));
       beamGeo.translate(0, -30, 0);
@@ -499,14 +499,14 @@ export function buildThemeScenery(track: Track, terrain: Terrain, course: Course
     const hutCols = ['#2f6fe0', '#e8412c', '#f4c20d', '#2fa84f', '#f06ba8', '#18b7c9'];
     for (let k = 0; k < 16; k++) {
       const x = track.minX - 20 + ((track.maxX - track.minX + 40) * (k + 0.3 + r() * 0.4)) / 16;
-      const z = L.lake ? L.lake.cz + L.lake.rz + 26 + r() * 10 : 0;
+      const z = L.lake ? L.lake.cz + L.lake.rz + 58 + r() * 14 : 0;
       if (blocked(x, z, 16)) continue;
       statAt(beachHut(hutCols[k % hutCols.length]!), x, z, Math.PI + (r() - 0.5) * 0.3, 3);
     }
     for (let k = 0; k < 22; k++) {
       const x = track.minX + (track.maxX - track.minX) * r();
-      const z = L.lake ? L.lake.cz + L.lake.rz + 8 + r() * 14 : 0;
-      if (blocked(x, z, 12)) continue;
+      const z = L.lake ? L.lake.cz + L.lake.rz + 2 + r() * 6 : 0;
+      if (terrain.roadDist(x, z) < 12) continue;
       statAt(umbrella(hutCols[k % hutCols.length]!, '#f4f4f0'), x, z, r() * 6, 1.2, 0.1);
     }
   } else if (set === 'city') {

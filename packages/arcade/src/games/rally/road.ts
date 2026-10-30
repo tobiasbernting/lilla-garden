@@ -376,7 +376,8 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
   const line = new THREE.Mesh(lineGeo, lineMat);
   const p0 = t.point(0, 0);
   line.position.set(p0.x, p0.y + 0.01, p0.z);
-  line.rotation.y = t.heading(0) + Math.PI / 2;
+  // the long side of the plane (its x) across the road: x turns to the left normal at the heading
+  line.rotation.y = t.heading(0);
   line.scale.set(t.hw[0]! * 2, 1, 1.8);
   line.receiveShadow = shadows;
   group.add(line);

@@ -1009,7 +1009,7 @@ const rally = (ctx: GameContext): GameInstance => {
       }
       if (left <= 3 && phase === 'intro') {
         phase = 'count';
-        phaseT = 3 - Math.max(0, left);
+        phaseT = 3 - left;
       }
       if (phase === 'count') phaseT = Math.max(phaseT - dt, 3 - left);
     }

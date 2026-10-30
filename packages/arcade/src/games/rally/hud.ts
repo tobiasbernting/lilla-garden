@@ -104,7 +104,7 @@ const CSS = `
 .rl-result td.r { text-align: right; }
 .rl-roam { display: none; font-size: calc(20px * var(--s)); font-weight: 900; line-height: 1.35; }
 .rl-roam.show { display: block; }
-.rl-btns { position: absolute; right: max(calc(12px * var(--s)), env(safe-area-inset-right)); top: calc(226px * var(--s)); display: flex; flex-direction: column; gap: calc(8px * var(--s)); }
+.rl-btns { position: absolute; right: max(calc(12px * var(--s)), env(safe-area-inset-right)); top: calc(226px * var(--s)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(8px * var(--s)); }
 .rl-btn { pointer-events: auto; border: 2px solid rgba(255,255,255,0.5); background: rgba(16, 20, 34, 0.6); color: #fff; border-radius: 999px;
   font: 900 calc(16px * var(--s)) 'Nunito', system-ui, sans-serif; padding: calc(6px * var(--s)) calc(12px * var(--s)); display: none; cursor: pointer; }
 .rl-btn.show { display: block; }
