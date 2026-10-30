@@ -7,7 +7,7 @@
 // race online with the family, a time trial against your own ghost, or a free drive round the farm
 // collecting coins. Without options it plays the arcade race exactly as it always did.
 import * as THREE from 'three';
-import { NITRO_SECONDS, ROAM_COIN_KR, cleanRules, defaultRules, isRallyCourse, newCar, raceMedal, racePrize, type CarSnap, type GarageCar, type RaceResultLine, type RoomInfo } from '@lilla-garden/shared';
+import { NITRO_SECONDS, RACE_DNF_PRIZE, ROAM_COIN_KR, cleanRules, defaultRules, isRallyCourse, newCar, raceMedal, racePrize, type CarSnap, type GarageCar, type RaceResultLine, type RoomInfo } from '@lilla-garden/shared';
 import { Loop } from '../../kit.ts';
 import type { GameContext, GameInstance } from '../../types.ts';
 import { Driver, steerTo } from './ai.ts';
@@ -629,6 +629,8 @@ const rally = (ctx: GameContext): GameInstance => {
     }
     if (roam) {
       unsubs.push(
+        // the garage maps the server's "went home" to onLeft
+        n.onLeft((id) => removeRemote(id)),
         n.onRoamPeers((peers) => {
           const ids = new Set(peers.map((p) => p.id));
           for (const id of [...remotes.keys()]) if (!ids.has(id)) removeRemote(id);
@@ -1542,8 +1544,8 @@ const rally = (ctx: GameContext): GameInstance => {
         sc = finishPlace > 0 ? Math.round(3000 + 12000 * clamp((track.idealLap * LAPS * 1.6 - finishTime) / (track.idealLap * LAPS * 0.56), 0, 1) ** 2) : 1200;
         detail = finishPlace > 0 ? `Tidskörning · ${fmtTime(finishTime)}${medalTxt}` : 'Tidskörning · ej i mål';
       } else {
-        const pl = finishPlace > 0 ? finishPlace : total;
-        detail += ` · +${racePrize(rules, pl, total)} kr${medalTxt}`;
+        // the server pays the same formula; not finishing pays the small taking-part prize
+        detail += ` · +${finishPlace > 0 ? racePrize(rules, finishPlace, total) : RACE_DNF_PRIZE} kr${medalTxt}`;
       }
       sc += styleBonus();
       opts?.onDone?.({ place: trial ? 1 : finishPlace > 0 ? finishPlace : total, n: trial ? 1 : total, time: ms, damage: Math.round(me.damage), coins: 0 });

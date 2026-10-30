@@ -270,10 +270,10 @@ export interface RallyCourseDef {
 
 export const RALLY_COURSE_DEFS: Record<RallyCourse, RallyCourseDef> = {
   farm: { id: 'farm', prize: 1.0, surface: 'asphalt', gold: 62, emoji: '🚜', color: '#e8412c' },
-  forest: { id: 'forest', prize: 1.15, surface: 'gravel', gold: 58, emoji: '🌲', color: '#2fa84f' },
-  ice: { id: 'ice', prize: 1.25, surface: 'snow', gold: 55, emoji: '❄️', color: '#5fb7ff' },
-  beach: { id: 'beach', prize: 1.1, surface: 'sand', gold: 56, emoji: '🏖️', color: '#f4c20d' },
-  city: { id: 'city', prize: 1.3, surface: 'asphalt', gold: 60, emoji: '🌃', color: '#8a4fd8' },
+  forest: { id: 'forest', prize: 1.15, surface: 'gravel', gold: 70, emoji: '🌲', color: '#2fa84f' },
+  ice: { id: 'ice', prize: 1.25, surface: 'snow', gold: 71, emoji: '❄️', color: '#5fb7ff' },
+  beach: { id: 'beach', prize: 1.1, surface: 'sand', gold: 64, emoji: '🏖️', color: '#f4c20d' },
+  city: { id: 'city', prize: 1.3, surface: 'asphalt', gold: 55, emoji: '🌃', color: '#8a4fd8' },
 };
 
 export const RALLY_TIMES = ['day', 'sunset', 'night'] as const;
@@ -337,10 +337,13 @@ export function cleanRules(r: unknown): RaceRules {
 // Money
 // ---------------------------------------------------------------------------
 
-/** kr for finishing a race in `place` of `n` cars (humans and AI). Everyone who finishes gets something. */
+/**
+ * kr for finishing a race in `place` of `n` cars (humans and AI). Everyone who finishes gets something.
+ * Alone on the track (a time trial, or a race with nobody else) pays like a practice run.
+ */
 export function racePrize(rules: RaceRules, place: number, n: number): number {
   const byPlace = [200, 140, 100, 70, 50, 40, 35, 30];
-  const base = byPlace[Math.max(0, Math.min(byPlace.length - 1, place - 1))]!;
+  const base = n <= 1 ? 50 : byPlace[Math.max(0, Math.min(byPlace.length - 1, place - 1))]!;
   const laps = Math.max(0.6, Math.min(1.6, rules.laps / 3));
   const diff = rules.difficulty === 'easy' ? 0.8 : rules.difficulty === 'hard' ? 1.25 : 1;
   const dmg = rules.damage ? 1.25 : 1;

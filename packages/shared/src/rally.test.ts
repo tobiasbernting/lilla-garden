@@ -205,7 +205,7 @@ describe('races', () => {
   it('pays a solo race, keeps the best time, gives a medal and damage only with damage on', () => {
     const { world, p } = setup(0);
     const rules = { ...defaultRules(), course: 'forest' as const, laps: 1, damage: false };
-    const t1 = 70_000;
+    const t1 = 82_000;
     const ch = raceSolo(world, p.id, rules, 1, 4, t1, 55, ctx);
     const prize = racePrize(cleanRules(rules), 1, 4);
     expect(p.coins).toBe(prize);
@@ -224,22 +224,26 @@ describe('races', () => {
     expect(car.damage).toBe(55);
     expect(car.wins).toBe(1);
     // faster: a new record
-    const ch3 = raceSolo(world, p.id, rules, 2, 4, 60_000, 0, ctx);
-    expect(garageOf(p).best['forest:1']).toBe(60_000);
-    expect(toasts(ch3).some((t) => t.includes(fmtRaceTime(60_000)))).toBe(true);
+    const ch3 = raceSolo(world, p.id, rules, 2, 4, 70_000, 0, ctx);
+    expect(garageOf(p).best['forest:1']).toBe(70_000);
+    expect(toasts(ch3).some((t) => t.includes(fmtRaceTime(70_000)))).toBe(true);
     expect(fmtRaceTime(62_345)).toBe('1:02.3');
   });
 
-  it('clamps whatever a client reports', () => {
+  it('clamps whatever a client reports, and a time under the minimum means not finished', () => {
     const { world, p } = setup(0);
     raceSolo(world, p.id, { junk: true }, 0, 99, 5, 500, ctx);
-    // place 1 of 8 (n capped), default rules (no damage)
-    expect(p.coins).toBe(racePrize(defaultRules(), 1, 8));
+    // the game sends 0 (or anything tiny) when the player never crossed the line: the small prize, no best time
+    expect(p.coins).toBe(RACE_DNF_PRIZE);
     expect(activeCar(p).damage).toBe(0);
-    expect(garageOf(p).best['farm:3']).toBe(10_000);
+    expect(garageOf(p).best['farm:3']).toBeUndefined();
+    // place 1 of 8 (n capped), default rules (no damage)
+    raceSolo(world, p.id, { junk: true }, 0, 99, 12_000, 500, ctx);
+    expect(p.coins).toBe(RACE_DNF_PRIZE + racePrize(defaultRules(), 1, 8));
+    expect(garageOf(p).best['farm:3']).toBe(12_000);
     raceSolo(world, p.id, { ...defaultRules(), damage: true }, 'x', 'y', Number.NaN, 500, ctx);
     expect(activeCar(p).damage).toBe(100);
-    expect(garageOf(p).best['farm:3']).toBe(10_000);
+    expect(garageOf(p).best['farm:3']).toBe(12_000);
   });
 
   it('orders an online race by time, the ones who did not finish last with the small prize', () => {

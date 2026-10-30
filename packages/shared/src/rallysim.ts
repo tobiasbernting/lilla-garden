@@ -342,7 +342,9 @@ export function raceSolo(world: WorldState, pid: string, rules: unknown, place: 
   const cars = clamp(Math.round(num(n, 1)), 1, MAX_CARS_ON_TRACK);
   const pl = clamp(Math.round(num(place, cars)), 1, cars);
   const out: Change[] = [];
-  const res = bookRace(p, activeCar(p), r, pl, cars, clampTime(time), clampDamage(damage), out);
+  // a time under the minimum (the game sends 0) means the player never crossed the line
+  const ms = num(time, 0) < RACE_MIN_MS ? null : clampTime(time);
+  const res = bookRace(p, activeCar(p), r, pl, cars, ms, clampDamage(damage), out);
   out.push(toast(p.id, res.text), playerChange(p));
   return out;
 }
