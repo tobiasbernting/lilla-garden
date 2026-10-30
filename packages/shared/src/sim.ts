@@ -1951,8 +1951,8 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
   }
   if (target !== farm) out.push({ t: 'areaData', to: p.id, key: keyStr, world: target });
   out.push(playerChange(p));
-  // the first time somewhere: a cheer for a new kind of place, else a hello (caves greet you themselves)
-  if (firstVisit && keyStr !== 'farm' && !discoverBiome(farm, p, target, out) && !isCaveKey(keyStr)) out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })));
+  // the first time somewhere: a cheer for a new kind of place, else a hello (caves and buildings greet you themselves)
+  if (firstVisit && keyStr !== 'farm' && !discoverBiome(farm, p, target, out) && !isCaveKey(keyStr) && !isIndoorKey(keyStr)) out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })));
   if (firstVisit && keyStr !== 'farm') out.push(fx(tx, ty, 'sparkle'));
   return true;
 }

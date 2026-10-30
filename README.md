@@ -27,6 +27,11 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - Gräv upp skatter där det är ett kryss, dansa i älvringar, fånga dinosaurier och gelébjörnar med lasso, kläck ett
   drakägg – och åk raket till månen (månost, stjärnkristaller, rymdvarelser och ett kraschat ufo).
 - Gör souvenirer av fynden: kristallampa, svamplampa och ett dinosaurieskelett. Nya kläder finns i skattkistorna.
+- Minispel på TV:n i stugan och i Spelhallen i varje stad: Rallyt (3D-racing), Snöbollskriget (3D-skjutspel med
+  snöbollar), Minigolfen (3D), Hönan Hilda (plattformsspel i gammal grön handkonsol-stil), Dansbanan (rytmspel i
+  neondisco) och Stjärnstorm (rymdskjutspel i glödande vektorgrafik). Familjens topplista per spel; i Spelhallen
+  vinner man biljetter att byta mot gosedjur, lampor, pokaler och nya TV-spel. Fler spelkassetter finns i grottornas
+  skattkistor och i ufot på månen.
 
 ## Develop
 
@@ -83,6 +88,9 @@ Environment:
   also home of the HTML menus, HUD, networking, sounds and generated pixel art all the clients share
 - `packages/client3d` – v2: Three.js client that draws the same world as Minecraft-style blocks. Reuses the 2D
   client's networking, state, HUD, menus and pixel art (imported via the `@v1/*` alias); only the view is new.
+- `packages/arcade` – the minigames and the overlay they run in (title card, pause, results, one controller for
+  keyboard, gamepad and touch). Each game is loaded only when played. `pnpm --filter @lilla-garden/arcade lab`
+  opens a lab page that plays any game without the server (`?play=rally`, `?game=golf`, `?tv`, `&touch=1`).
 
 ## Controls
 

@@ -916,6 +916,20 @@ export const HELP: HelpTopic[] = [
     ],
   },
   {
+    id: 'arcade',
+    emoji: '🕹️',
+    title: 'TV-spel och Spelhallen',
+    intro: 'Sex minispel finns att spela: Rallyt, Snöbollskriget, Minigolfen, Hönan Hilda, Dansbanan och Stjärnstorm.',
+    steps: [
+      { icon: 'tv', text: 'TV:n i stugan har Hönan Hilda och Minigolfen från början. Gå fram till den och använd den för att spela.' },
+      { icon: 'emoji:🏙️', text: 'I varje stad ligger Spelhallen, bredvid badhuset. Där finns en spelautomat för varje spel.' },
+      { icon: 'emoji:🎟️', text: 'I Spelhallen vinner du biljetter: en biljett per 500 poäng. Byt dem mot gosedjur, lampor, pokaler och nya TV-spel i prisdisken.' },
+      { icon: 'cart_star', text: 'Spelkassetter ligger gömda i skattkistor i grottorna och i ufot på månen. Hittar du en kommer spelet på TV:n för hela familjen.' },
+      { icon: 'trophy', text: 'Topplistan visar familjens bästa poäng i varje spel. Slår du någon annans rekord får alla veta det!' },
+      { icon: 'emoji:⏸️', text: 'Escape eller pausknappen pausar spelet. Spelen fungerar med tangentbord, handkontroll och pekskärm.' },
+    ],
+  },
+  {
     id: 'friends',
     only2d: true,
     emoji: '💬',
