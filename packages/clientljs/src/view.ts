@@ -1393,6 +1393,8 @@ export class View implements HudTarget {
       if (!inView(ov.x, ov.y, s.w, s.h)) continue;
       let sprite = s;
       if (ov.art?.animated && ov.art.frames.length > 1) sprite = ov.art.frames[Math.floor(t / 0.4) % ov.art.frames.length] ?? s;
+      // Spelhallen's machines: frames 0–5 are the six games, 6–11 the same screens lit up; each blinks in its own time
+      else if (ov.o.kind === 'arcade_machine' && ov.art && ov.art.frames.length >= 12) sprite = ov.art.frames[(ov.frame % 6) + 6 * (Math.floor(t * 1.6 + ov.phase * 3) % 2)] ?? s;
       const footX = ov.x + s.w / 2;
       const footY = ov.y + s.h;
       let angle = 0;
@@ -1578,6 +1580,8 @@ export class View implements HudTarget {
       rect(x + w, y, Rr, y + h);
     };
     if (this.inside) hole((INTERIOR.x - 1) * TILE, (INTERIOR.y - 1) * TILE, (INTERIOR.w + 2) * TILE, (INTERIOR.h + 2) * TILE);
+    // the bath house's tall wall caps stand a tile above the room; Spelhallen's low walls only rise 2px
+    else if (this.hall) hole(BATH_ROOM.x * TILE, BATH_ROOM.y * TILE - 2, BATH_ROOM.w * TILE, BATH_ROOM.h * TILE + 2);
     else if (this.bath) hole(BATH_ROOM.x * TILE, (BATH_ROOM.y - 1) * TILE, BATH_ROOM.w * TILE, (BATH_ROOM.h + 1) * TILE);
   }
 
