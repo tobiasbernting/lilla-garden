@@ -191,6 +191,9 @@ importers:
 
   packages/client:
     dependencies:
+      '@lilla-garden/arcade':
+        specifier: workspace:*
+        version: link:../arcade
       '@lilla-garden/shared':
         specifier: workspace:*
         version: link:../shared

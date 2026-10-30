@@ -14,6 +14,15 @@ import {
   placeEmoji,
   placeName,
   villageOfBath,
+  villageOfHall,
+  ARCADE,
+  ARCADE_GAMES,
+  POINTS_PER_TICKET,
+  PRIZES,
+  familyGames,
+  isArcadeGame,
+  isHallKey,
+  isIndoorKey,
   COOKING,
   HELP,
   NPCS,
@@ -52,8 +61,9 @@ import { slotEl } from './hud.js';
 import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
 import { SFX } from '../sound.ts';
+import { familyScores } from './arcade.ts';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel' | 'prizes' | 'scores';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}`, vehicles: T.tabVehicles };
 const TABS = ['seeds', 'animals', 'vehicles', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
@@ -89,6 +99,7 @@ export class Menus {
       if (c.ui === 'chest') this.open('chest', c.id);
       else if (c.ui === 'travel') this.open('travel', c.id);
       else if (c.ui === 'nameAnimal') this.open('nameAnimal', c.id);
+      else if (c.ui === 'arcade') return; // the minigames open over everything (ui/arcade.ts)
       else if (c.ui === 'npc') {
         this.npcId = c.npc ?? null;
         this.open('npc');
@@ -156,13 +167,16 @@ export class Menus {
       map: `🗺️ ${T.worldMap}`,
       paint: `🎨 ${T.paint}`,
       pizzeria: `🍕 ${T.pizzeria}`,
+      prizes: `🎁 ${T.prizesTitle}`,
+      scores: `🏆 ${T.scoresTitle}`,
       travel: this.travelVia() === 'train' ? `🚂 ${T.travelTrain}` : `🚌 ${T.travelBus}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
     const coins = h('span', { class: 'price' }, `${me.coins} ${T.coins}${this.kind === 'catalogue' ? ` · ⭐ ${me.stars}` : ''}`);
-    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' || this.kind === 'travel' ? coins : null, closeBtn);
+    const tickets = h('span', { class: 'price' }, `🎟️ ${me.arcade?.tickets ?? 0} ${T.tickets}`);
+    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' || this.kind === 'travel' ? coins : this.kind === 'prizes' ? tickets : null, closeBtn);
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: 'panel' }, head, body);
     switch (this.kind) {
@@ -180,6 +194,12 @@ export class Menus {
         break;
       case 'pizzeria':
         this.renderPizzeria(body);
+        break;
+      case 'prizes':
+        this.renderPrizes(body);
+        break;
+      case 'scores':
+        this.renderScores(body);
         break;
       case 'travel':
         this.renderTravel(body);
@@ -350,6 +370,41 @@ export class Menus {
     body.append(rows);
   }
 
+  // ---- Spelhallen: the prize counter and the score board ----
+
+  private renderPrizes(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const have = familyGames(client.world!);
+    body.append(h('div', { class: 'hint' }, fmt(T.prizesHint, { n: POINTS_PER_TICKET })));
+    const rows = h('div', { class: 'rows' });
+    for (const p of PRIZES) {
+      const game = itemDef(p.item).game;
+      const owned = isArcadeGame(game) && have.includes(game);
+      const name = isArcadeGame(game) ? `${ARCADE[game].emoji} ${ARCADE[game].name} (${T.tvGame})` : itemName(p.item);
+      const row = h('div', { class: `row${owned ? ' off' : ''}` }, icon(getArt().iconUrl[p.item] ?? ''), h('span', { class: 'name' }, name), h('span', { class: 'price' }, owned ? T.alreadyOnTv : `🎟️ ${p.tickets}`));
+      const b = h('button', { disabled: owned || (me.arcade?.tickets ?? 0) < p.tickets }, T.swap);
+      onTap(b, () => net.send({ t: 'prize', item: p.item }));
+      row.append(b);
+      rows.append(row);
+    }
+    body.append(rows);
+  }
+
+  private renderScores(body: HTMLElement): void {
+    body.append(h('div', { class: 'hint' }, T.scoresHint));
+    const grid = h('div', { class: 'scoreboard' });
+    for (const g of ARCADE_GAMES) {
+      const d = ARCADE[g];
+      const lines = familyScores(g).slice(0, 5);
+      const list = h('ol', null);
+      lines.forEach((l, i) => list.append(h('li', { class: l.me ? 'me' : '' }, h('span', null, ['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`), h('span', { class: 'who' }, l.name), h('b', null, l.score.toLocaleString('sv-SE')))));
+      if (!lines.length) list.append(h('li', { class: 'none' }, T.noScores));
+      const card = h('div', { class: 'game' }, h('h3', { style: { color: d.color } }, `${d.emoji} ${d.name}`), list);
+      grid.append(card);
+    }
+    body.append(grid);
+  }
+
   // ---- bus stop / train station ----
   private travelVia(): 'bus' | 'train' {
     const w = activeWorld();
@@ -495,7 +550,7 @@ export class Menus {
     const me = myPlayer()!;
     // in a cave, the bath house or on the moon, the map shows the place you came from
     const cave = parseCaveKey(me.area);
-    const outside = me.area === 'dungeon' ? 'farm' : cave ? cave.parent : isBathKey(me.area) ? villageOfBath(me.area) : me.area === MOON_KEY ? SPACEPORT_KEY : me.area;
+    const outside = me.area === 'dungeon' ? 'farm' : cave ? cave.parent : isBathKey(me.area) ? villageOfBath(me.area) : isHallKey(me.area) ? villageOfHall(me.area) : me.area === MOON_KEY ? SPACEPORT_KEY : me.area;
     const here = parseCaveKey(outside)?.parent ?? (outside === MOON_KEY ? SPACEPORT_KEY : outside);
     const c = areaCoords(here) ?? { ax: 0, ay: 0 };
     const visited = new Set(me.visited ?? ['farm']);
@@ -542,7 +597,7 @@ export class Menus {
     onTap(mini, () => document.dispatchEvent(new CustomEvent('lilla:minimap')));
     buttons.push(mini);
     const place = me.area === 'farm' ? 'farm' : me.area === 'dungeon' ? 'dungeon' : client.areas[me.area]?.biome;
-    const where = isBathKey(me.area) ? `🏊 ${T.bathhouseName}` : `${placeEmoji(place)} ${placeName(place)}`;
+    const where = isBathKey(me.area) ? `🏊 ${T.bathhouseName}` : isHallKey(me.area) ? `🕹️ ${T.hallName}` : `${placeEmoji(place)} ${placeName(place)}`;
     body.append(h('p', { class: 'help-intro' }, `${T.youAreHere}: ${where} · Norr är uppåt. Kallt i norr, varmt i söder, hav i väster och berg i öster.`), grid, h('div', { class: 'tabs' }, ...buttons));
   }
 
@@ -627,7 +682,7 @@ export class Menus {
     const pets: { name: string; species: string }[] = [];
     for (const w of [client.world, ...Object.values(client.areas)])
       for (const a of Object.values(w?.animals ?? {})) if (a.owner === me.id && isCallable(a) && a.name) pets.push({ name: a.name, species: a.species });
-    const outdoors = !noWeatherHere(me.area) && !isBathKey(me.area);
+    const outdoors = !noWeatherHere(me.area) && !isIndoorKey(me.area);
     const weather = client.weather && outdoors ? localWeather(client.weather.kind, activeWorld()?.biome) : null;
     this.talk = talkNode(npcId, node, { name: me.name, weather, dayFraction: client.timeMs / DAY_LENGTH_MS, season: client.season, pets, rnd: Math.random });
     this.said = said;

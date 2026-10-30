@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lilla-garden/arcade": "workspace:*",
     "@lilla-garden/shared": "workspace:*",
     "phaser": "^3.90.0"
   },

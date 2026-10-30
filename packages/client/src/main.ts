@@ -11,6 +11,7 @@ import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { Picker } from './ui/picker.js';
 import { initRide } from './ui/ride.ts';
+import { initArcade } from './ui/arcade.ts';
 import { initSound, isMuted, setMuted } from './sound.ts';
 import { Chat, SocialButtons, petCommand, weatherChip } from './ui/social.ts';
 
@@ -53,6 +54,15 @@ hud.root.style.display = 'none';
 menus.onChange = (open) => {
   if (scene) scene.uiOpen = open;
 };
+// minigames: while one is open, the farm stands still behind it
+initArcade((open) => {
+  if (scene) {
+    scene.uiOpen = open || menus.isOpen();
+    scene.input.keyboard?.resetKeys();
+  }
+  if (open) game?.loop.sleep();
+  else game?.loop.wake();
+});
 // 2D-only: chat, pets that stay or come when you whistle, weather, villager conversations
 menus.features2d = true;
 hud.topExtras.push(weatherChip);

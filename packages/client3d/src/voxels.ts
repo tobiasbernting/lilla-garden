@@ -74,6 +74,8 @@ const SURFACE: Record<Terrain, string> = {
   choco: 'choco',
   moon: 'moon_dust',
   space: 'stone', // (never drawn: the sky around the moon is empty)
+  // minigames: Spelhallen's floor (stand-in until the 3D client has a carpet block)
+  carpet: 'planks_oak',
 };
 
 /** Liquid ground: drawn a little lowered, in the liquid pass, over a bed of `bed`. */

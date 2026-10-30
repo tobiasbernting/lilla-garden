@@ -19,7 +19,8 @@ import {
   inInterior,
   inPool,
   isBaby,
-  isBathKey,
+  isHallKey,
+  isIndoorKey,
   isUnderground,
   isVehicle,
   LOOT_REFILL_DAYS,
@@ -202,6 +203,8 @@ export class View implements HudTarget {
   /** On the moon: no weather, a dim starry light, and everyone walks with a bounce. */
   private moon = false;
   private bath = false;
+  /** Spelhallen (an indoor room too). */
+  private hall = false;
   private inside = false;
   private ground: Ground | null = null;
   private objects = new Map<number, ObjView>();
@@ -307,7 +310,9 @@ export class View implements HudTarget {
     this.area = myArea();
     this.cave = isUnderground(this.area);
     this.moon = this.area === MOON_KEY;
-    this.bath = isBathKey(this.area);
+    // an indoor room (the bath house or Spelhallen): the same room, lit inside and dark around it
+    this.bath = isIndoorKey(this.area);
+    this.hall = isHallKey(this.area);
     this.inside = false;
     this.snowGround = this.wantSnowGround();
     // the real calendar's seasons turn the trees only where there are seasons
@@ -919,7 +924,7 @@ export class View implements HudTarget {
       vy,
       vw,
       vh,
-      where: this.cave ? 'cave' : this.inside ? 'inside' : this.bath ? 'bath' : this.moon ? 'space' : 'out',
+      where: this.cave ? 'cave' : this.inside ? 'inside' : this.hall ? 'hall' : this.bath ? 'bath' : this.moon ? 'space' : 'out',
       movers,
       water: this.ground?.water ?? [],
       nearLava: this.nearLava(),
@@ -1074,6 +1079,10 @@ export class View implements HudTarget {
       // the sun shines on the moon from a black sky: pale cool light, long crisp shadows, the crystals aglow
       sky = { ...sky, ambient: [0.74, 0.77, 0.9], dark: 0.55, shadowX: 0.9, shadowY: 0.35, shadowLen: 1.6, shadowAlpha: 0.5, golden: 0, wind: 0 };
       on = 0.85;
+    } else if (this.hall) {
+      // Spelhallen is dim like every arcade, at any hour, so the machines and the neon glow
+      sky = { ...sky, ambient: [0.36, 0.31, 0.5], dark: 0.85, shadowAlpha: 0, wind: 0, golden: 0 };
+      on = 1;
     } else if (this.inside || this.bath) {
       // indoors: daylight through the windows, cosy lamp light at night
       const d = sky.dark;
@@ -1544,6 +1553,11 @@ export class View implements HudTarget {
   }
 
   /** After LittleJS's objects, before the light map: black out what can't be seen from indoors. */
+  /** A minigame opened over the farm (or closed): its sounds keep quiet meanwhile. */
+  hush(on: boolean): void {
+    this.sounds.hush(on);
+  }
+
   renderPost(): void {
     if (!this.world) return;
     const black = rgb(0, 0, 0, 1);

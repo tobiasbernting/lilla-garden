@@ -34,6 +34,9 @@ export class CozySounds {
   private caveDripIn = rnd(0.5, 2);
   private chimeIn = rnd(3, 8);
   private tinkleIn = rnd(6, 12);
+  private bleepIn = rnd(0.5, 2);
+  /** A minigame is open: the farm keeps quiet. */
+  private hushed = false;
   private rumble: Loop | null = null;
   private cicadas: Loop | null = null;
   private surf: Loop | null = null;
@@ -91,7 +94,7 @@ export class CozySounds {
   update(sc: Scene, nearFire: number): void {
     const c = this.ctx;
     if (!c || c.state !== 'running' || !this.out) return;
-    const quiet = isMuted() || !on('sounds');
+    const quiet = isMuted() || !on('sounds') || this.hushed;
     this.out.gain.setTargetAtTime(quiet ? 0 : 1, c.currentTime, 0.3);
     const dt = sc.dt;
     const outdoors = sc.where === 'out';
@@ -224,6 +227,14 @@ export class CozySounds {
         this.drip(rnd(-0.7, 0.7));
       }
     }
+    // Spelhallen: the machines bleep and jingle all around
+    if (sc.where === 'hall' && !quiet) {
+      this.bleepIn -= dt;
+      if (this.bleepIn <= 0) {
+        this.bleepIn = rnd(0.6, 2.2);
+        this.bleep(rnd(-0.8, 0.8));
+      }
+    }
     // fairy chimes in the mushroom forest
     if (out && biome === 'svamp') {
       this.chimeIn -= dt;
@@ -309,6 +320,39 @@ export class CozySounds {
       osc.connect(g).connect(p);
       osc.start(t);
       osc.stop(t + 0.2);
+    }
+  }
+
+  /** While a minigame is open the farm's sounds fade out (update() is not called then). */
+  hush(hushed: boolean): void {
+    this.hushed = hushed;
+    if (this.ctx && this.out) this.out.gain.setTargetAtTime(hushed || isMuted() || !on('sounds') ? 0 : 1, this.ctx.currentTime, 0.15);
+  }
+
+  /** A machine across the hall: a short run of square-wave notes, now up, now down. */
+  private bleep(pan: number): void {
+    const c = this.ctx!;
+    const p = c.createStereoPanner();
+    p.pan.value = pan;
+    p.connect(this.out!);
+    const scale = [523, 587, 659, 784, 880, 1047, 1175, 1319];
+    let i = Math.floor(Math.random() * 4);
+    const up = Math.random() < 0.6;
+    let t = c.currentTime + 0.02;
+    const n = 2 + Math.floor(Math.random() * 4);
+    for (let k = 0; k < n; k++) {
+      const osc = c.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = scale[Math.max(0, Math.min(scale.length - 1, i))]!;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.006, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      osc.connect(g).connect(p);
+      osc.start(t);
+      osc.stop(t + 0.1);
+      i += up ? 1 + Math.floor(Math.random() * 2) : -1;
+      t += 0.075;
     }
   }
 

@@ -33,7 +33,8 @@ import {
   BOOST_SPEED_MUL,
   BATH_ROOM,
   inPool,
-  isBathKey,
+  isHallKey,
+  isIndoorKey,
   isUnderground,
   LOOT_REFILL_DAYS,
   MOON_KEY,
@@ -216,7 +217,8 @@ export class GameScene extends Phaser.Scene {
     this.roomMask = this.make.image({ key: 'fx-white', add: false }).setOrigin(0).setDisplaySize((INTERIOR.w + 2) * TILE, (INTERIOR.h + 2) * TILE);
     this.bathMask = this.make.image({ key: 'fx-white', add: false }).setOrigin(0).setDisplaySize(BATH_ROOM.w * TILE, (BATH_ROOM.h + 1) * TILE); // the room incl. the wall caps above it
     this.inside = false;
-    this.bath = isBathKey(this.area);
+    // an indoor room (the bath house or Spelhallen): the same room, lit inside and dark around it
+    this.bath = isIndoorKey(this.area);
     this.weather = new WeatherView(this, ovx, ovy, VIEW_W, VIEW_H);
     this.snowGround = this.wantSnowGround();
     this.applySeason();
@@ -1201,6 +1203,8 @@ export class GameScene extends Phaser.Scene {
       const cam = this.cameras.main;
       this.night.fill(0x000000, 1);
       this.night.erase(this.bathMask, BATH_ROOM.x * TILE - cam.worldView.x, (BATH_ROOM.y - 1) * TILE - cam.worldView.y);
+      // Spelhallen is dim like every arcade, at any hour
+      if (isHallKey(this.area)) this.night.fill(0x140a2e, 0.42);
       return;
     }
     if (amount <= 0.01) return;
