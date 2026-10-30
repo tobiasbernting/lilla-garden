@@ -968,11 +968,9 @@ function spaceTile(v: number): Tile {
 // ---------------------------------------------------------------------------
 
 /**
- * Draws the wider world's grounds and registers them with `add`. The classic style (newArt false) uses the same
- * tiles: cliffs need their faces and liquids their banks to read in any style.
+ * Draws the wider world's grounds and registers them with `add`.
  */
-export function addBiomeTerrain(add: (p: Px) => number, newArt: boolean): BiomeTerrain {
-  void newArt;
+export function addBiomeTerrain(add: (p: Px) => number): BiomeTerrain {
   const put = (t: Tile) => add(t.toPx());
   const n = <T>(count: number, f: (i: number) => T): T[] => Array.from({ length: count }, (_, i) => f(i));
   // cliffs: three looks for every edge mask (plain, a little detail, something special)

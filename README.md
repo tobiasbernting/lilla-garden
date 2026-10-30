@@ -148,7 +148,7 @@ terrain and objects; swapping those in later only touches `art/world.ts`.
 ### Grafiken (LittleJS)
 
 The game is drawn by LittleJS at screen resolution (the earlier Phaser client used a 320×180 canvas), so things
-can lean and squash smoothly. It starts in "Ny grafik"; the art button still cycles the styles. It needs WebGL 2
+can lean and squash smoothly. There is one art style, the shaded pixel art. It needs WebGL 2
 (and says so on a screen without it).
 
 - Ljus: the light map follows the day (golden morning, white noon, orange sunset, blue night, purple at Halloween),

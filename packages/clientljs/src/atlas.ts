@@ -1,10 +1,9 @@
 // Packs the 2D game's art (drawn into many small canvases at boot) into a few big textures. LittleJS starts a new
 // WebGL batch whenever the texture changes, so with one sheet the whole depth-sorted world draws in one batch.
 import { TextureInfo, glMaxTextureSize } from 'littlejsengine';
-import { HD, R } from '@v1/art/style.ts';
 
 /** Transparent gap around each picture, so a turned or scaled sprite never samples its neighbour. */
-const PAD = HD ? 4 : 2;
+const PAD = 2;
 
 export class Sheet {
   readonly canvas: HTMLCanvasElement;
@@ -84,7 +83,7 @@ export class Atlas {
   addFrames(src: HTMLCanvasElement, frameW: number, frameH: number, count: number): Sprite[] {
     const whole = this.pack({ src, sx: 0, sy: 0, sw: frameW * count, sh: frameH });
     const du = (whole.u1 - whole.u0) / count;
-    return Array.from({ length: count }, (_, i) => ({ ...whole, u0: whole.u0 + du * i, u1: whole.u0 + du * (i + 1), w: frameW / R, h: frameH / R }));
+    return Array.from({ length: count }, (_, i) => ({ ...whole, u0: whole.u0 + du * i, u1: whole.u0 + du * (i + 1), w: frameW, h: frameH }));
   }
 
   /** Uploads the sheets that changed since the last call. */
@@ -93,12 +92,12 @@ export class Atlas {
       if (!s.dirty) continue;
       s.dirty = false;
       if (s.tex) s.tex.createWebGLTexture();
-      else s.tex = new TextureInfo(s.canvas, true, false, !HD);
+      else s.tex = new TextureInfo(s.canvas, true, false, true);
     }
   }
 
   private pack(p: Picture): Sprite {
-    this.size ||= Math.min(glMaxTextureSize || 2048, HD ? 4096 : 2048);
+    this.size ||= Math.min(glMaxTextureSize || 2048, 2048);
     let at: [number, number] | null = null;
     let sheet = this.sheets[this.sheets.length - 1];
     if (sheet) at = sheet.place(p.sw, p.sh);
@@ -119,7 +118,7 @@ export class Atlas {
     ctx.drawImage(p.src, p.sx, p.sy, p.sw, p.sh, x, y, p.sw, p.sh);
     sheet!.dirty = true;
     const inv = 1 / sheet!.size;
-    return { sheet: sheet!, u0: x * inv, v0: y * inv, u1: (x + p.sw) * inv, v1: (y + p.sh) * inv, w: p.sw / R, h: p.sh / R };
+    return { sheet: sheet!, u0: x * inv, v0: y * inv, u1: (x + p.sw) * inv, v1: (y + p.sh) * inv, w: p.sw, h: p.sh };
   }
 }
 
@@ -130,13 +129,13 @@ export const whole = (c: HTMLCanvasElement): Picture => ({ src: c, sx: 0, sy: 0,
 
 /** A picture on a texture of its own, for things redrawn now and then (roofs); free it with `release`. */
 export const standalone = (c: HTMLCanvasElement): Sprite => ({
-  sheet: { tex: new TextureInfo(c, true, false, !HD) },
+  sheet: { tex: new TextureInfo(c, true, false, true) },
   u0: 0,
   v0: 0,
   u1: 1,
   v1: 1,
-  w: c.width / R,
-  h: c.height / R,
+  w: c.width,
+  h: c.height,
 });
 
 export const release = (s: Sprite): void => {

@@ -57,7 +57,6 @@ import {
 import { ANIMAL_SIZE, ANIMAL_VARIANTS, RIDE_LIFT } from '@v1/art/animals.ts';
 import { CHAR_H, dirOf, frameIndex, HEADROOM } from '@v1/art/characters.ts';
 import { SAGA_STEPPED } from '@v1/art/saga.ts';
-import { HD, NEW_ART } from '@v1/art/style.ts';
 import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
 import { SFX } from '@v1/sound.ts';
@@ -1091,7 +1090,7 @@ export class View implements HudTarget {
     let z = this.zoom;
     if (this.inside && on('indoors')) {
       const fit = Math.min(mainCanvasSize.x / ((INTERIOR.w + 2) * TILE), mainCanvasSize.y / ((INTERIOR.h + 2.5) * TILE));
-      z = Math.max(z, Math.min(HD ? Math.floor(fit * 4) / 4 : Math.floor(fit), this.zoom * 2));
+      z = Math.max(z, Math.min(Math.floor(fit), this.zoom * 2));
     }
     this.z = z;
     const vw = mainCanvasSize.x / z;
@@ -1421,7 +1420,7 @@ export class View implements HudTarget {
     const small = art.fx.shadow?.[0];
     for (const ov of this.objects.values()) {
       if (ov.flat || !inView(ov.x - 40, ov.y - 40, ov.sprite.w + 80, ov.sprite.h + 80)) continue;
-      if (ov.blob && blob && (NEW_ART || HD)) drawSprite(blob, ov.o.x * TILE + TILE / 2, (ov.o.y + 1) * TILE - 2, blob.w, blob.h, 0, alpha(0.7));
+      if (ov.blob && blob) drawSprite(blob, ov.o.x * TILE + TILE / 2, (ov.o.y + 1) * TILE - 2, blob.w, blob.h, 0, alpha(0.7));
       if (ov.cast) {
         const s = ov.sprite;
         const tree = ov.o.kind.startsWith('tree') || ov.o.kind === 'palm';

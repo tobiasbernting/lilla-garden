@@ -38,7 +38,7 @@ export class Ground {
     if (this.under === 'cave' && (t === 'rock' || t === 'basalt')) return art.terrain.rock;
     // ice-age rock and Christmas: snow on the cliffs too
     const snowy = this.snowy || (t === 'rock' && this.world.biome === 'is');
-    const same = art.terrain.edges ? art.terrain.edgeGroup(t) : null;
+    const same = art.terrain.edgeGroup(t);
     return art.terrain.index(t, x, y, snowy, same ? this.edgeMask(x, y, same) : 0, frame);
   }
 

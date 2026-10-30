@@ -3,9 +3,7 @@
 import type { Appearance, Outfit } from '@lilla-garden/shared';
 import { animalSheet, ANIMAL_SIZE } from '@v1/art/animals.ts';
 import { CHAR_H, CHAR_W, drawCharacterSheet, lookKey, lookOf } from '@v1/art/characters.ts';
-import { upscale } from '@v1/art/hd.ts';
 import { paintingPx } from '@v1/art/painting.ts';
-import { HD, R } from '@v1/art/style.ts';
 import { getArt } from '@v1/art/textures.ts';
 import { atlas, whole, type Picture, type Sprite } from './atlas.ts';
 import { panesOf } from './extras.ts';
@@ -127,7 +125,7 @@ let sprites: Sprites | null = null;
 export function loadSprites(): Sprites {
   if (sprites) return sprites;
   const art = getArt();
-  const T = 16 * R;
+  const T = 16;
 
   // the terrain sheet holds 32 tiles a row
   const terrainPics: Picture[] = [];
@@ -166,15 +164,14 @@ export function loadSprites(): Sprites {
   const [white, wctx] = canvas(4, 4);
   wctx.fillStyle = '#fff';
   wctx.fillRect(0, 0, 4, 4);
-  const [rain, rctx] = canvas(R, 7 * R);
-  const rg = rctx.createLinearGradient(0, 0, 0, 7 * R);
+  const [rain, rctx] = canvas(1, 7);
+  const rg = rctx.createLinearGradient(0, 0, 0, 7);
   rg.addColorStop(0, 'rgba(200,222,255,0)');
   rg.addColorStop(1, 'rgba(215,232,255,0.95)');
   rctx.fillStyle = rg;
-  rctx.fillRect(0, 0, R, 7 * R);
+  rctx.fillRect(0, 0, 1, 7);
   const leaf = (c1: string, c2: string) => {
-    const [l, lctx] = canvas(4 * R, 3 * R);
-    lctx.scale(R, R);
+    const [l, lctx] = canvas(4, 3);
     lctx.fillStyle = c1;
     lctx.fillRect(0, 1, 3, 1);
     lctx.fillRect(1, 0, 2, 3);
@@ -182,25 +179,25 @@ export function loadSprites(): Sprites {
     lctx.fillRect(3, 1, 1, 1);
     return l;
   };
-  const [ring, ringCtx] = canvas(12 * R, 6 * R);
+  const [ring, ringCtx] = canvas(12, 6);
   ringCtx.strokeStyle = 'rgba(225,240,255,0.95)';
-  ringCtx.lineWidth = R;
+  ringCtx.lineWidth = 1;
   ringCtx.beginPath();
-  ringCtx.ellipse(6 * R, 3 * R, 5.5 * R, 2.5 * R, 0, 0, Math.PI * 2);
+  ringCtx.ellipse(6, 3, 5.5, 2.5, 0, 0, Math.PI * 2);
   ringCtx.stroke();
-  const [gust, gctx] = canvas(24 * R, R);
-  const gg = gctx.createLinearGradient(0, 0, 24 * R, 0);
+  const [gust, gctx] = canvas(24, 1);
+  const gg = gctx.createLinearGradient(0, 0, 24, 0);
   gg.addColorStop(0, 'rgba(255,255,255,0)');
   gg.addColorStop(0.5, 'rgba(255,255,255,0.9)');
   gg.addColorStop(1, 'rgba(255,255,255,0)');
   gctx.fillStyle = gg;
-  gctx.fillRect(0, 0, 24 * R, R);
+  gctx.fillRect(0, 0, 24, 1);
   const extra = {
-    glow: pics.push(whole(radial(32 * R, [[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.55)'], [1, 'rgba(255,255,255,0)']]))) - 1,
-    blob: pics.push(whole(radial(32 * R, [[0, 'rgba(255,255,255,1)'], [0.6, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']]))) - 1,
+    glow: pics.push(whole(radial(32, [[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.55)'], [1, 'rgba(255,255,255,0)']]))) - 1,
+    blob: pics.push(whole(radial(32, [[0, 'rgba(255,255,255,1)'], [0.6, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']]))) - 1,
     white: pics.push(whole(white)) - 1,
     rain: pics.push(whole(rain)) - 1,
-    flake: pics.push(whole(radial(4 * R, [[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,0.9)'], [1, 'rgba(255,255,255,0)']]))) - 1,
+    flake: pics.push(whole(radial(4, [[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,0.9)'], [1, 'rgba(255,255,255,0)']]))) - 1,
     ring: pics.push(whole(ring)) - 1,
     leaf0: pics.push(whole(leaf('#e0902a', '#7a4a1a'))) - 1,
     leaf1: pics.push(whole(leaf('#9ccf4a', '#4a7a1a'))) - 1,
@@ -258,7 +255,7 @@ export function characterSprites(appearance: Appearance, outfit: Outfit): Sprite
   const key = lookKey(look);
   let s = characters.get(key);
   if (!s) {
-    s = atlas.addFrames(drawCharacterSheet(look), CHAR_W * R, CHAR_H * R, 9);
+    s = atlas.addFrames(drawCharacterSheet(look), CHAR_W, CHAR_H, 9);
     characters.set(key, s);
     atlas.flush();
   }
@@ -272,8 +269,8 @@ export function animalSprites(species: string, baby: boolean, jul: boolean, vari
   let s = animals.get(key);
   if (!s) {
     const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };
-    const sheet = HD ? upscale(animalSheet(species, baby, jul, variant)).canvas : animalSheet(species, baby, jul, variant);
-    s = atlas.addFrames(sheet, size.w * R, size.h * R, 2);
+    const sheet = animalSheet(species, baby, jul, variant);
+    s = atlas.addFrames(sheet, size.w, size.h, 2);
     animals.set(key, s);
     atlas.flush();
   }
@@ -286,7 +283,7 @@ export function paintingSprite(pixels: string): Sprite {
   let s = paintings.get(pixels);
   if (!s) {
     const px = paintingPx(pixels);
-    s = atlas.add(whole(HD ? upscale(px).canvas : px.canvas));
+    s = atlas.add(whole(px.canvas));
     paintings.set(pixels, s);
     atlas.flush();
   }

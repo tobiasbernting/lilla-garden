@@ -1,9 +1,7 @@
 // Pictures for the cozy extras, drawn in code like the rest of the art and packed into the atlas: trees through the
 // year (autumn colours, snow on the branches, blossom), butterflies, sparrows, fish, lily pads, a chimney for the
 // village houses, and soft shapes for sunbeams and puddles.
-import { upscale } from '@v1/art/hd.ts';
 import { Px } from '@v1/art/px.ts';
-import { HD, R } from '@v1/art/style.ts';
 import { getArt } from '@v1/art/textures.ts';
 import { atlas, whole, type Picture, type Sprite } from './atlas.ts';
 
@@ -122,10 +120,10 @@ const winterOf = (src: HTMLCanvasElement) =>
     const [h, s, l] = rgb2hsl(r, g, b);
     if (!isLeaf(h, s, l)) return null;
     // how far below an edge (art pixels) this pixel is
-    for (let k = 1; k <= 2 * R; k++) {
+    for (let k = 1; k <= 2; k++) {
       const [ar, ag, ab, aa] = at(x, y - k);
       const [ah, as, al] = rgb2hsl(ar, ag, ab);
-      if (aa < 0.5 || !isLeaf(ah, as, al)) return k <= R ? [0.95, 0.97, 1] : [0.84, 0.89, 0.96];
+      if (aa < 0.5 || !isLeaf(ah, as, al)) return k <= 1 ? [0.95, 0.97, 1] : [0.84, 0.89, 0.96];
     }
     // the rest of the tree a little frosted
     return [r * 0.85 + 0.08, g * 0.85 + 0.09, b * 0.85 + 0.13];
@@ -136,14 +134,9 @@ const springOf = (src: HTMLCanvasElement, blossom: boolean) =>
   remap(src, (r, g, b, x, y) => {
     const [h, s, l] = rgb2hsl(r, g, b);
     if (!isLeaf(h, s, l)) return null;
-    const ax = Math.floor(x / R);
-    const ay = Math.floor(y / R);
-    if (blossom && l > 0.3 && hash(ax, ay) < 0.11) return hash(ay, ax) < 0.5 ? [1, 0.97, 0.98] : [1, 0.76, 0.86];
+    if (blossom && l > 0.3 && hash(x, y) < 0.11) return hash(y, x) < 0.5 ? [1, 0.97, 0.98] : [1, 0.76, 0.86];
     return hsl2rgb(h - 10, Math.min(1, s * 1.05), Math.min(0.9, l * 1.07));
   });
-
-/** Draws small pixel art at R× (HD is upscaled like the 2D game's other small art). */
-const sized = (p: Px): HTMLCanvasElement => (HD ? upscale(p).canvas : p.canvas);
 
 function butterfly(body: string, wing: string, tip: string): Px[] {
   const open = new Px(7, 5);
@@ -202,8 +195,8 @@ export function panesOf(lit: HTMLCanvasElement): { x: number; y: number; w: numb
       y0 = Math.min(y0, y);
       x1 = Math.max(x1, x);
       y1 = Math.max(y1, y);
-      for (let dy = -2 * R; dy <= 2 * R; dy++)
-        for (let dx = -2 * R; dx <= 2 * R; dx++) {
+      for (let dy = -2; dy <= 2; dy++)
+        for (let dx = -2; dx <= 2; dx++) {
           const nx = x + dx;
           const ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
@@ -213,7 +206,7 @@ export function panesOf(lit: HTMLCanvasElement): { x: number; y: number; w: numb
           stack.push(k);
         }
     }
-    out.push({ x: x0 / R, y: y0 / R, w: (x1 - x0 + 1) / R, h: (y1 - y0 + 1) / R });
+    out.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 });
   }
   return out;
 }
@@ -240,22 +233,22 @@ export function loadExtras(): Extras {
   }
 
   const leafPx = new Px(4, 3).rect(0, 1, 3, 1, '#ffffff').rect(1, 0, 2, 3, '#ffffff').px(3, 1, '#b8b8b8');
-  const leaf = add(sized(leafPx));
+  const leaf = add(leafPx.canvas);
   const flyColours: [string, string, string][] = [
     ['#3a3a3a', '#f8f8f0', '#9a9a9a'], // kålfjäril
     ['#3a3a3a', '#f4e04a', '#c8a020'], // citronfjäril
     ['#2a2018', '#e8822a', '#2a2018'], // nässelfjäril
     ['#2a2a3a', '#7ab0ff', '#3a5ab0'], // blåvinge
   ];
-  const butterflies = flyColours.map(([b, w, t]) => butterfly(b, w, t).map((p) => add(sized(p))));
-  const bird = sparrow().map((p) => add(sized(p)));
-  const fish = [new Px(6, 3).rect(1, 0, 4, 3, '#f08a2a').px(0, 1, '#f08a2a').rect(5, 0, 1, 3, '#d06a1a').px(4, 1, '#1a1a1a'), new Px(6, 3).rect(1, 0, 4, 3, '#c8d4e0').px(0, 1, '#c8d4e0').rect(5, 0, 1, 3, '#a0b0c0').px(4, 1, '#1a1a1a')].map((p) => add(sized(p)));
-  const lilies = [lily(false, 0), lily(false, 1), lily(true, 0), lily(true, 1)].map((p) => add(sized(p.outline('#1f4a24'))));
-  const chimney = add(sized(new Px(5, 8).rect(0, 1, 5, 7, '#7a7a80').rect(0, 0, 5, 2, '#9a9aa0').rect(0, 7, 5, 1, '#5a5a60').outline('#2b2419')));
+  const butterflies = flyColours.map(([b, w, t]) => butterfly(b, w, t).map((p) => add(p.canvas)));
+  const bird = sparrow().map((p) => add(p.canvas));
+  const fish = [new Px(6, 3).rect(1, 0, 4, 3, '#f08a2a').px(0, 1, '#f08a2a').rect(5, 0, 1, 3, '#d06a1a').px(4, 1, '#1a1a1a'), new Px(6, 3).rect(1, 0, 4, 3, '#c8d4e0').px(0, 1, '#c8d4e0').rect(5, 0, 1, 3, '#a0b0c0').px(4, 1, '#1a1a1a')].map((p) => add(p.canvas));
+  const lilies = [lily(false, 0), lily(false, 1), lily(true, 0), lily(true, 1)].map((p) => add(p.outline('#1f4a24').canvas));
+  const chimney = add(new Px(5, 8).rect(0, 1, 5, 7, '#7a7a80').rect(0, 0, 5, 2, '#9a9aa0').rect(0, 7, 5, 1, '#5a5a60').outline('#2b2419').canvas);
   // a soft shaft: bright in the middle across, fading downwards
   const bc = document.createElement('canvas');
-  bc.width = 16 * R;
-  bc.height = 64 * R;
+  bc.width = 16;
+  bc.height = 64;
   const bctx = bc.getContext('2d')!;
   for (let y = 0; y < bc.height; y++) {
     const fade = 1 - (y / bc.height) * 0.75;
@@ -268,16 +261,16 @@ export function loadExtras(): Extras {
   }
   const beam = add(bc);
   const pc = document.createElement('canvas');
-  pc.width = 24 * R;
-  pc.height = 10 * R;
+  pc.width = 24;
+  pc.height = 10;
   const pctx = pc.getContext('2d')!;
-  const pg = pctx.createRadialGradient(12 * R, 5 * R, 0, 12 * R, 5 * R, 12 * R);
+  const pg = pctx.createRadialGradient(12, 5, 0, 12, 5, 12);
   pg.addColorStop(0, 'rgba(255,255,255,0.95)');
   pg.addColorStop(0.75, 'rgba(255,255,255,0.85)');
   pg.addColorStop(1, 'rgba(255,255,255,0)');
   pctx.scale(1, 10 / 24);
   pctx.fillStyle = pg;
-  pctx.fillRect(0, 0, 24 * R, 24 * R);
+  pctx.fillRect(0, 0, 24, 24);
   const puddle = add(pc);
 
   const all = atlas.addMany(pics);
