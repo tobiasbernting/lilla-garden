@@ -271,12 +271,14 @@ export class Fx {
     // popups
     for (const p of this.pops) {
       const t = p.life / p.max;
-      // keep the words inside the field
-      const half = pen.measure(p.text, p.size) / 2 + 6;
+      // readable on a small phone too, and the words stay inside the field
+      const maxPx = (FW * pen.s * 0.9) / (pen.measure(p.text, 1) || 1);
+      const px = Math.min(Math.max(p.size * pen.s, 9), maxPx);
+      const half = (pen.measure(p.text, px) / 2 + 6) / pen.s;
       p.x = Math.max(half, Math.min(FW - half, p.x));
       const sx = pen.ox + p.x * pen.s;
       const sy = pen.oy + p.y * pen.s;
-      pen.text(p.text, sx, sy, p.size * pen.s * (t > 0.85 ? 1 + (t - 0.85) * 2 : 1), p.color, { alpha: Math.min(1, t * 2.2) });
+      pen.text(p.text, sx, sy, px * (t > 0.85 ? 1 + (t - 0.85) * 2 : 1), p.color, { alpha: Math.min(1, t * 2.2) });
     }
     g.globalAlpha = 1;
   }

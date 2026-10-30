@@ -543,17 +543,30 @@ export class Renderer {
     pen.stroke(C.white, pen.lw(3 * k + 1), k);
   }
 
+  /** A text size in px: the wanted world size, at least `min` px, and never wider than the field. */
+  private fit(pen: Pen, text: string, want: number, min: number, spacing = 0): number {
+    const maxW = FW * pen.s * 0.9;
+    const per = pen.measure(text, 1, spacing) || 1;
+    return Math.min(Math.max(want * pen.s, min), maxW / per);
+  }
+
   private drawBanner(game: Game, pen: Pen, L: Layout): void {
     const b = game.banner;
     const cx = pen.ox + (FW / 2) * pen.s;
     if (game.phase === 'intro') {
       const t = game.phaseT;
-      const line1 = 'STJÄRNSTORMEN ANFALLER RYMDBASEN!';
-      const line2 = 'FLYG UPP OCH STOPPA DEN!';
-      const y = pen.oy + 470 * pen.s;
-      const s = 15 * pen.s;
-      pen.text(line1, cx, y, s, C.yellow, { reveal: Math.max(0, (t - 0.2) * 28), alpha: t > 3 ? 1 - (t - 3) * 3 : 1 });
-      pen.text(line2, cx, y + s * 1.9, s * 0.85, C.ice, { reveal: Math.max(0, (t - 1.2) * 28), alpha: t > 3 ? 1 - (t - 3) * 3 : 1 });
+      const alpha = t > 3 ? 1 - (t - 3) * 3 : 1;
+      const lines: [string, string, number][] = [
+        ['STJÄRNSTORMEN ANFALLER', C.yellow, 0.2],
+        ['RYMDBASEN!', C.yellow, 1.0],
+        ['FLYG UPP OCH STOPPA DEN!', C.ice, 1.5],
+      ];
+      const s = Math.min(...lines.map(([text]) => this.fit(pen, text, 17, 11)));
+      let y = pen.oy + 440 * pen.s;
+      for (const [text, color, at] of lines) {
+        pen.text(text, cx, y, s, color, { reveal: Math.max(0, (t - at) * 28), alpha });
+        y += s * 1.8;
+      }
     }
     if (b) {
       const t = b.t;
@@ -562,7 +575,7 @@ export class Renderer {
       let alpha = Math.min(fadeIn, fadeOut);
       if (b.blink && Math.floor(t * 5) % 2 === 1) alpha *= 0.35;
       const y = pen.oy + 300 * pen.s;
-      const titleSize = 50 * pen.s * (b.title.length > 12 ? 0.72 : 1);
+      const titleSize = this.fit(pen, b.title, 50 * (b.title.length > 12 ? 0.72 : 1), 16, 0.6);
       const reveal = t * 30;
       const glitch = t < 0.35 ? 0.6 : 0;
       pen.text(b.title, cx, y, titleSize, b.color, { reveal, alpha, jitter: glitch, width: Math.max(2, titleSize * 0.11), spacing: 0.6 });
@@ -570,16 +583,17 @@ export class Renderer {
       pen.begin();
       pen.sseg(cx - lw, y + titleSize * 0.95, cx + lw, y + titleSize * 0.95);
       pen.stroke(b.color, Math.max(1, 2 * pen.s), alpha * 0.8);
-      if (b.sub) pen.text(b.sub, cx, y + titleSize * 1.75, 20 * pen.s, C.white, { reveal: Math.max(0, (t - 0.3) * 30), alpha, spacing: 0.3 });
+      if (b.sub) pen.text(b.sub, cx, y + titleSize * 1.75, this.fit(pen, b.sub, 20, 12, 0.3), C.white, { reveal: Math.max(0, (t - 0.3) * 30), alpha, spacing: 0.3 });
     }
     // tallies (sector bonus, the end)
     if (game.tallies.length) {
       const y0 = pen.oy + (b && b.sub ? 430 : 400) * pen.s;
+      const size = Math.min(...game.tallies.map((tl) => this.fit(pen, tl.text, 19, 12)));
       game.tallies.forEach((tl, i) => {
         if (tl.t < 0) return;
         const a = Math.min(1, tl.t * 3);
         const pop = tl.t < 0.15 ? 1 + (0.15 - tl.t) * 3 : 1;
-        pen.text(tl.text, cx, y0 + i * 33 * pen.s, 19 * pen.s * pop, tl.color, { alpha: a });
+        pen.text(tl.text, cx, y0 + i * size * 1.75, size * pop, tl.color, { alpha: a });
       });
     }
     void L;
