@@ -39,12 +39,12 @@ export interface SpellDef {
 
 export const SPELLS: Record<string, SpellDef> = {
   // Väktare (tank)
-  hugg: { id: 'hugg', name: 'Svärdshugg', icon: '🗡️', kind: 'melee', cd: 800, range: 1.8, power: 12, threat: 4, text: 'Ett hugg som får monstren att vilja slåss med dig.' },
+  hugg: { id: 'hugg', name: 'Svärdshugg', icon: '🗡️', kind: 'melee', cd: 800, range: 1.8, power: 14, threat: 4, text: 'Ett hugg som får monstren att vilja slåss med dig.' },
   utmana: { id: 'utmana', name: 'Utmana!', icon: '📣', kind: 'taunt', cd: 8000, range: 0, power: 0, radius: 5, ms: 4000, text: 'Alla monster runt dig måste slåss med dig en stund.' },
-  skoldslag: { id: 'skoldslag', name: 'Sköldslag', icon: '🛡️', kind: 'bash', cd: 6000, range: 1.8, power: 16, ms: 1500, threat: 4, text: 'Slår med skölden så monstret blir yrt. Avbryter bossens stora attacker!' },
-  skoldmur: { id: 'skoldmur', name: 'Sköldmur', icon: '🧱', kind: 'wall', cd: 20000, range: 0, power: 60, ms: 6000, text: 'Du tar mycket mindre skada en stund.' },
+  skoldslag: { id: 'skoldslag', name: 'Sköldslag', icon: '🛡️', kind: 'bash', cd: 6000, range: 1.8, power: 20, ms: 1500, threat: 4, text: 'Slår med skölden så monstret blir yrt. Avbryter bossens stora attacker!' },
+  skoldmur: { id: 'skoldmur', name: 'Sköldmur', icon: '🧱', kind: 'wall', cd: 20000, range: 0, power: 60, ms: 6000, text: 'Du tar mycket mindre skada en stund och får lite hälsa tillbaka.' },
   // Helare (healer)
-  lakerunan: { id: 'lakerunan', name: 'Läkerunan', icon: '💚', kind: 'heal', cd: 1000, range: 7, power: 30, text: 'Läker den som har ont, eller den du pekar på.' },
+  lakerunan: { id: 'lakerunan', name: 'Läkerunan', icon: '💚', kind: 'heal', cd: 1500, range: 7, power: 32, text: 'Läker den som har ont, eller den du pekar på.' },
   ljuspil: { id: 'ljuspil', name: 'Ljuspil', icon: '✨', kind: 'bolt', cd: 1100, range: 7, power: 12, text: 'Skjuter en pil av ljus.' },
   lakekrets: { id: 'lakekrets', name: 'Läkekrets', icon: '🌿', kind: 'hot', cd: 12000, range: 0, power: 60, radius: 4, ms: 6000, text: 'En ring av runor läker alla nära dig en stund.' },
   vackupp: { id: 'vackupp', name: 'Väck upp!', icon: '🌅', kind: 'revive', cd: 15000, range: 4, power: 50, text: 'Väcker en kompis som har fallit.' },
@@ -52,10 +52,10 @@ export const SPELLS: Record<string, SpellDef> = {
   yxhugg: { id: 'yxhugg', name: 'Yxhugg', icon: '🪓', kind: 'melee', cd: 900, range: 1.8, power: 20, text: 'Ett kraftigt hugg med yxan.' },
   stormsteg: { id: 'stormsteg', name: 'Stormsteg', icon: '💨', kind: 'charge', cd: 9000, range: 7, power: 14, ms: 1000, text: 'Rusar fram till monstret och gör det yrt.' },
   virvelvind: { id: 'virvelvind', name: 'Virvelvind', icon: '🌪️', kind: 'whirl', cd: 6000, range: 0, power: 16, radius: 2.2, text: 'Snurrar runt och träffar alla monster nära dig.' },
-  raseri: { id: 'raseri', name: 'Bärsärkaraseri', icon: '🔥', kind: 'rage', cd: 24000, range: 0, power: 50, ms: 8000, text: 'Du slår hårdare och springer fortare en stund.' },
+  raseri: { id: 'raseri', name: 'Bärsärkaraseri', icon: '🔥', kind: 'rage', cd: 24000, range: 0, power: 50, ms: 8000, text: 'Du slår hårdare, springer fortare och läker lite av varje hugg en stund.' },
   // Magiker (ranged damage)
   eldboll: { id: 'eldboll', name: 'Eldboll', icon: '☄️', kind: 'bolt', cd: 1300, range: 8, power: 24, text: 'Kastar en eldboll.' },
-  isspjut: { id: 'isspjut', name: 'Isspjut', icon: '❄️', kind: 'lance', cd: 4000, range: 8, power: 14, ms: 3000, text: 'Ett spjut av is som gör monstret långsamt.' },
+  isspjut: { id: 'isspjut', name: 'Isspjut', icon: '❄️', kind: 'lance', cd: 4000, range: 8, power: 14, ms: 3000, text: 'Ett spjut av is som gör monstret långsamt. Avbryter bossens stora attacker!' },
   askregn: { id: 'askregn', name: 'Åskregn', icon: '⚡', kind: 'storm', cd: 9000, range: 8, power: 28, radius: 2.4, text: 'Blixtar slår ner på ett ställe och träffar alla där.' },
   blink: { id: 'blink', name: 'Blink', icon: '🌀', kind: 'blink', cd: 10000, range: 4, power: 0, text: 'Hoppar några steg framåt. Bra för att komma undan.' },
 };
@@ -96,10 +96,12 @@ export const REST_RADIUS = 3;
 export const LEASH_TILES = 22;
 
 /** Monsters are a little slower than a player (4 tiles a second), so you can always run back to the healer. */
-/** Monsters get tougher with more players; a lone kid meets gentler bosses. */
-export const mobHpScale = (party: number): number => 0.6 + 0.4 * Math.max(1, party);
-export const bossHpScale = (party: number): number => 0.5 + 0.5 * Math.max(1, party);
-export const mobDmgScale = (party: number): number => (party <= 1 ? 0.6 : party === 2 ? 0.8 : 1);
+/** Monsters get tougher with more players (a boss's health is what one player meets); a lone kid is hit softer. */
+export const mobHpScale = (party: number): number => 0.4 + 0.45 * Math.max(1, party);
+export const bossHpScale = (party: number): number => (party <= 1 ? 0.6 : 0.3 + 0.7 * party);
+/** A boss calls fewer helpers for a smaller party (at least one). */
+export const addCount = (count: number, party: number): number => Math.max(1, Math.round((count * Math.min(4, Math.max(1, party))) / 4));
+export const mobDmgScale = (party: number): number => (party <= 1 ? 0.4 : party === 2 ? 0.7 : party === 3 ? 0.9 : 1);
 
 // ---------------------------------------------------------------------------
 // Monsters and bosses
@@ -123,15 +125,15 @@ export interface SagaMobDef {
 }
 
 export const SAGA_MOBS: Record<string, SagaMobDef> = {
-  skelett: { species: 'skelett', name: 'Skelettkrigare', hp: 70, dmg: 7, atkMs: 1600, reach: 1.4, speed: 2.4, aggro: 4.5 },
-  draugbage: { species: 'draugbage', name: 'Draugbågskytt', hp: 55, dmg: 6, atkMs: 2000, reach: 5, speed: 2.2, aggro: 6 },
-  gravrotta: { species: 'gravrotta', name: 'Gravråtta', hp: 30, dmg: 4, atkMs: 1100, reach: 1.2, speed: 3.4, aggro: 4 },
-  frosttroll: { species: 'frosttroll', name: 'Frosttroll', hp: 110, dmg: 10, atkMs: 1900, reach: 1.5, speed: 2.2, aggro: 4.5 },
-  isvarg: { species: 'isvarg', name: 'Isvarg', hp: 60, dmg: 6, atkMs: 1200, reach: 1.3, speed: 3.6, aggro: 5 },
-  isande: { species: 'isande', name: 'Isande', hp: 45, dmg: 6, atkMs: 2100, reach: 5, speed: 2, aggro: 6, slows: true },
-  eldimp: { species: 'eldimp', name: 'Eldimp', hp: 40, dmg: 5, atkMs: 1100, reach: 1.2, speed: 3.6, aggro: 5 },
-  lavagolem: { species: 'lavagolem', name: 'Lavagolem', hp: 150, dmg: 13, atkMs: 2200, reach: 1.6, speed: 1.8, aggro: 4 },
-  eldhund: { species: 'eldhund', name: 'Eldhund', hp: 80, dmg: 8, atkMs: 1300, reach: 1.3, speed: 3.4, aggro: 5 },
+  skelett: { species: 'skelett', name: 'Skelettkrigare', hp: 170, dmg: 7, atkMs: 1600, reach: 1.4, speed: 2.4, aggro: 4.5 },
+  draugbage: { species: 'draugbage', name: 'Draugbågskytt', hp: 130, dmg: 6, atkMs: 2000, reach: 5, speed: 2.2, aggro: 6 },
+  gravrotta: { species: 'gravrotta', name: 'Gravråtta', hp: 70, dmg: 4, atkMs: 1100, reach: 1.2, speed: 3.4, aggro: 4 },
+  frosttroll: { species: 'frosttroll', name: 'Frosttroll', hp: 260, dmg: 10, atkMs: 1900, reach: 1.5, speed: 2.2, aggro: 4.5 },
+  isvarg: { species: 'isvarg', name: 'Isvarg', hp: 140, dmg: 6, atkMs: 1200, reach: 1.3, speed: 3.6, aggro: 5 },
+  isande: { species: 'isande', name: 'Isande', hp: 110, dmg: 6, atkMs: 2100, reach: 5, speed: 2, aggro: 6, slows: true },
+  eldimp: { species: 'eldimp', name: 'Eldimp', hp: 95, dmg: 5, atkMs: 1100, reach: 1.2, speed: 3.6, aggro: 5 },
+  lavagolem: { species: 'lavagolem', name: 'Lavagolem', hp: 360, dmg: 13, atkMs: 2200, reach: 1.6, speed: 1.8, aggro: 4 },
+  eldhund: { species: 'eldhund', name: 'Eldhund', hp: 190, dmg: 8, atkMs: 1300, reach: 1.3, speed: 3.4, aggro: 5 },
   // the ice that holds a frozen friend (break it to free them)
   isblock: { species: 'isblock', name: 'Isblock', hp: 60, dmg: 0, atkMs: 999999, reach: 0, speed: 0, aggro: 0 },
 };
@@ -190,7 +192,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     species: 'gravvaktare',
     name: 'Gravväktaren',
     title: 'Kryptans vakt',
-    hp: 500,
+    hp: 1100,
     dmg: 11,
     atkMs: 1800,
     reach: 1.8,
@@ -206,7 +208,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     species: 'draugkung',
     name: 'Draugkungen Hrolf',
     title: 'Kryptans herre',
-    hp: 1200,
+    hp: 2200,
     dmg: 12,
     atkMs: 2000,
     reach: 2,
@@ -225,7 +227,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     species: 'isbjorn',
     name: 'Isbjörnen Kall',
     title: 'Borgens vaktbjörn',
-    hp: 700,
+    hp: 1500,
     dmg: 13,
     atkMs: 1900,
     reach: 1.8,
@@ -241,7 +243,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     species: 'rimturs',
     name: 'Rimtursen',
     title: 'Frostjätten',
-    hp: 1600,
+    hp: 2600,
     dmg: 14,
     atkMs: 2200,
     reach: 2.2,
@@ -249,10 +251,10 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     phases: [0.5],
     phaseAdds: { species: 'isande', count: 2 },
     moves: [
-      { move: 'cleave', name: 'Frostandedräkt', every: 10000, first: 5000, warn: 1500, radius: 4.2, arc: 70, dmg: 38, text: 'Andas iskall luft rakt fram. Gå åt sidan!' },
-      { move: 'rain', name: 'Istappar', every: 11000, first: 8000, warn: 1400, radius: 1.3, count: 3, dmg: 28, text: 'Istappar faller från taket där ni står. Flytta på er!' },
+      { move: 'cleave', name: 'Frostandedräkt', every: 10000, first: 5000, warn: 1500, radius: 4.2, arc: 70, dmg: 34, text: 'Andas iskall luft rakt fram. Gå åt sidan!' },
+      { move: 'rain', name: 'Istappar', every: 11000, first: 8000, warn: 1400, radius: 1.3, count: 3, dmg: 24, text: 'Istappar faller från taket där ni står. Flytta på er!' },
       { move: 'freeze', name: 'Isfängelse', every: 16000, first: 11000, warn: 800, radius: 1, dmg: 15, text: 'Fryser in någon i ett isblock. Slå sönder isen för att rädda din vän!' },
-      { move: 'nova', name: 'Snöstorm', every: 15000, first: 3000, warn: 2600, radius: 8, dmg: 32, phase: 1, interrupt: true, text: 'Kallar på en snöstorm runt sig. Avbryt med Sköldslag, eller spring långt bort!' },
+      { move: 'nova', name: 'Snöstorm', every: 15000, first: 6000, warn: 2600, radius: 8, dmg: 32, phase: 1, interrupt: true, text: 'Kallar på en snöstorm runt sig. Avbryt med Sköldslag, eller spring långt bort!' },
     ],
     yells: { pull: 'Små varma varelser i MIN borg? Ni ska bli istappar!', phase: ['Känn vinterns vrede!'], kill: 'Frys!', death: 'Våren… kommer… ändå…', wipe: 'Vintern vinner alltid.' },
     lore: 'Rimtursen är en frostjätte från Jötunheim. Han vill att det ska vara vinter för alltid, och har frusit alla källor i norr.',
@@ -261,7 +263,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     species: 'smeden',
     name: 'Smeden Glöd',
     title: 'Surts smed',
-    hp: 900,
+    hp: 1700,
     dmg: 14,
     atkMs: 2000,
     reach: 1.9,
@@ -280,7 +282,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     species: 'surt',
     name: 'Surt',
     title: 'Eldjätten från Muspelheim',
-    hp: 2000,
+    hp: 3200,
     dmg: 16,
     atkMs: 2200,
     reach: 2.4,
@@ -290,7 +292,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     moves: [
       { move: 'cleave', name: 'Eldsvärdet', every: 8000, first: 5000, warn: 1300, radius: 4.4, arc: 110, dmg: 40, text: 'Svingar det flammande svärdet i en stor båge. Ställ dig bakom honom!' },
       { move: 'pools', name: 'Lavapölar', every: 12000, first: 8000, warn: 1200, radius: 1.6, dmg: 10, linger: 10000, text: 'Lava väller upp under er och brinner kvar. Flytta på er!' },
-      { move: 'nova', name: 'Muspels vrede', every: 14000, first: 4000, warn: 2800, radius: 9, dmg: 45, phase: 2, interrupt: true, text: 'Hela salen fylls av eld. Avbryt med Sköldslag, eller spring långt bort!' },
+      { move: 'nova', name: 'Muspels vrede', every: 14000, first: 4000, warn: 2800, radius: 7, dmg: 45, phase: 2, interrupt: true, text: 'Hela salen fylls av eld. Avbryt med Sköldslag, eller spring långt bort!' },
     ],
     yells: { pull: 'Med det här svärdet ska jag bränna Världsträdet!', phase: ['Muspelheims eld brinner i mig!', 'NI KAN INTE STOPPA MIG!'], kill: 'Aska till aska!', death: 'Världsträdet… lever…', wipe: 'Ingen kan stå emot elden!' },
     lore: 'Surt är eldjätten från Muspelheim. I sin smedja under vulkanen smider han ett svärd av eld för att bränna Yggdrasil, Världsträdet som håller ihop alla världar.',

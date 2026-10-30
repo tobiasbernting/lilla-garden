@@ -15,6 +15,7 @@ import {
   VILLAGE_KEY,
   VOLVA_SPOT,
   WIPE_MS,
+  bossHpScale,
   castSpell,
   chooseClass,
   createPlayer,
@@ -25,6 +26,7 @@ import {
   npcState,
   isSolidForPlayer,
   jumpTo,
+  mobDmgScale,
   objectAt,
   performAction,
   portalFront,
@@ -217,7 +219,7 @@ describe('fighting', () => {
     run(world, 100);
     const bm = inst.mobs[inst.boss]!;
     expect(bm.state).toBe('fight');
-    expect(bm.max).toBe(Math.round(SAGA_BOSSES.draugkung!.hp * 1.5));
+    expect(bm.max).toBe(Math.round(SAGA_BOSSES.draugkung!.hp * bossHpScale(2)));
     // the first big attack is the sword sweep at the tank: the healer stands in it too, then steps out
     let guard = 0;
     while (!bm.cast && guard++ < 200) run(world, 50);
@@ -230,7 +232,7 @@ describe('fighting', () => {
     const landed = run(world, 2000);
     expect(inst.fighters[healer.id]!.hp).toBe(hpBefore);
     // the tank stayed in front of the boss and took the sweep (gentler for a party of two)
-    const sweep = Math.round(SAGA_BOSSES.draugkung!.moves[0]!.dmg * 0.8);
+    const sweep = Math.round(SAGA_BOSSES.draugkung!.moves[0]!.dmg * mobDmgScale(2));
     expect(landed.some((c) => c.t === 'hit' && c.on === tank.id && c.n === sweep)).toBe(true);
   });
 
@@ -252,6 +254,34 @@ describe('fighting', () => {
     expect(out.some((c) => c.t === 'hit' && c.kind === 'kick')).toBe(true);
     expect(bm.cast).toBeUndefined();
     expect(inst.zones).toHaveLength(0);
+  });
+
+  it('a boss stays in its hall: it stops at the edge, and goes home only when everyone has left', () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    const d = inside(world, p, 'magiker');
+    const inst = d.saga!;
+    const boss = d.animals[inst.boss]!;
+    const home = { x: boss.x, y: boss.y };
+    p.x = boss.x;
+    p.y = boss.y + 3 * TILE;
+    run(world, 200);
+    const bm = inst.mobs[inst.boss]!;
+    expect(bm.state).toBe('fight');
+    // run to the far side of the hall and wait: the boss follows to its edge, but not out
+    const far = [...Array(40).keys()].map((i) => ({ x: home.x + (i - 20) * TILE, y: home.y })).find((t) => Math.abs(t.x - home.x) / TILE > 14 && Math.abs(t.x - home.x) / TILE < 20 && !isSolidForPlayer(d, Math.floor(t.x / TILE), Math.floor(t.y / TILE)))!;
+    p.x = far.x;
+    p.y = far.y;
+    inst.fighters[p.id]!.hp = 9999;
+    inst.fighters[p.id]!.max = 9999;
+    run(world, 6000);
+    expect(bm.state).toBe('fight');
+    expect(Math.hypot(boss.x - home.x, boss.y - home.y) / TILE).toBeLessThanOrEqual(11.5);
+    // out of the hall: it gives up
+    p.x = px(inst.start.x);
+    p.y = px(inst.start.y);
+    run(world, 300);
+    expect(bm.state).not.toBe('fight');
   });
 
   it('when everyone falls, the family gets up at the rest stone and the boss starts over', () => {
@@ -318,6 +348,8 @@ describe('loot', () => {
     expect(a.saga!.cleared).toContain('draug');
     expect(b.saga!.cleared).toContain('draug');
     const chest = Object.values(d.objects).find((o) => o.kind === 'saga_chest' && o.variant === 2)!;
+    // never on top of (or right next to) someone, so nobody gets stuck in it
+    for (const q of [a, b]) expect(Math.max(Math.abs(Math.floor(q.x / TILE) - chest.x), Math.abs(Math.floor(q.y / TILE) - chest.y))).toBeGreaterThan(1);
     a.x = px(chest.x);
     a.y = px(chest.y) + TILE;
     const first = performAction(d, a.id, chest.x, chest.y, ctx(5));

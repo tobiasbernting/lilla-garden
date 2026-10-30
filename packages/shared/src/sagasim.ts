@@ -28,6 +28,7 @@ import {
   SAGA_TREASURE,
   SPELLS,
   STONE_SPOT,
+  addCount,
   VOLVA_ID,
   WIPE_MS,
   bossHpScale,
@@ -313,10 +314,16 @@ export function chooseClass(world: WorldState, playerId: string, cls: string): C
   for (const piece of [c.outfit.hat, c.outfit.shirt]) if (!p.wardrobe.includes(piece)) p.wardrobe.push(piece);
   p.outfit = { ...p.outfit, hat: c.outfit.hat, shirt: c.outfit.shirt };
   const out: Change[] = [toast(p.id, fmt(T.sagaClassChosen, { cls: c.name })), fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle')];
-  if (first) bump(p, 'sagaClass', 1, out);
+  if (first) {
+    // every new hero gets a few healing potions to start with
+    giveItems(farm, p, 'healing_potion', FIRST_POTIONS, out);
+    bump(p, 'sagaClass', 1, out);
+  }
   out.push(playerChange(p));
   return out;
 }
+
+const FIRST_POTIONS = 3;
 
 const nearNpc = (farm: WorldState, p: PlayerState, npcId: string): boolean => {
   const n = NPCS[npcId];
@@ -512,6 +519,9 @@ function weaponPower(p: PlayerState): number {
 }
 
 const CRIT_CHANCE = 0.12;
+const RAGE_LEECH = 0.3;
+/** Sköldmur also gives back a little health. */
+const WALL_HEAL = 0.15;
 
 /** A monster a spell can hit: in a fight or waiting (not on its way home), close enough, in sight for ranged spells. */
 function pickMob(h: Here, p: PlayerState, f: SagaFighter, range: number, wanted: number | undefined, sight: boolean): SagaMob | null {
@@ -575,9 +585,12 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
     const crit = ctx.rnd() < CRIT_CHANCE;
     return { n: base * weaponPower(p) * (f.rage !== undefined && now < f.rage ? 1.5 : 1) * (crit ? 1.5 : 1), crit };
   };
+  const raging = f.rage !== undefined && now < f.rage;
   const strike = (m: SagaMob, base: number): void => {
     const pw = power(base);
     hurtMob(h, m, p.id, pw.n, sp.threat ?? 1, pw.crit, ctx, out);
+    // a raging berserker heals a little from every blow
+    if (raging) heal(h, p, f, pw.n * RAGE_LEECH, out);
   };
   const mobAt = (m: SagaMob): { x: number; y: number } => h.area.animals[m.id] ?? m.home;
   const wantMob = typeof target === 'number' ? target : undefined;
@@ -592,7 +605,11 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
       f.target = m.id;
       out.push(spellFx(h, p.id, sp.id, p, mobAt(m), m.id));
       strike(m, sp.power);
-      if (sp.kind === 'lance' && h.inst.mobs[m.id]) m.slowUntil = now + (sp.ms ?? 3000);
+      if (sp.kind === 'lance' && h.inst.mobs[m.id]) {
+        m.slowUntil = now + (sp.ms ?? 3000);
+        // the ice also stops a boss's big attack
+        if (m.cast) stun(h, m, 0, now, out);
+      }
       if (sp.kind === 'bash' && h.inst.mobs[m.id]) stun(h, m, sp.ms ?? 1500, now, out);
       break;
     }
@@ -669,6 +686,7 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
     case 'wall':
       f.wall = now + (sp.ms ?? 6000);
       out.push(spellFx(h, p.id, sp.id, p));
+      heal(h, p, f, f.max * WALL_HEAL, out);
       break;
     case 'rage':
       f.rage = now + (sp.ms ?? 8000);
@@ -734,7 +752,8 @@ function heal(h: Here, p: PlayerState, f: SagaFighter, amount: number, out: Chan
 
 function hurtFighter(h: Here, p: PlayerState, amount: number, by: SagaMob | null, now: number, out: Change[]): void {
   const f = h.inst.fighters[p.id];
-  if (!f || f.down !== undefined) return;
+  // the ice that holds a frozen player keeps everything else out too
+  if (!f || f.down !== undefined || f.frozen !== undefined) return;
   let n = Math.max(1, Math.round(amount * mobDmgScale(partyOf(h).length) * (f.wall !== undefined && now < f.wall ? 0.4 : 1)));
   if (n >= f.hp && f.hp > f.max * 0.5 && n < f.max) n = f.hp - 1; // one hit from full health never knocks you down
   f.hp -= n;
@@ -823,8 +842,9 @@ function hurtMob(h: Here, m: SagaMob, by: string, amount: number, threatMul: num
     const a = h.area.animals[m.id];
     if (boss.phaseAdds && a) {
       const party = partyOf(h).filter((p) => upright(h, p));
-      for (let i = 0; i < boss.phaseAdds.count; i++) {
-        const ang = (i / boss.phaseAdds.count) * Math.PI * 2 + ctx.rnd();
+      const n = addCount(boss.phaseAdds.count, partySize(h));
+      for (let i = 0; i < n; i++) {
+        const ang = (i / n) * Math.PI * 2 + ctx.rnd();
         const at = { x: a.x + Math.cos(ang) * 3 * TILE, y: a.y + Math.sin(ang) * 3 * TILE };
         const spot = isSolidForAnimal(h.area, tileOf(at.x), tileOf(at.y)) ? { x: a.x, y: a.y } : at;
         const add = spawnSagaMob(h.area, h.inst, boss.phaseAdds.species, spot.x, spot.y, 'add', -1);
@@ -878,16 +898,15 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
   out.push(yell(h, m.species, boss.yells.death));
   const tx = tileOf(at.x);
   const ty = tileOf(at.y);
-  const chest = [
-    [0, 0],
-    [1, 0],
-    [0, 1],
-    [-1, 0],
-    [0, -1],
-    [1, 1],
-  ]
-    .map(([dx, dy]) => addObject(h.area, 'saga_chest', tx + dx!, ty + dy!, { variant: m.kind === 'mini' ? 1 : 2 }))
-    .find((o) => !!o);
+  // the chest appears where the boss fell, but never on top of (or right next to) someone
+  const clear = (x: number, y: number): boolean => !Object.values(h.area.players).some((p) => Math.abs(tileOf(p.x) - x) <= 1 && Math.abs(tileOf(p.y) - y) <= 1);
+  let chest: WorldObject | null = null;
+  for (let r = 0; r <= 4 && !chest; r++)
+    for (let dy = -r; dy <= r && !chest; dy++)
+      for (let dx = -r; dx <= r && !chest; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !clear(tx + dx, ty + dy)) continue;
+        chest = addObject(h.area, 'saga_chest', tx + dx, ty + dy, { variant: m.kind === 'mini' ? 1 : 2 });
+      }
   if (chest) out.push({ t: 'object', id: chest.id, obj: chest, area: h.key });
   const d = DUNGEONS[h.inst.id];
   if (m.kind === 'mini') {
@@ -1111,8 +1130,8 @@ function tickMob(h: Here, m: SagaMob, dtMs: number, ctx: SimCtx, fields: Map<str
     }
     return;
   }
-  // fighting
-  if (dist(a, m.home) > (boss ? LEASH_TILES * 0.7 : LEASH_TILES)) {
+  // fighting: a monster dragged too far gives up; a boss keeps to its hall and gives up only when everyone has left it
+  if (boss ? !partyOf(h).some((p) => upright(h, p) && dist(p, m.home) <= LEASH_TILES) : dist(a, m.home) > LEASH_TILES) {
     resetMob(h, m, out);
     return;
   }
@@ -1158,8 +1177,18 @@ function tickMob(h: Here, m: SagaMob, dtMs: number, ctx: SimCtx, fields: Map<str
     field = distanceField(h, target);
     fields.set(target.id, field);
   }
+  const was = { x: a.x, y: a.y };
   stepTowards(h, m, a, target, stats.speed * TILE * slow, dtMs, field ?? null);
+  if (boss && dist(a, m.home) > BOSS_HALL && dist(a, m.home) > dist(was, m.home)) {
+    // a boss stops at the edge of its hall
+    a.x = was.x;
+    a.y = was.y;
+    a.moving = false;
+  }
 }
+
+/** How far from its place a boss follows anyone (tiles). */
+const BOSS_HALL = 11;
 
 // ---------------------------------------------------------------------------
 // Boss attacks: marked on the ground, then they land
@@ -1187,7 +1216,8 @@ function startCast(h: Here, m: SagaMob, a: { x: number; y: number; facing: strin
   const mv = boss.moves[i]!;
   m.next![i] = now + mv.every + mv.warn;
   const party = partyOf(h).filter((p) => upright(h, p));
-  if (!party.length) return false;
+  // the ice prison needs a friend to break it: never on someone alone
+  if (!party.length || (mv.move === 'freeze' && party.length < 2)) return false;
   const at = now + mv.warn;
   const zones: string[] = [];
   const tank = m.target ? h.farm.players[m.target] : undefined;
@@ -1285,7 +1315,7 @@ function landCast(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
     } else dropZone(h, z.id, out);
   }
   if (mv.move === 'summon' && a && mv.add) {
-    for (let i = 0; i < (mv.count ?? 2); i++) {
+    for (let i = 0; i < addCount(mv.count ?? 2, partySize(h)); i++) {
       const add = spawnSagaMob(h.area, h.inst, mv.add, a.x + (i - 0.5) * 2 * TILE, a.y + TILE, 'add', -1);
       const am = h.inst.mobs[add.id]!;
       am.state = 'fight';
