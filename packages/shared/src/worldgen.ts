@@ -162,6 +162,12 @@ export class Painter {
   chance(p: number): boolean {
     return this.rnd() < p;
   }
+  /** Maps right around the farm show off their landmark (a pyramid, a temple, a cave…) every time. */
+  showcase = false;
+  /** A landmark's chance: always yes on a showcase map (it still draws a number, so the rest stays the same). */
+  lucky(p: number): boolean {
+    return this.chance(p) || this.showcase;
+  }
   int(a: number, b: number): number {
     return randInt(this.rnd, a, b);
   }

@@ -231,6 +231,7 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
   if (biome === 'by') paintCity(world, rnd);
   else {
     const g = new Painter(world, rnd, hash(ax, ay, worldSeed + 1));
+    g.showcase = !!NEAR_HOME[`${ax},${ay}`] || (ax === SPACEPORT.ax && ay === SPACEPORT.ay);
     (PAINTERS[biome] ?? PAINTERS.ang!)(g);
     world.renew = countRenewables(world);
   }
