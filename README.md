@@ -43,7 +43,7 @@ pnpm dev            # server on :8080, the game on :5173, also on your LAN IP
 ```
 
 Open `http://<your-computer-ip>:5173` on the tablet. The parent page is at `/admin`
-(log in with `PARENT_PASSWORD`; invite and approve devices, force a season, save, skip to the next day,
+(log in with `PARENT_PASSWORD`; make join codes, manage devices, force a season, save, skip to the next day,
 make it evening/morning).
 
 Without `DATABASE_URL` the server runs in memory and saves nothing – handy for a quick look,
@@ -72,30 +72,41 @@ Environment:
 | `PARENT_PASSWORD` | Required (12+ characters): the parent login for `/admin`. The server refuses to start without it. |
 | `ACCESS`          | `open` turns access control off entirely (old behaviour, home network only). Default: on. |
 | `PUBLIC_URL`      | The public address, e.g. `https://gard.example.se`: used in invite links, makes cookies `Secure`, accepted as origin. |
+| `ADMIN_PORT`      | Serve the parent page on its own port (and not on `PORT`). `ADMIN_HOST` sets its address (default `0.0.0.0`). |
+| `NTFY_URL`        | ntfy topic URL for push notifications, e.g. `http://ntfy.example.lan/lilla-garden`. `NTFY_TOKEN` if the server needs one. |
 | `TRUST_PROXY`     | `1` behind a tunnel or reverse proxy: take the visitor's IP from `CF-Connecting-IP`/`X-Forwarded-For`. Only set it when the server can't be reached directly. |
 
 ## Who may enter (access control)
 
-Lilla Gården is a kids' game, so nobody gets in without a parent saying yes:
+Lilla Gården is a kids' game, so nobody gets in without a parent having said yes:
 
-1. **Nothing without an approved device.** Strangers only ever see a "private farm" page. The game itself, `/api`
-   and the WebSocket all refuse browsers without an approved device cookie.
-2. **Invite links.** On `/admin` a parent creates a link for a named person (guest or family, valid 1 h–7 days).
-   It works **once**; the secret lives in the `#fragment`, so it never shows up in server or proxy logs, and only a
-   hash of it is stored.
-3. **Parent approval.** Opening the link only puts the device in a waiting room with a 6-digit code. It can't play
-   until a parent approves it on `/admin` (ask the guest which code they see). At most 10 devices can wait.
-4. **Guests play only their own characters.** A guest device sees and plays only the characters it created (by
-   default one) or that the parent gave it; family devices play everyone. A parent can also make the browser they're
-   signed in on a family device (for the kids' own tablet) without an invite.
-5. **The parent stays in control**: close the farm for everyone, family only, or family + guests; play hours
+1. **Nothing without an approved device.** Strangers only ever see a "private farm" page with a code field. The game
+   itself, `/api` and the WebSocket all refuse browsers without an approved device cookie.
+2. **Join codes.** On the parent page a parent makes a code (`ABCD-1234`) for a named person or family: guest or
+   family, 1–5 devices, valid 1 hour–30 days. It's typed on the start page or opened as a link (`/join#CODE`; the
+   fragment never reaches logs). Each device that joins is remembered (400 days); when the code has let in its
+   devices or expires it stops working. Only a hash of the code is stored.
+3. **The parent decides when making the code**: *let in directly* (the default; the parent gets a push) or *I approve
+   each device* (the device waits with a 6-digit number until the parent approves it).
+4. **Guests play only their own characters.** A guest device sees and plays only the characters it created (0–3 per
+   device) or that the parent gave it; family devices play everyone. A parent signed in on the kids' tablet can also
+   make it a family device directly (not when the parent page runs on its own port).
+5. **Öppna igen**: a device that forgot the farm (cleared browser, new browser) gets a fresh one-time code from the
+   device list and keeps its characters; the old key stops working.
+6. **The parent stays in control**: close the farm for everyone, family only, or family + guests; play hours
    (Swedish time); pause or remove any device. Changes take effect at once: open connections are closed and the
    device lands on the gate page.
-6. **Parent login**: password (`PARENT_PASSWORD`), optional two-step login with an authenticator app, rate limited
-   (5 failures per address per 15 min, 30 per hour in total), 8-hour sessions.
-7. **Log**: logins, failed logins, invites, joins, approvals and refused requests are logged on `/admin`.
-8. **Web hardening**: `HttpOnly` + `SameSite=Strict` cookies (`Secure` over HTTPS), origin checks on every form and
-   on the WebSocket, strict Content-Security-Policy, no framing, `noindex`, `/health` reveals nothing.
+7. **Parent login**: password (`PARENT_PASSWORD`), optional two-step login with an authenticator app, rate limited
+   (5 failures per address per 15 min, 30 per hour in total), 8-hour sessions. With `ADMIN_PORT` the parent page
+   only exists on its own listener (bind it somewhere the internet can't reach, e.g. a Tailscale address); the public
+   port answers 404 for `/admin`.
+8. **Guessing codes**: 10 wrong codes per address per 15 min, and 100 wrong codes per hour from everywhere together,
+   lock code entry for a while (and push a warning).
+9. **Push notifications** (`NTFY_URL`): someone joined, someone waits for approval, a device was reopened, parent
+   logins and failed logins, code entry locked.
+10. **Log**: everything at the gate is logged on the parent page.
+11. **Web hardening**: `HttpOnly` + `SameSite=Strict` cookies (`Secure` over HTTPS), origin checks on every form and
+    on the WebSocket, strict Content-Security-Policy, no framing, `noindex`, `/health` reveals nothing.
 
 There is still no text chat: players can only use emotes.
 

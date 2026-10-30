@@ -93,7 +93,13 @@ export interface ServerOptions {
   trustProxy?: boolean;
   /** The public address, e.g. https://gard.example.se (used for invite links, cookies and origin checks) */
   publicUrl?: string | undefined;
+  /** Serve the parent page on its own server (createServers().admin) and not at all on the public one */
+  separateAdmin?: boolean;
 }
+
+/** Which pages a listener serves: everything, the game without the parent page, or only the parent page. */
+type Surface = 'all' | 'public' | 'admin';
+const isAdminPath = (p: string): boolean => p === '/admin' || p.startsWith('/admin/');
 
 interface Conn {
   ws: WebSocket;
@@ -101,7 +107,16 @@ interface Conn {
   playerId: string | null;
 }
 
+/** One server with everything (the usual setup). */
 export function createServer(game: Game, opts: ServerOptions): http.Server {
+  return createServers(game, { ...opts, separateAdmin: false }).server;
+}
+
+/**
+ * The game server, plus (with `separateAdmin`) a second server for the parent page only, meant to listen on an
+ * address the internet can't reach (a Tailscale IP). Both share the game, the access control and the connections.
+ */
+export function createServers(game: Game, opts: ServerOptions): { server: http.Server; admin: http.Server | null } {
   const access = opts.access ?? null;
   const publicUrl = opts.publicUrl ? new URL(opts.publicUrl) : null;
   const conns = new Set<Conn>();
@@ -115,8 +130,8 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
     }
     return req.socket.remoteAddress ?? '?';
   };
-  const secure = (req: http.IncomingMessage): boolean =>
-    publicUrl?.protocol === 'https:' || (!!opts.trustProxy && req.headers['x-forwarded-proto'] === 'https');
+  const secure = (req: http.IncomingMessage, surface: Surface = 'all'): boolean =>
+    (surface !== 'admin' && publicUrl?.protocol === 'https:') || (!!opts.trustProxy && req.headers['x-forwarded-proto'] === 'https');
   const origin = (req: http.IncomingMessage): string => publicUrl?.origin ?? `${secure(req) ? 'https' : 'http'}://${req.headers.host ?? 'localhost'}`;
   /** Requests that change something must come from our own pages (no cross-site forms or sockets). */
   const sameOrigin = (req: http.IncomingMessage): boolean => {
@@ -134,8 +149,8 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
     }
     return !site || site === 'same-origin' || site === 'none';
   };
-  const cookie = (req: http.IncomingMessage, res: http.ServerResponse, name: string, value: string, maxAgeS: number, cookiePath = '/'): void => {
-    const c = `${name}=${encodeURIComponent(value)}; Path=${cookiePath}; Max-Age=${maxAgeS}; HttpOnly; SameSite=Strict${secure(req) ? '; Secure' : ''}`;
+  const cookie = (req: http.IncomingMessage, res: http.ServerResponse, name: string, value: string, maxAgeS: number, cookiePath = '/', surface: Surface = 'all'): void => {
+    const c = `${name}=${encodeURIComponent(value)}; Path=${cookiePath}; Max-Age=${maxAgeS}; HttpOnly; SameSite=Strict${secure(req, surface) ? '; Secure' : ''}`;
     const prev = res.getHeader('set-cookie');
     res.setHeader('set-cookie', [...(Array.isArray(prev) ? prev : prev ? [String(prev)] : []), c]);
   };
@@ -167,7 +182,7 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
     return m;
   };
 
-  const server = http.createServer(async (req, res) => {
+  const handle = async (req: http.IncomingMessage, res: http.ServerResponse, surface: Surface): Promise<void> => {
     try {
       const url = new URL(req.url ?? '/', 'http://localhost');
       const p = url.pathname;
@@ -180,12 +195,19 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
       res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
       res.setHeader('x-robots-tag', 'noindex, nofollow');
       res.setHeader('content-security-policy', pageCsp(nonce));
-      if (secure(req)) res.setHeader('strict-transport-security', 'max-age=31536000');
+      if (secure(req, surface)) res.setHeader('strict-transport-security', 'max-age=31536000');
+
+      // With a separate parent server, the public one has no parent page at all, and the parent one nothing else
+      if (surface === 'public' && isAdminPath(p)) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        return void res.end('not found');
+      }
+      if (surface === 'admin' && !isAdminPath(p) && p !== '/health') return redirect(res, '/admin');
 
       if (p === '/health') return json(res, 200, access ? { ok: true } : { ok: true, day: game.world.day, online: game.onlinePlayers().length });
       if (p === '/robots.txt') {
         res.writeHead(200, { 'content-type': 'text/plain' });
-        return res.end('User-agent: *\nDisallow: /\n');
+        return void res.end('User-agent: *\nDisallow: /\n');
       }
       if (access && req.method === 'POST' && !sameOrigin(req)) {
         await access.record('refused', `fel ursprung ${String(req.headers.origin ?? '')} → ${p}`, ip);
@@ -199,7 +221,7 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
         device = access.deviceFor(cookies[DEVICE_COOKIE]);
         if (device) access.seen(device, ip);
 
-        if (p === '/access') return html(res, 200, accessPage(access.gate(device), device, access, nonce));
+        if (p === '/access') return html(res, 200, accessPage(access.gate(device), device, access, nonce, surface === 'all'));
         if (p === '/api/me') {
           const gate = access.gate(device);
           return json(res, gate === 'ok' ? 200 : 403, { gate, ...(device ? { name: device.name, kind: device.kind, canCreate: access.mayCreate(device) } : {}) });
@@ -209,20 +231,19 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
           return html(res, 200, joinPage(nonce));
         }
         if (p === '/join' && req.method === 'POST') {
-          if (device && device.status === 'approved') return redirect(res, '/');
           const form = new URLSearchParams(await readBody(req, 4096));
-          const r = await access.redeem(form.get('token') ?? '', form.get('name') ?? '', ip, String(req.headers['user-agent'] ?? ''));
+          const r = await access.redeem(form.get('code') ?? form.get('token') ?? '', form.get('name') ?? '', ip, String(req.headers['user-agent'] ?? ''));
           if ('error' in r) {
             const msg =
               r.error === 'limit'
                 ? 'För många försök. Vänta en stund.'
                 : r.error === 'full'
                   ? 'Många väntar redan på att bli godkända. Försök igen senare.'
-                  : 'Länken fungerar inte. Den kan redan vara använd eller för gammal – be om en ny.';
+                  : 'Koden fungerar inte. Kolla att den är rätt skriven – den kan också vara använd eller för gammal.';
             return html(res, r.error === 'limit' ? 429 : 403, joinPage(nonce, msg));
           }
           cookie(req, res, DEVICE_COOKIE, r.token, 400 * 24 * 3600);
-          return redirect(res, '/access');
+          return redirect(res, access.gate(r.device) === 'ok' ? '/' : '/access');
         }
 
         // ---- parent ----
@@ -231,7 +252,7 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
           const form = new URLSearchParams(await readBody(req, 4096));
           const r = await access.login(form.get('password') ?? '', form.get('code') ?? '', ip);
           if (!r.ok) return html(res, r.reason === 'limit' ? 429 : 401, loginPage(nonce, access.totpEnabled(), r.reason === 'limit' ? 'För många försök. Vänta en stund.' : 'Fel lösenord eller kod.'));
-          cookie(req, res, PARENT_COOKIE, r.session, 8 * 3600, '/admin');
+          cookie(req, res, PARENT_COOKIE, r.session, 8 * 3600, '/admin', surface);
           return redirect(res, '/admin');
         }
         if (p === '/admin' || p.startsWith('/admin/')) {
@@ -245,8 +266,10 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
               players: Object.values(game.world.players).map((pl) => ({ id: pl.id, name: pl.name })),
               online: onlineByDevice(),
               thisDevice: device?.id ?? null,
+              // a family device made on the parent server would only be a cookie for the parent page's address
+              canAddThisDevice: surface === 'all',
             });
-            delete session.newLink; // shown once
+            delete session.newCode; // shown once
             return html(res, 200, adminPage(game, opts.seasonEnv, url.searchParams.get('m') ?? '', nonce, accessHtml, COPY_SCRIPT));
           }
           if (p.startsWith('/admin/access/') && req.method === 'POST') {
@@ -285,10 +308,22 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
               }
               case 'invite': {
                 const r = await access.createInvite(
-                  { label: form.get('label') ?? '', kind: form.get('kind') === 'family' ? 'family' : 'guest', hours: Number(form.get('hours') ?? 24), newPlayers: Number(form.get('newPlayers') ?? 1) },
+                  {
+                    label: form.get('label') ?? '',
+                    kind: form.get('kind') === 'family' ? 'family' : 'guest',
+                    hours: Number(form.get('hours') ?? 24),
+                    newPlayers: Number(form.get('newPlayers') ?? 1),
+                    maxDevices: Number(form.get('maxDevices') ?? 1),
+                    approval: form.get('approval') === 'parent' ? 'parent' : 'auto',
+                  },
                   ip,
                 );
-                session.newLink = `${origin(req)}/join#${r.token}`;
+                session.newCode = { code: r.code, link: `${origin(req)}/join#${r.code}`, label: r.invite.label, reopen: false };
+                break;
+              }
+              case 'reopen': {
+                const r = await access.createReopenCode(id, ip);
+                if (r) session.newCode = { code: r.code, link: `${origin(req)}/join#${r.code}`, label: r.invite.label, reopen: true };
                 break;
               }
               case 'uninvite':
@@ -296,7 +331,7 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
                 m = 'Inbjudan borttagen';
                 break;
               case 'this-device': {
-                if (device) break;
+                if (device || surface !== 'all') break;
                 const r = await access.addFamilyDevice(form.get('name') ?? '', ip, String(req.headers['user-agent'] ?? ''));
                 cookie(req, res, DEVICE_COOKIE, r.token, 400 * 24 * 3600);
                 m = 'Den här webbläsaren är nu en familjeenhet';
@@ -326,8 +361,8 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
           }
           if (p === '/admin/logout' && req.method === 'POST') {
             access.logout(sessionToken);
-            cookie(req, res, PARENT_COOKIE, '', 0, '/admin');
-            return redirect(res, '/access');
+            cookie(req, res, PARENT_COOKIE, '', 0, '/admin', surface);
+            return redirect(res, surface === 'admin' ? '/admin/login' : '/access');
           }
         } else if (access.gate(device) !== 'ok' && !PUBLIC_FILES.has(p)) {
           // Everything else is the game: only for approved devices, right now
@@ -402,7 +437,10 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
       if (!res.headersSent) res.writeHead(500);
       res.end('error');
     }
-  });
+  };
+  const server = http.createServer((req, res) => void handle(req, res, opts.separateAdmin ? 'public' : 'all'));
+  const admin = opts.separateAdmin ? http.createServer((req, res) => void handle(req, res, 'admin')) : null;
+  admin?.on('upgrade', (_req, socket) => socket.destroy());
 
   // The game socket: only for approved devices, from our own pages
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
@@ -465,7 +503,7 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
     ws.on('error', gone);
   };
 
-  return server;
+  return { server, admin };
 }
 
 function serveStatic(root: string, urlPath: string, res: http.ServerResponse): void {

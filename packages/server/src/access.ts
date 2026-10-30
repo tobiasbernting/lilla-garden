@@ -1,7 +1,8 @@
-// Who may enter the world. Nobody plays without a device the parent approved: an invite link creates a device,
-// the parent approves it on the parent page, and only then does the game load. Parents log in with a password
-// (and optionally a code from an authenticator app). Rules on top: world closed / family only / open to guests,
-// and play hours.
+// Who may enter the world. Nobody plays without an approved device. A parent hands out join codes (typed on the
+// start page, or opened as a link) for a named person: the code lets in at most a few devices before it expires,
+// either straight away (the parent decided when creating it) or after the parent approves each device. Parents log
+// in with a password (and optionally a code from an authenticator app). Rules on top: world closed / family only /
+// open to guests, and play hours.
 import crypto from 'node:crypto';
 import type { AccessStore } from './db/accessStore.ts';
 import { verifyTotp } from './totp.ts';
@@ -35,16 +36,26 @@ export interface Device {
   userAgent: string;
 }
 
+/** A join code. Only a hash of the code is stored; the code itself is shown to the parent once. */
 export interface Invite {
   id: string;
   tokenHash: string;
+  /** Who it is for ("Kusin Anna", "Familjen Svensson") */
   label: string;
   kind: DeviceKind;
-  /** Characters the device may create */
+  /** Characters each device may create */
   newPlayers: number;
   createdAt: number;
   expiresAt: number;
-  usedAt: number | null;
+  /** How many devices may join with it, and how many have */
+  maxDevices: number;
+  used: number;
+  /** 'auto': devices are in at once; 'parent': each device waits for the parent's approval */
+  approval: 'auto' | 'parent';
+  /** "Öppna igen": the code gives this existing device a new key instead of creating a device */
+  deviceId?: string;
+  /** Codes saved before join codes existed were single-use links */
+  usedAt?: number | null;
 }
 
 export interface AccessSettings {
@@ -70,8 +81,8 @@ export interface ParentSession {
   expiresAt: number;
   /** TOTP enrollment in progress */
   totpPending?: string;
-  /** An invite link created moments ago, shown once */
-  newLink?: string;
+  /** A join code created moments ago, shown once */
+  newCode?: { code: string; link: string; label: string; reopen: boolean };
 }
 
 export const DEVICE_COOKIE = 'lg_device';
@@ -87,6 +98,16 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const sha256 = (s: string): string => crypto.createHash('sha256').update(s).digest('hex');
 const token = (): string => crypto.randomBytes(32).toString('base64url');
 const id = (): string => crypto.randomUUID();
+
+/** No 0/O, 1/I/L: easy to read aloud and type on a tablet. 32 symbols × 8 = 40 bits. */
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const newJoinCode = (): string => {
+  let c = '';
+  for (let i = 0; i < 8; i++) c += CODE_ALPHABET[crypto.randomInt(0, CODE_ALPHABET.length)];
+  return `${c.slice(0, 4)}-${c.slice(4)}`;
+};
+/** What the visitor typed, made comparable: case, spaces and dashes don't matter. */
+export const normalizeCode = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 /** Minutes since midnight in Sweden. */
 export function swedishMinutes(now: number): number {
@@ -131,6 +152,8 @@ export interface AccessOptions {
   /** Required: the parent password (at least 12 characters). */
   parentPassword: string;
   now?: () => number;
+  /** Told about every gate event (push notifications) */
+  notify?: (e: LogEntry) => void;
 }
 
 export class Access {
@@ -146,7 +169,10 @@ export class Access {
   private loginIp = new Limiter(5, 15 * 60_000);
   private loginAll = new Limiter(30, HOUR);
   private joinIp = new Limiter(10, 15 * 60_000);
+  /** Wrong codes from everywhere together: stops guessing from many addresses */
+  private joinAll = new Limiter(100, HOUR);
   private now: () => number;
+  private notify: (e: LogEntry) => void;
   /** Called when devices may have lost access, so open connections can be closed. */
   onChange: () => void = () => {};
 
@@ -157,6 +183,7 @@ export class Access {
     if (opts.parentPassword.length < 12) throw new Error('PARENT_PASSWORD must be at least 12 characters');
     this.pwHash = crypto.scryptSync(opts.parentPassword, this.pwSalt, 32);
     this.now = opts.now ?? Date.now;
+    this.notify = opts.notify ?? (() => {});
   }
 
   async load(): Promise<void> {
@@ -177,6 +204,11 @@ export class Access {
     const e = { at: this.now(), event, detail, ip };
     this.log.push(e);
     if (this.log.length > LOG_MEMORY) this.log.splice(0, this.log.length - LOG_MEMORY);
+    try {
+      this.notify(e);
+    } catch (err) {
+      console.error('could not notify', err);
+    }
     try {
       await this.store.log(e);
     } catch (err) {
@@ -266,68 +298,125 @@ export class Access {
     return true;
   }
 
-  // ---- invites ----
+  // ---- join codes ----
 
-  async createInvite(opts: { label: string; kind: DeviceKind; hours: number; newPlayers: number }, ip: string): Promise<{ invite: Invite; token: string }> {
-    const t = token();
+  async createInvite(
+    opts: { label: string; kind: DeviceKind; hours: number; newPlayers: number; maxDevices?: number; approval?: 'auto' | 'parent' },
+    ip: string,
+  ): Promise<{ invite: Invite; code: string }> {
+    const code = newJoinCode();
     const now = this.now();
     const invite: Invite = {
       id: id(),
-      tokenHash: sha256(t),
+      tokenHash: sha256(normalizeCode(code)),
       label: opts.label.trim().slice(0, 40) || 'Inbjudan',
       kind: opts.kind,
-      newPlayers: Math.max(0, Math.min(3, Math.floor(opts.newPlayers))),
+      newPlayers: Math.max(0, Math.min(3, Math.floor(opts.newPlayers) || 0)),
       createdAt: now,
-      expiresAt: now + Math.max(1, Math.min(7 * 24, Math.floor(opts.hours))) * HOUR,
-      usedAt: null,
+      expiresAt: now + Math.max(1, Math.min(30 * 24, Math.floor(opts.hours) || 24)) * HOUR,
+      maxDevices: Math.max(1, Math.min(5, Math.floor(opts.maxDevices ?? 1) || 1)),
+      used: 0,
+      approval: opts.approval === 'parent' ? 'parent' : 'auto',
     };
     this.invites.set(invite.id, invite);
     await this.store.saveInvite(invite);
-    await this.record('invite', `${invite.label} (${invite.kind})`, ip);
-    return { invite, token: t };
+    await this.record(
+      'invite',
+      `${invite.label} (${invite.kind === 'family' ? 'familj' : 'gäst'}, ${invite.maxDevices} enhet${invite.maxDevices > 1 ? 'er' : ''}, ${invite.approval === 'auto' ? 'släpps in direkt' : 'du godkänner'})`,
+      ip,
+    );
+    return { invite, code };
+  }
+
+  /** "Öppna igen": a one-time code (7 days) that gives an existing device a new key, keeping its characters. */
+  async createReopenCode(deviceId: string, ip: string): Promise<{ invite: Invite; code: string } | null> {
+    const d = this.devices.get(deviceId);
+    if (!d) return null;
+    // only one reopen code per device at a time
+    for (const i of [...this.invites.values()]) if (i.deviceId === d.id) await this.deleteInvite(i.id, ip, false);
+    const r = await this.createInvite({ label: d.name, kind: d.kind, hours: 7 * 24, newPlayers: 0, maxDevices: 1, approval: 'auto' }, ip);
+    r.invite.deviceId = d.id;
+    await this.store.saveInvite(r.invite);
+    return r;
+  }
+
+  private spent(i: Invite, now: number): boolean {
+    return i.expiresAt <= now || !!i.usedAt || (i.used ?? 0) >= (i.maxDevices ?? 1);
   }
 
   activeInvites(): Invite[] {
     const now = this.now();
-    return [...this.invites.values()].filter((i) => !i.usedAt && i.expiresAt > now).sort((a, b) => b.createdAt - a.createdAt);
+    return [...this.invites.values()].filter((i) => !this.spent(i, now)).sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  async deleteInvite(inviteId: string, ip: string): Promise<void> {
+  async deleteInvite(inviteId: string, ip: string, log = true): Promise<void> {
     const i = this.invites.get(inviteId);
     if (!i) return;
     this.invites.delete(inviteId);
     await this.store.deleteInvite(inviteId);
-    await this.record('invite-deleted', i.label, ip);
+    if (log) await this.record('invite-deleted', i.label, ip);
   }
 
   joinBlocked(ip: string): boolean {
-    return this.joinIp.blocked(ip, this.now());
+    const now = this.now();
+    return this.joinIp.blocked(ip, now) || this.joinAll.blocked('all', now);
   }
 
-  /** Turns an invite into a device waiting for the parent's approval. The invite works once. */
-  async redeem(inviteToken: string, name: string, ip: string, userAgent: string): Promise<{ device: Device; token: string } | { error: 'limit' | 'invalid' | 'full' }> {
+  /**
+   * A visitor typed a join code (or opened its link). Creates a device, approved at once or waiting for the parent,
+   * as the code says; a reopen code gives its device a new key instead.
+   */
+  async redeem(
+    codeOrToken: string,
+    name: string,
+    ip: string,
+    userAgent: string,
+  ): Promise<{ device: Device; token: string } | { error: 'limit' | 'invalid' | 'full' }> {
     const now = this.now();
-    if (this.joinIp.blocked(ip, now)) return { error: 'limit' };
-    this.joinIp.hit(ip, now);
-    const hash = sha256(inviteToken);
-    const invite = [...this.invites.values()].find((i) => i.tokenHash === hash);
-    if (!invite || invite.usedAt || invite.expiresAt <= now) {
-      await this.record('join-refused', invite ? `${invite.label}: redan använd eller för gammal` : 'okänd länk', ip);
+    if (this.joinBlocked(ip)) {
+      await this.record('join-blocked', 'för många fel koder', ip);
+      return { error: 'limit' };
+    }
+    const hash = sha256(normalizeCode(codeOrToken));
+    const legacy = sha256(codeOrToken.trim());
+    const invite = [...this.invites.values()].find((i) => i.tokenHash === hash || i.tokenHash === legacy);
+    if (!invite || this.spent(invite, now)) {
+      this.joinIp.hit(ip, now);
+      this.joinAll.hit('all', now);
+      await this.record('join-refused', invite ? `${invite.label}: koden är använd eller för gammal` : 'okänd kod', ip);
       return { error: 'invalid' };
     }
-    if (this.pending().length >= PENDING_MAX) {
+    const reopen = invite.deviceId ? this.devices.get(invite.deviceId) : undefined;
+    if (invite.deviceId && !reopen) {
+      await this.record('join-refused', `${invite.label}: enheten finns inte längre`, ip);
+      return { error: 'invalid' };
+    }
+    if (!reopen && invite.approval === 'parent' && this.pending().length >= PENDING_MAX) {
       await this.record('join-refused', 'för många enheter väntar redan', ip);
       return { error: 'full' };
     }
-    invite.usedAt = now;
+    invite.used = (invite.used ?? 0) + 1;
     await this.store.saveInvite(invite);
     const t = token();
+    if (reopen) {
+      this.byToken.delete(reopen.tokenHash);
+      reopen.tokenHash = sha256(t);
+      reopen.lastSeenAt = now;
+      reopen.lastIp = ip;
+      reopen.userAgent = userAgent.slice(0, 200);
+      this.byToken.set(reopen.tokenHash, reopen);
+      await this.store.saveDevice(reopen);
+      await this.record('reopened', `${reopen.name} öppnades igen`, ip);
+      this.onChange(); // the old key's connections close
+      return { device: reopen, token: t };
+    }
+    const auto = invite.approval === 'auto';
     const device: Device = {
       id: id(),
       tokenHash: sha256(t),
-      name: name.trim().slice(0, 40) || 'Okänd enhet',
+      name: name.trim().slice(0, 40) || invite.label,
       kind: invite.kind,
-      status: 'pending',
+      status: auto ? 'approved' : 'pending',
       paused: false,
       inviteId: invite.id,
       inviteLabel: invite.label,
@@ -335,14 +424,15 @@ export class Access {
       newPlayers: invite.newPlayers,
       code: String(crypto.randomInt(0, 1_000_000)).padStart(6, '0'),
       createdAt: now,
-      approvedAt: null,
+      approvedAt: auto ? now : null,
       lastSeenAt: now,
       lastIp: ip,
       userAgent: userAgent.slice(0, 200),
     };
     this.addDevice(device);
     await this.store.saveDevice(device);
-    await this.record('join', `${device.name} via ${invite.label} väntar (kod ${device.code})`, ip);
+    if (auto) await this.record('join', `${device.name} kom in med koden för ${invite.label}`, ip);
+    else await this.record('join-waiting', `${device.name} via ${invite.label} väntar (kod ${device.code})`, ip);
     return { device, token: t };
   }
 

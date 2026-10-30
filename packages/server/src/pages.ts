@@ -23,6 +23,7 @@ label{display:inline-block;margin:.2rem .8rem .2rem 0}
 ul{padding-left:1.2rem}
 .muted{color:#7a6f63;font-size:.9rem}
 .code{font:700 2rem ui-monospace,monospace;letter-spacing:.2em}
+.codein{font:700 1.4rem ui-monospace,monospace;letter-spacing:.15em;text-transform:uppercase;width:12rem}
 .dev{border-top:1px solid #eee3cf;padding:.6rem 0}
 .link{width:100%;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:.85rem}
 .num{width:4rem}
@@ -51,7 +52,7 @@ const POLL = `
 const go=()=>fetch('/api/me',{cache:'no-store'}).then(r=>{if(r.ok)location.replace('/');}).catch(()=>{});
 setInterval(go,5000);`;
 
-export function accessPage(gate: Gate, device: Device | null, access: Access, nonce: string): string {
+export function accessPage(gate: Gate, device: Device | null, access: Access, nonce: string, parentLink = true): string {
   const s = access.settings;
   let body: string;
   switch (gate) {
@@ -74,36 +75,36 @@ export function accessPage(gate: Gate, device: Device | null, access: Access, no
       body = `<h1>🌙 Gården är stängd</h1><div class="card"><p>Gården är öppen ${esc(s.from ?? '')}–${esc(s.to ?? '')}. Välkommen tillbaka då!</p></div>`;
       break;
     case 'unknown':
-      body = `<h1>🔒 ${T.title}</h1><div class="card"><p>Det här är en privat gård.</p>
-<p>För att komma in behöver du en inbjudningslänk från en förälder på gården, och sedan måste föräldern godkänna din enhet.</p></div>`;
+      body = `<h1>🔒 ${T.title}</h1><div class="card"><p>Det här är en privat gård. För att komma in behöver du en kod från en förälder på gården.</p>
+${codeForm('')}</div>`;
       break;
     case 'ok':
       body = `<h1>🌱 ${T.title}</h1><div class="card"><p><a href="/">Till spelet</a></p></div>`;
       break;
   }
-  body += `<p class="muted"><a href="/admin">Förälder? Logga in</a></p>`;
+  if (parentLink) body += `<p class="muted"><a href="/admin">Förälder? Logga in</a></p>`;
   return layout(T.title, body, nonce, gate === 'unknown' ? '' : POLL);
 }
 
+/** The code field: typed on the start page, or filled in from a link (/join#CODE). */
+const codeForm = (error: string): string => `${error ? `<p class="warn">${esc(error)}</p>` : ''}
+<form method="post" action="/join" class="block">
+<p><label>Kod<br><input name="code" id="code" required maxlength="20" placeholder="ABCD-1234" autocomplete="off" autocapitalize="characters" spellcheck="false" class="codein"></label></p>
+<p><label>Vem är du?<br><input name="name" maxlength="40" placeholder="T.ex. Kalle, iPad" autocomplete="off"></label></p>
+<p><button>Kom in</button></p>
+</form>`;
+
 export function joinPage(nonce: string, error = ''): string {
   const body = `<h1>🌱 Välkommen till ${T.title}!</h1>
-${error ? `<p class="warn">${esc(error)}</p>` : ''}
-<div class="card" id="ok">
-<p>Du har fått en inbjudan. Skriv vem du är, så att föräldern på gården vet vem som vill komma in.</p>
-<form method="post" action="/join" class="block">
-<input type="hidden" name="token" id="token">
-<p><input name="name" maxlength="40" required placeholder="T.ex. Anna (kusin), iPad" autocomplete="off"></p>
-<p><button>Fråga om att få komma in</button></p>
-</form>
-<p class="muted">Länken fungerar bara en gång. En förälder på gården måste sedan godkänna enheten.</p>
-</div>
-<div class="card" id="bad" hidden><p>Länken är inte hel. Be om en ny inbjudan och öppna hela länken.</p></div>`;
-  // The secret is in the #fragment so it never reaches logs or proxies; take it out of the address bar too
+<div class="card">
+<p>Skriv koden du har fått och vem du är, så att föräldrarna på gården ser vem som kommit.</p>
+${codeForm(error)}
+</div>`;
+  // A link carries the code in its #fragment, so it never reaches logs or proxies; take it out of the address bar too
   const script = `
-const t=location.hash.slice(1);
-if(t){document.getElementById('token').value=t;history.replaceState(null,'','/join');}
-else if(!document.querySelector('.warn')){document.getElementById('ok').hidden=true;document.getElementById('bad').hidden=false;}`;
-  return layout(`${T.title} – inbjudan`, body, nonce, script);
+const t=decodeURIComponent(location.hash.slice(1));
+if(t){document.getElementById('code').value=t;history.replaceState(null,'','/join');}`;
+  return layout(`${T.title} – kom in`, body, nonce, script);
 }
 
 export function loginPage(nonce: string, totp: boolean, error = ''): string {
@@ -133,10 +134,13 @@ const EVENTS: Record<string, string> = {
   login: 'inloggning',
   'login-failed': 'misslyckad inloggning',
   'login-blocked': 'inloggning spärrad',
-  invite: 'inbjudan',
-  'invite-deleted': 'inbjudan borttagen',
-  join: 'vill komma in',
-  'join-refused': 'nekad länk',
+  invite: 'ny kod',
+  'invite-deleted': 'kod borttagen',
+  join: 'kom in',
+  'join-waiting': 'väntar',
+  'join-blocked': 'koder spärrade',
+  reopened: 'öppnad igen',
+  'join-refused': 'fel kod',
   approved: 'godkänd',
   denied: 'nekad',
   removed: 'borttagen',
@@ -160,6 +164,8 @@ export interface AccessView {
   online: Map<string, string[]>;
   /** device id of the browser looking at the page */
   thisDevice: string | null;
+  /** Offer to make this browser a family device (not on a separate parent server) */
+  canAddThisDevice: boolean;
 }
 
 export function accessSections(v: AccessView): string {
@@ -197,6 +203,7 @@ ${v.players.map((p) => `<label><input type="checkbox" name="player" value="${p.i
 ${online.length ? ` · <strong>spelar nu: ${online.map(esc).join(', ')}</strong>` : ''}<br>
 <span class="muted">Inbjudan: ${esc(d.inviteLabel)} · senast ${fmt(d.lastSeenAt)} från ${esc(d.lastIp)}${d.kind === 'guest' && d.players.length ? ` · spelar som ${d.players.map((p) => esc(playerName.get(p) ?? '?')).join(', ')}` : ''}</span><br>
 ${chars}
+<form method="post" action="/admin/access/reopen"><input type="hidden" name="id" value="${d.id}"><button class="alt" title="Ny kod om enheten glömt bort gården (rensad webbläsare, ny webbläsare). Behåller karaktärerna.">Öppna igen</button></form>
 <form method="post" action="/admin/access/pause"><input type="hidden" name="id" value="${d.id}"><input type="hidden" name="paused" value="${d.paused ? '0' : '1'}"><button class="alt">${d.paused ? 'Släpp på' : 'Pausa'}</button></form>
 <form method="post" action="/admin/access/remove"><input type="hidden" name="id" value="${d.id}"><button class="bad">Ta bort</button></form></div>`;
         })
@@ -208,15 +215,21 @@ ${chars}
     ? `<ul>${invites
         .map(
           (i) =>
-            `<li>${esc(i.label)} · ${i.kind === 'family' ? 'familj' : 'gäst'} · gäller till ${fmt(i.expiresAt)} <form method="post" action="/admin/access/uninvite"><input type="hidden" name="id" value="${i.id}"><button class="alt">Ta bort</button></form></li>`,
+            `<li><strong>${esc(i.label)}</strong> · ${i.deviceId ? 'öppna igen' : i.kind === 'family' ? 'familj' : 'gäst'} · ${i.used ?? 0}/${i.maxDevices ?? 1} enheter · ${
+              i.approval === 'auto' ? 'släpps in direkt' : 'du godkänner'
+            } · gäller till ${fmt(i.expiresAt)} <form method="post" action="/admin/access/uninvite"><input type="hidden" name="id" value="${i.id}"><button class="alt">Ta bort</button></form></li>`,
         )
         .join('')}</ul>`
-    : '<p class="muted">Inga oanvända inbjudningar.</p>';
+    : '<p class="muted">Inga aktiva koder.</p>';
 
-  const newLink = session.newLink
-    ? `<div class="flash"><p><strong>Ny inbjudningslänk</strong> – visas bara nu. Skicka den bara till den du bjuder in. Den fungerar en gång.</p>
-<p><input class="link" id="newlink" readonly value="${esc(session.newLink)}"></p><p><button class="alt" id="copy" type="button">Kopiera</button></p></div>`
+  const nc = session.newCode;
+  const newCode = nc
+    ? `<div class="flash"><p><strong>${nc.reopen ? `Ny kod för ${esc(nc.label)}` : `Kod för ${esc(nc.label)}`}</strong> – visas bara nu. Ge den bara till ${esc(nc.label)}.</p>
+<p class="code">${esc(nc.code)}</p>
+<p>De skriver koden på startsidan, eller öppnar länken:</p>
+<p><input class="link" id="newlink" readonly value="${esc(nc.link)}"></p><p><button class="alt" id="copy" type="button">Kopiera länken</button></p></div>`
     : '';
+  const guestsShut = st.mode !== 'open' ? `<p class="warn">Gäster kommer bara in när "Familjen och godkända gäster" är valt ovan.</p>` : '';
 
   const totp = session.totpPending
     ? `<p>Lägg till den här nyckeln i en app (t.ex. Google Authenticator, 1Password, Bitwarden):</p>
@@ -250,34 +263,43 @@ ${chars}
     <button>Spara</button> <span class="muted">Tomt = när som helst. Svensk tid, gäller alla enheter.</span>
   </form>
 </div>
-<div class="card">
+${
+  pending.length
+    ? `<div class="card">
   <h2>⏳ Väntar på godkännande (${pending.length})</h2>
-  <p class="muted">Godkänn bara om du vet vem det är. Fråga gärna efter koden som syns på deras skärm.</p>
+  <p class="muted">Godkänn bara om du vet vem det är. Fråga gärna efter siffrorna som syns på deras skärm.</p>
   ${pendingHtml}
-</div>
+</div>`
+    : ''
+}
 <div class="card">
-  <h2>✉️ Bjud in</h2>
-  ${newLink}
+  <h2>✉️ Koder för att komma in</h2>
+  ${newCode}
+  <p class="muted">Gör en kod för en person eller en familj du känner. Koden släpper in så många enheter du väljer och slutar sedan fungera.</p>
   <form method="post" action="/admin/access/invite" class="block">
-    <p><label>Vem? <input name="label" maxlength="40" required placeholder="T.ex. Kusin Anna"></label></p>
+    <p><label>Vem? <input name="label" maxlength="40" required placeholder="T.ex. Kalle, Familjen Svensson"></label></p>
     <p><label><input type="radio" name="kind" value="guest" checked> Gäst (spelar bara sina egna karaktärer)</label><br>
     <label><input type="radio" name="kind" value="family"> Familj (alla karaktärer)</label></p>
-    <p><label>Får skapa <input type="number" name="newPlayers" min="0" max="3" value="1" class="num"> karaktär(er)</label>
-    <label>Länken gäller <select name="hours"><option value="1">1 timme</option><option value="24" selected>1 dygn</option><option value="72">3 dygn</option><option value="168">7 dagar</option></select></label></p>
-    <p><button>Skapa inbjudningslänk</button></p>
+    <p><label>Antal enheter <input type="number" name="maxDevices" min="1" max="5" value="1" class="num"></label>
+    <label>Får skapa <input type="number" name="newPlayers" min="0" max="3" value="1" class="num"> karaktär(er) per enhet</label></p>
+    <p><label>Koden gäller <select name="hours"><option value="1">1 timme</option><option value="24">1 dygn</option><option value="72">3 dygn</option><option value="168" selected>7 dagar</option><option value="720">30 dagar</option></select></label></p>
+    <p><label><input type="radio" name="approval" value="auto" checked> Släpp in direkt (du får en notis)</label><br>
+    <label><input type="radio" name="approval" value="parent"> Jag vill godkänna varje enhet</label></p>
+    <p><button>Skapa kod</button></p>
   </form>
-  <h3>Oanvända inbjudningar</h3>
+  ${guestsShut}
+  <h3>Aktiva koder</h3>
   ${inviteHtml}
 </div>
 <div class="card">
   <h2>📱 Enheter som får spela (${devices.length})</h2>
   ${deviceHtml}
   ${
-    v.thisDevice
+    v.thisDevice || !v.canAddThisDevice
       ? ''
       : `<h3>Den här webbläsaren</h3><form method="post" action="/admin/access/this-device" class="block">
 <input name="name" maxlength="40" required placeholder="T.ex. Barnens surfplatta"> <button class="alt">Gör till familjeenhet</button></form>
-<p class="muted">Logga in här på barnens surfplatta och tryck på knappen, så slipper ni inbjudan för den.</p>`
+<p class="muted">Logga in här på barnens surfplatta och tryck på knappen, så behövs ingen kod för den.</p>`
   }
 </div>
 <div class="card">

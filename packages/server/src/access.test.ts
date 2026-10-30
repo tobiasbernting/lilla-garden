@@ -15,45 +15,84 @@ describe('Access', () => {
     expect(() => new Access(new MemoryAccessStore(), { parentPassword: 'short' })).toThrow();
   });
 
-  it('lets nobody in without an invite, and invited devices only after approval', async () => {
+  it('lets nobody in without a code; a parent-approval code waits for the parent', async () => {
     const { access } = make();
     await access.setMode('open', 'ip');
     expect(access.gate(null)).toBe('unknown');
     expect(access.deviceFor('made-up')).toBeNull();
 
-    const { token } = await access.createInvite({ label: 'Kusin Anna', kind: 'guest', hours: 24, newPlayers: 1 }, 'ip');
-    const r = await access.redeem(token, 'Annas iPad', '1.2.3.4', 'ua');
+    const { code } = await access.createInvite({ label: 'Kusin Anna', kind: 'guest', hours: 24, newPlayers: 1, approval: 'parent' }, 'ip');
+    expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const r = await access.redeem(code, 'Annas iPad', '1.2.3.4', 'ua');
     if ('error' in r) throw new Error(r.error);
     expect(access.gate(r.device)).toBe('pending');
     expect(access.deviceFor(r.token)).toBe(r.device);
     expect(r.device.code).toMatch(/^\d{6}$/);
 
-    // the invite works once
-    const again = await access.redeem(token, 'Någon annan', '5.6.7.8', 'ua');
-    expect(again).toEqual({ error: 'invalid' });
+    // one device per code by default
+    expect(await access.redeem(code, 'Någon annan', '5.6.7.8', 'ua')).toEqual({ error: 'invalid' });
 
     await access.approve(r.device.id, 'ip');
     expect(access.gate(r.device)).toBe('ok');
   });
 
-  it('expires invites', async () => {
-    const { access, now } = make();
-    const { token } = await access.createInvite({ label: 'x', kind: 'guest', hours: 1, newPlayers: 1 }, 'ip');
-    now.t += 2 * 3_600_000;
-    expect(await access.redeem(token, 'y', 'ip', 'ua')).toEqual({ error: 'invalid' });
+  it('lets an auto code in at once, for as many devices as it allows, and tells the parent', async () => {
+    const seen: string[] = [];
+    const now = { t: Date.UTC(2026, 9, 29, 12, 0) };
+    const access = new Access(new MemoryAccessStore(), { parentPassword: PW, now: () => now.t, notify: (e) => seen.push(e.event) });
+    await access.setMode('open', 'ip');
+    const { code } = await access.createInvite({ label: 'Familjen Svensson', kind: 'guest', hours: 24, newPlayers: 1, maxDevices: 2 }, 'ip');
+    // typed sloppily: lower case, no dash, spaces
+    const a = await access.redeem(` ${code.toLowerCase().replace('-', ' ')} `, 'Kalles iPad', 'a', 'ua');
+    const b = await access.redeem(code, 'Lisas mobil', 'b', 'ua');
+    if ('error' in a || 'error' in b) throw new Error('refused');
+    expect(access.gate(a.device)).toBe('ok');
+    expect(access.gate(b.device)).toBe('ok');
+    expect(a.device.inviteLabel).toBe('Familjen Svensson');
+    expect(await access.redeem(code, 'En till', 'c', 'ua')).toEqual({ error: 'invalid' });
+    expect(access.activeInvites()).toEqual([]);
+    expect(seen.filter((e) => e === 'join')).toHaveLength(2);
   });
 
-  it('limits guessing invite links', async () => {
+  it('reopens a forgotten device with a new key, keeping its characters', async () => {
     const { access } = make();
-    for (let i = 0; i < 10; i++) expect(await access.redeem(`guess${i}`, 'x', '9.9.9.9', 'ua')).toEqual({ error: 'invalid' });
-    const { token } = await access.createInvite({ label: 'x', kind: 'guest', hours: 1, newPlayers: 1 }, 'ip');
-    expect(await access.redeem(token, 'x', '9.9.9.9', 'ua')).toEqual({ error: 'limit' });
+    await access.setMode('open', 'ip');
+    const { code } = await access.createInvite({ label: 'Kalle', kind: 'guest', hours: 24, newPlayers: 1 }, 'ip');
+    const first = await access.redeem(code, 'Kalles iPad', 'a', 'ua');
+    if ('error' in first) throw new Error(first.error);
+    await access.created(first.device, 'p1', 'Kalle', 'a');
+    const again = await access.createReopenCode(first.device.id, 'ip');
+    const r = await access.redeem(again!.code, 'whatever', 'a2', 'ua');
+    if ('error' in r) throw new Error(r.error);
+    expect(r.device.id).toBe(first.device.id);
+    expect(r.device.players).toEqual(['p1']);
+    expect(access.deviceFor(first.token)).toBeNull(); // the old key no longer works
+    expect(access.deviceFor(r.token)).toBe(first.device);
+    expect(access.approved()).toHaveLength(1);
+  });
+
+  it('expires codes', async () => {
+    const { access, now } = make();
+    const { code } = await access.createInvite({ label: 'x', kind: 'guest', hours: 1, newPlayers: 1 }, 'ip');
+    now.t += 2 * 3_600_000;
+    expect(await access.redeem(code, 'y', 'ip', 'ua')).toEqual({ error: 'invalid' });
+  });
+
+  it('limits guessing codes, per address and in total', async () => {
+    const { access } = make();
+    for (let i = 0; i < 10; i++) expect(await access.redeem(`GUESS-00${i}`, 'x', '9.9.9.9', 'ua')).toEqual({ error: 'invalid' });
+    const { code } = await access.createInvite({ label: 'x', kind: 'guest', hours: 1, newPlayers: 1, maxDevices: 2 }, 'ip');
+    expect(await access.redeem(code, 'x', '9.9.9.9', 'ua')).toEqual({ error: 'limit' });
+    // a right code doesn't count against the address
+    expect('device' in (await access.redeem(code, 'x', '8.8.8.8', 'ua'))).toBe(true);
+    for (let i = 0; i < 100; i++) await access.redeem(`MANY-${i}`, 'x', `10.0.${i}.1`, 'ua');
+    expect(await access.redeem(code, 'x', '7.7.7.7', 'ua')).toEqual({ error: 'limit' });
   });
 
   it('keeps guests to their own characters and to what the parent allows', async () => {
     const { access } = make();
-    const { token } = await access.createInvite({ label: 'Gäst', kind: 'guest', hours: 24, newPlayers: 1 }, 'ip');
-    const r = await access.redeem(token, 'Gästens platta', 'ip', 'ua');
+    const { code } = await access.createInvite({ label: 'Gäst', kind: 'guest', hours: 24, newPlayers: 1, approval: 'parent' }, 'ip');
+    const r = await access.redeem(code, 'Gästens platta', 'ip', 'ua');
     if ('error' in r) throw new Error(r.error);
     const d = r.device;
     expect(access.mayCreate(d)).toBe(false); // not approved yet
