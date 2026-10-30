@@ -7,6 +7,7 @@
 // from the top left. Each ground has a few variants, picked per tile with hash2, so nothing looks tiled.
 import { isCliff, type Terrain } from '@lilla-garden/shared';
 import { Px, hash2, hexToRgb, rgbToHex, shade } from './px.js';
+import { CARPET_TILES, carpetTiles } from './arcade.ts';
 
 export interface BiomeTerrain {
   /** Tile index for one of the wider world's grounds, or null for any other ground. */
@@ -991,6 +992,7 @@ export function addBiomeTerrain(add: (p: Px) => number, newArt: boolean): BiomeT
   const redsand = n(3, (v) => put(redsandTile(v)));
   const candy = n(3, (v) => put(candyTile(v)));
   const space = n(6, (v) => put(spaceTile(v)));
+  const carpet = carpetTiles().map(add);
   // how often each variant shows: the eye-catching ones (embers, puddles, nebulae, big craters) only now and then
   const W = {
     cliff: [5, 3, 1],
@@ -1036,6 +1038,8 @@ export function addBiomeTerrain(add: (p: Px) => number, newArt: boolean): BiomeT
           return weighted(candy, W.candy, h);
         case 'space':
           return weighted(space, W.space, h);
+        case 'carpet': // one big pattern over 8×8 tiles
+          return carpet[(x % CARPET_TILES) + CARPET_TILES * (y % CARPET_TILES)]!;
         default:
           return null;
       }

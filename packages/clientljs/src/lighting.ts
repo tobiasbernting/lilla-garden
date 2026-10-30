@@ -2,7 +2,7 @@
 // the sky's ambient colour and gets every lamp, torch, window and lantern added in. Glows go on top after that, and
 // the things that shine by themselves (lit windows, flames, fireflies, lightning) are drawn last, unlit.
 import { EngineObject, Light, LightSystemPlugin, engineAddPlugin, lightSystem, rgb, vec2 } from 'littlejsengine';
-import { TILE } from '@lilla-garden/shared';
+import { ARCADE, ARCADE_GAMES, TILE } from '@lilla-garden/shared';
 
 export interface LampSpec {
   /** Colour of the light, 0..1. */
@@ -19,6 +19,11 @@ export interface LampSpec {
   always?: boolean;
   /** Colour cycling (Christmas lights). */
   twinkle?: boolean;
+  /** Colours the light glides through one after another, `cycleSec` seconds each (a disco ball, a neon sign). */
+  cycle?: [number, number, number][];
+  cycleSec?: number;
+  /** Quick bright glints now and then, 0..1 (light thrown off a mirror ball). */
+  sparkle?: number;
 }
 
 export class Lamp {
@@ -51,10 +56,20 @@ export class Lamp {
       const n = Math.sin(t * 13 + this.seed) * 0.5 + Math.sin(t * 23.7 + this.seed * 1.7) * 0.3 + Math.sin(t * 5.1 + this.seed * 0.3) * 0.2;
       k = 1 + n * 0.18 * s.flicker;
     }
+    if (s.sparkle) k += s.sparkle * (Math.max(0, Math.sin(t * 7.3 + this.seed * 5.1)) ** 12 + Math.max(0, Math.sin(t * 11.9 + this.seed * 2.3)) ** 12);
     let [r, g, b] = s.color;
     if (s.twinkle) {
       const hue = (t * 0.15 + this.seed) % 1;
       [r, g, b] = [0.6 + 0.4 * Math.sin(hue * 6.28), 0.6 + 0.4 * Math.sin(hue * 6.28 + 2.1), 0.6 + 0.4 * Math.sin(hue * 6.28 + 4.2)];
+    }
+    if (s.cycle?.length) {
+      const count = s.cycle.length;
+      const u = (((t / (s.cycleSec ?? 2) + this.seed) % count) + count) % count;
+      const i = Math.floor(u);
+      const e = (u - i) * (u - i) * (3 - 2 * (u - i));
+      const from = s.cycle[i]!;
+      const to = s.cycle[(i + 1) % count]!;
+      [r, g, b] = [from[0] + (to[0] - from[0]) * e, from[1] + (to[1] - from[1]) * e, from[2] + (to[2] - from[2]) * e];
     }
     this.light.color.set(r, g, b, Math.min(1, s.strength * lit * k));
     this.light.radius = s.radius * (0.92 + 0.08 * k);
@@ -100,6 +115,15 @@ export function setAmbient(r: number, g: number, b: number): void {
 
 const WARM: [number, number, number] = [1, 0.72, 0.42];
 const FIRE: [number, number, number] = [1, 0.58, 0.26];
+const NEON_PINK: [number, number, number] = [1, 0.32, 0.85];
+const NEON_CYAN: [number, number, number] = [0.3, 0.88, 1];
+
+/** A minigame's colour (ARCADE_GAMES index) as light: a little paler than the paint, so it reads as a glow. */
+const gameLight = (i: number): [number, number, number] => {
+  const hex = ARCADE[ARCADE_GAMES[((i % ARCADE_GAMES.length) + ARCADE_GAMES.length) % ARCADE_GAMES.length]!].color;
+  const n = parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255].map((v) => 0.2 + 0.8 * v) as [number, number, number];
+};
 
 /** The lamp an object carries, if any. */
 export function lampFor(kind: string, variant: number | undefined): LampSpec | null {
@@ -172,6 +196,23 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
     case 'market':
     case 'bathhouse':
       return { color: WARM, radius: 4.5, strength: 0.7, flicker: 0.05, glow: 2 };
+    // Minigames: the TV at home; Spelhallen's neon, its machines (each in its game's colour), the counter, the board
+    case 'tv':
+      return { color: [0.55, 0.75, 1], radius: 3, strength: 0.7, flicker: 0.9, glow: 1.2 };
+    case 'arcade_hall':
+      return { color: NEON_PINK, radius: 4.5, strength: 0.85, flicker: 0.1, glow: 4, cycle: [NEON_PINK, NEON_CYAN], cycleSec: 3 };
+    case 'arcade_machine':
+      return { color: gameLight(variant ?? 0), radius: 2.2, strength: 0.6, flicker: 0.25, glow: 1, always: true };
+    case 'prize_counter':
+      return { color: WARM, radius: 3.2, strength: 0.6, flicker: 0.05, glow: 1.4, always: true };
+    case 'score_board':
+      return { color: [0.85, 0.92, 1], radius: 3, strength: 0.6, flicker: 0.05, glow: 1.4, always: true };
+    case 'lava_lamp':
+      return { color: [1, 0.5, 0.45], radius: 2.6, strength: 0.75, flicker: 0.15, glow: 1.2, cycle: [[1, 0.55, 0.3], [1, 0.4, 0.62]], cycleSec: 4 };
+    case 'disco_ball':
+      return { color: [0.92, 0.82, 1], radius: 3.4, strength: 0.8, glow: 1.4, sparkle: 0.8, cycle: [NEON_PINK, NEON_CYAN, [1, 0.9, 0.4], [0.7, 0.5, 1]], cycleSec: 1.2 };
+    case 'neon_sign':
+      return { color: (variant ?? 0) % 2 === 1 ? NEON_CYAN : NEON_PINK, radius: 2.4, strength: 0.7, flicker: 0.08, glow: 1.2 };
     default:
       return null;
   }
