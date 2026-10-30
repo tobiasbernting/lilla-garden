@@ -1,7 +1,6 @@
 // HUD: top chips, hotbar, toasts, touch controls.
 import { HOTBAR_SIZE, MAX_HEARTS, SPELLS, T, WATERING_CAN_CHARGES, areaName, fmt, isBathKey, isHallKey, isSagaKey, itemName, placeEmoji, placeName, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
-import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
 import { stackIconUrl } from '../art/painting.ts';
 import { net } from '../net.js';
@@ -69,7 +68,7 @@ export class Hud {
       setRun(true);
     });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) run.addEventListener(ev, () => setRun(false));
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('🧭', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), ...(matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches ? [] : [this.fullscreenBtn()]), this.artBtn());
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('🧭', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), ...(matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches ? [] : [this.fullscreenBtn()]));
     this.minimap = new Minimap();
     document.addEventListener('lilla:minimap', () => this.minimap.toggle());
     this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act, run, this.minimap.el);
@@ -85,14 +84,6 @@ export class Hud {
     bus.on('day', () => this.renderTop());
     bus.on('toast', (text) => this.toast(text));
     this.render();
-  }
-
-  private artBtn(): HTMLElement {
-    const next = nextArtStyle(ART_STYLE);
-    const label: Record<string, string> = { klassisk: 'Klassisk grafik', ny: 'Ny pixelgrafik', hd: 'HD-grafik (prototyp)' };
-    const b = h('div', { class: 'round small art-btn', title: `Byt till: ${label[next]}` }, ART_STYLE === 'klassisk' ? '✨' : ART_STYLE === 'ny' ? '🖼️' : '🎨');
-    onTap(b, () => setArtStyle(next));
-    return b;
   }
 
   private fullscreenBtn(): HTMLElement {

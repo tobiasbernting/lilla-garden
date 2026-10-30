@@ -1,6 +1,5 @@
 // Gabled roofs over the rooms players close with wall pieces (the 2D game's look), each painted once into a texture.
 import { findRooms, MAP_W, TILE, type WorldState } from '@lilla-garden/shared';
-import { R } from '@v1/art/style.ts';
 import { release, standalone, type Sprite } from './atlas.ts';
 
 export interface Roof {
@@ -49,10 +48,9 @@ export function buildRoofs(world: WorldState, underTile: number): Roof[] {
     const ox = minX * TILE;
     const oy = (minY - 1) * TILE;
     const c = document.createElement('canvas');
-    c.width = (maxX - minX + 1) * TILE * R;
-    c.height = (maxY - minY + 1) * TILE * R;
+    c.width = (maxX - minX + 1) * TILE;
+    c.height = (maxY - minY + 1) * TILE;
     const g = c.getContext('2d')!;
-    g.scale(R, R);
     const rect = (col: string, x: number, y: number, w: number, h: number) => {
       g.fillStyle = col;
       g.fillRect(x - ox, y - oy, w, h);

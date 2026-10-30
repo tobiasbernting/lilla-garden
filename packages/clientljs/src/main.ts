@@ -1,6 +1,6 @@
 // Lilla Gården (LittleJS): the same server, HUD, menus, sounds and pixel art as the 2D game, with the world drawn by
 // LittleJS: light and shadow through the day, lamps at night, and things that sway, squash and pop.
-import { artStyleWorks } from './prefs.ts';
+import './prefs.ts';
 import { T } from '@lilla-garden/shared';
 import {
   averageFPS,
@@ -30,7 +30,6 @@ import {
 } from 'littlejsengine';
 import '@v1/style.css';
 import './style.css';
-import { HD } from '@v1/art/style.ts';
 import { net } from '@v1/net.ts';
 import { bus, client, helpSeen, markHelpSeen, rememberPlayer } from '@v1/state.ts';
 import { h } from '@v1/ui/dom.ts';
@@ -52,10 +51,10 @@ const gameEl = document.getElementById('game')!;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 if (isTouch) document.body.classList.add('touch');
 
-// whole-number zoom so the pixel art stays crisp (HD may scale in quarter steps); the HUD uses the same scale
+// whole-number zoom so the pixel art stays crisp; the HUD uses the same scale
 function computeZoom(): number {
   const z = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
-  return HD ? Math.max(1, Math.floor(z * 4) / 4) : Math.max(1, Math.floor(z));
+  return Math.max(1, Math.floor(z));
 }
 const labels = h('div', { id: 'labels' });
 ui.append(labels);
@@ -156,8 +155,8 @@ let speedChecked = false;
 setShowSplashScreen(false);
 setSoundEnable(false); // the game's own synthesised sounds play through sound.ts
 setCanvasPixelRatio(1);
-setTilesPixelated(!HD);
-setCanvasPixelated(!HD);
+setTilesPixelated(true);
+setCanvasPixelated(true);
 setCanvasClearColor(rgb(0.165, 0.239, 0.122));
 // the HUD and menus are HTML: leave their clicks, wheel scrolling and touches alone, the view reads its own taps
 setInputPreventDefault(false);
@@ -172,7 +171,6 @@ function start(): void {
   view.load();
   hud.root.style.display = '';
   hud.render();
-  setTimeout(artStyleWorks, 5000);
 }
 
 void engineInit(
