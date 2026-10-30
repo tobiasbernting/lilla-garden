@@ -1,0 +1,459 @@
+/* The arcade overlay: cards over a dark arcade backdrop; while playing, the game fills the screen. */
+.arcade {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: radial-gradient(ellipse at 50% 20%, #2a1b4a 0%, #120d24 55%, #07060f 100%);
+  color: #fff;
+  font-family: 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.arc-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.arc-stage canvas {
+  display: block;
+  touch-action: none;
+}
+
+/* ---- cards ---- */
+.arc-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+.arcade[data-state='paused'] .arc-card,
+.arcade[data-state='result'] .arc-card {
+  background: rgba(8, 6, 18, 0.62);
+  backdrop-filter: blur(3px);
+}
+.arc-panel {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 22px 24px 20px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(36, 26, 66, 0.96), rgba(18, 13, 36, 0.96));
+  border: 3px solid var(--c, #ffd23f);
+  box-shadow:
+    0 0 0 3px rgba(0, 0, 0, 0.5),
+    0 0 32px color-mix(in srgb, var(--c, #ffd23f) 55%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--c, #ffd23f) 18%, transparent);
+  text-align: center;
+}
+.arc-panel h1 {
+  margin: 4px 0 6px;
+  font-size: clamp(30px, 6vw, 46px);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: #fff;
+  text-shadow:
+    0 0 6px var(--c, #ffd23f),
+    0 0 18px var(--c, #ffd23f),
+    0 3px 0 rgba(0, 0, 0, 0.6);
+}
+.arc-panel h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  color: var(--c, #ffd23f);
+}
+.arc-panel h3 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: color-mix(in srgb, var(--c, #ffd23f) 70%, #fff);
+}
+.arc-emoji {
+  display: inline-block;
+  margin-right: 10px;
+  filter: drop-shadow(0 0 8px var(--c, #ffd23f));
+}
+.arc-emoji.spin {
+  font-size: 64px;
+  animation: arc-bob 0.9s ease-in-out infinite alternate;
+}
+@keyframes arc-bob {
+  from {
+    transform: translateY(-6px) rotate(-8deg);
+  }
+  to {
+    transform: translateY(6px) rotate(8deg);
+  }
+}
+.arc-dims {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--c, #ffd23f);
+  color: #120d24;
+}
+.arc-tag {
+  margin: 0 0 12px;
+  font-size: 17px;
+  opacity: 0.9;
+}
+.arc-how {
+  list-style: none;
+  margin: 0 auto;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: 440px;
+}
+.arc-how li::before {
+  content: '▸ ';
+  color: var(--c, #ffd23f);
+}
+.arc-top {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 340px;
+  font-size: 16px;
+}
+.arc-top li {
+  display: flex;
+  gap: 10px;
+  padding: 3px 10px;
+  border-radius: 8px;
+}
+.arc-top li.me {
+  background: color-mix(in srgb, var(--c, #ffd23f) 22%, transparent);
+}
+.arc-top-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arc-top-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+.arc-empty,
+.arc-tix {
+  margin: 12px 0 0;
+  font-size: 14px;
+  opacity: 0.85;
+}
+.arc-score {
+  margin: 8px 0 2px;
+  font-size: clamp(44px, 10vw, 72px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow:
+    0 0 10px var(--c, #ffd23f),
+    0 0 26px var(--c, #ffd23f);
+}
+.arc-score small {
+  font-size: 20px;
+  font-weight: 700;
+  text-shadow: none;
+  opacity: 0.8;
+}
+.arc-detail {
+  margin: 0 0 6px;
+  font-size: 17px;
+  opacity: 0.9;
+}
+.arc-record {
+  margin: 8px 0 0;
+  font-size: 20px;
+  font-weight: 900;
+  color: #ffe36a;
+  animation: arc-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.arc-record.family {
+  color: #ffd23f;
+  text-shadow: 0 0 12px #ff9d2a;
+}
+.arc-won {
+  margin: 10px auto 0;
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 210, 63, 0.16);
+  font-size: 18px;
+  font-weight: 800;
+  animation: arc-pop 0.5s 0.15s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+@keyframes arc-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.arc-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.arc-btn {
+  min-height: 48px;
+  min-width: 120px;
+  padding: 10px 20px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+.arc-btn.primary {
+  border-color: var(--c, #ffd23f);
+  background: var(--c, #ffd23f);
+  color: #120d24;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--c, #ffd23f) 60%, transparent);
+}
+.arc-btn:focus-visible,
+.arc-btn:focus,
+.arc-tile:focus {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+.arc-btn:active {
+  transform: scale(0.96);
+}
+.arc-loading p {
+  font-size: 18px;
+}
+
+/* ---- the TV menu ---- */
+.arc-menu {
+  width: min(760px, 100%);
+}
+.arc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.arc-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 12px 12px;
+  border-radius: 16px;
+  border: 3px solid var(--c);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 30%, #1d1538), #1d1538);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.1s;
+}
+.arc-tile:hover,
+.arc-tile:focus {
+  transform: translateY(-2px) scale(1.02);
+}
+.arc-tile b {
+  font-size: 19px;
+}
+.arc-tile small {
+  font-size: 13px;
+  opacity: 0.85;
+}
+.arc-tile .arc-dims {
+  top: 8px;
+  right: 8px;
+  background: var(--c);
+}
+.arc-tile-emoji {
+  font-size: 40px;
+  line-height: 1.1;
+}
+.arc-tile.locked {
+  --c: #4a4560;
+  cursor: default;
+  opacity: 0.7;
+  filter: grayscale(0.6);
+}
+
+/* ---- while playing ---- */
+.arc-bar {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  display: none;
+  gap: 8px;
+  z-index: 3;
+}
+.arcade[data-state='playing'] .arc-bar {
+  display: flex;
+}
+.arc-btn-round {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+.arc-touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  z-index: 2;
+}
+.arcade[data-state='playing'] .arc-touch {
+  display: block;
+}
+.arc-pad,
+.arc-buttons-pad {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom));
+}
+.arc-pad {
+  left: max(18px, env(safe-area-inset-left));
+}
+.arc-buttons-pad {
+  right: max(18px, env(safe-area-inset-right));
+  width: 200px;
+  height: 170px;
+}
+.arc-key,
+.arc-fire,
+.arc-stick {
+  pointer-events: auto;
+  touch-action: none;
+}
+.arc-key,
+.arc-fire {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.14);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+}
+.arc-key.down,
+.arc-fire.down {
+  background: rgba(255, 255, 255, 0.4);
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.arc-pad.leftright {
+  display: flex;
+  gap: 14px;
+}
+.arc-pad.leftright .arc-key {
+  width: 86px;
+  height: 86px;
+  border-radius: 22px;
+}
+.arc-pad.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  grid-template-rows: repeat(3, 62px);
+}
+.arc-pad.dpad .arc-key {
+  border-radius: 14px;
+}
+.arc-pad.dpad .up {
+  grid-area: 1 / 2;
+}
+.arc-pad.dpad .left {
+  grid-area: 2 / 1;
+}
+.arc-pad.dpad .right {
+  grid-area: 2 / 3;
+}
+.arc-pad.dpad .down {
+  grid-area: 3 / 2;
+}
+.arc-stick {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+}
+.arc-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 66px;
+  height: 66px;
+  margin: -33px 0 0 -33px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+.arc-fire {
+  position: absolute;
+  border-radius: 50%;
+}
+.arc-fire.n0 {
+  right: 0;
+  bottom: 0;
+  width: 96px;
+  height: 96px;
+  font-size: 34px;
+}
+.arc-fire.n1 {
+  right: 104px;
+  bottom: 6px;
+  width: 76px;
+  height: 76px;
+}
+.arc-fire.n2 {
+  right: 18px;
+  bottom: 106px;
+  width: 64px;
+  height: 64px;
+  font-size: 22px;
+}
+
+@media (max-height: 420px) {
+  .arc-panel {
+    padding: 14px 16px;
+  }
+  .arc-how {
+    font-size: 13px;
+  }
+  .arc-buttons {
+    margin-top: 10px;
+  }
+}

@@ -170,6 +170,25 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/arcade:
+    dependencies:
+      '@lilla-garden/shared':
+        specifier: workspace:*
+        version: link:../shared
+      three:
+        specifier: ^0.186.0
+        version: 0.186.1
+    devDependencies:
+      '@types/three':
+        specifier: ^0.186.0
+        version: 0.186.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.7
+        version: 7.3.7(@types/node@24.19.2)(terser@5.51.2)(tsx@4.23.15)
+
   packages/client:
     dependencies:
       '@lilla-garden/shared':

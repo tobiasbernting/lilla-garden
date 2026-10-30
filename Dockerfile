@@ -13,6 +13,7 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY packages/client3d/package.json packages/client3d/
 COPY packages/clientljs/package.json packages/clientljs/
+COPY packages/arcade/package.json packages/arcade/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm -r run typecheck && pnpm -r run test && pnpm --filter @lilla-garden/server --filter "@lilla-garden/${CLIENT}" run build
