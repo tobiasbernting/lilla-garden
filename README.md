@@ -86,6 +86,12 @@ Environment:
 
 - Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Enter`/`T` chatt, `X` husdjuren stannar, `V` vissla, `Esc` stänger.
 - Surfplatta: styrspak till vänster, stor handknapp till höger, tryck på en ruta bredvid dig.
+- Handkontroll (Xbox, PlayStation, Switch): vänster spak går, `A`/`X`/`RT` använder, `B`/`LT` springer, `LB`/`RB` eller
+  styrkorset vänster/höger väljer verktyg, `Y` ryggsäck, styrkorset upp emotes och ner minikarta, Start hjälp, Select bok.
+  I en fängelsehåla är `X`/`Y`/`B`/`RB` besvärjelserna, `LB` läkedryck, styrkorset vänster/höger byter monster och
+  Select ryggsäck. I menyerna flyttar spaken/styrkorset markeringen, `A` trycker och `B` stänger. Minispelen läser
+  kontrollen själva.
+  Hur du kopplar ihop en Xbox-, PS5- eller Switch-kontroll med en Android-surfplatta, Mac eller PC står i hjälpen under 🕹️ Handkontroll.
 - `?` i hörnet öppnar hjälpen (visas automatiskt första gången på en enhet).
 
 ## Art
