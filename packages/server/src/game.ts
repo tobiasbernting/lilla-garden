@@ -303,7 +303,9 @@ export class Game {
         }
       }
       client.playerId = msg.playerId;
-      client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount });
+      const biomes: Record<string, string> = {};
+      for (const [k, a] of Object.entries(this.world.areas ?? {})) if (k.startsWith('a:') && a.biome) biomes[k] = a.biome;
+      client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount, biomes });
       if (p.area === 'dungeon') {
         // back in the cave after a dropped connection (the cave may have been cleared meanwhile)
         const d = this.world.dungeon;

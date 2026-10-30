@@ -1,16 +1,22 @@
 // The world beyond the farm: an endless grid of 64x64 areas, each generated from its coordinates.
 // Walking off an edge of one area puts you on the opposite edge of the next.
-import { ANIMALS, NPCS } from './data.ts';
+import { ANIMALS, NPCS, objectDef } from './data.ts';
 import { SPECIES_NAMES } from './sv.ts';
+import { countRenewables } from './caves.ts';
 import { BUS_STOP, PIZZERIA, TRAIN_STATION, buildCity, setAreaGenerator } from './city.ts';
-import { addObject, emptyWorld, inBounds, objectAt, tileIndex } from './map.ts';
+import { addObject, emptyWorld, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
+import { PAINTERS } from './painters.ts';
 import { mulberry32, randInt } from './rng.ts';
-import type { AnimalDef, AnimalState, Terrain, WorldState } from './types.ts';
-import { MAP_H, MAP_W, TILE, key } from './types.ts';
+import { MOON_KEY, MOON_ROCKET, SPACEPORT, rocketFront } from './space.ts';
+import type { AnimalDef, AnimalState, CaveTheme, WorldState } from './types.ts';
+import { MAP_H, MAP_W, TILE, WALL_TERRAIN, key } from './types.ts';
+import { EDGE_GAP, Painter, arrivalTile, inEdgeGap, reachableFrom, wouldBlock } from './worldgen.ts';
 
-export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken' | 'by';
+export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken' | 'by' | 'trask' | 'djungel' | 'vulkan' | 'svamp' | 'dino' | 'godis' | 'rymdbas' | 'mane';
+/** Every kind of place a map can be: a biome, home, the monster cave, or a cave out in the world. */
+export type Place = Biome | 'farm' | 'dungeon' | `g_${CaveTheme}`;
 
-export const BIOME_NAMES: Record<Biome | 'farm' | 'dungeon', string> = {
+export const BIOME_NAMES: Record<Place, string> = {
   farm: 'Hemma',
   dungeon: 'Grottan',
   skog: 'Skogen',
@@ -20,8 +26,27 @@ export const BIOME_NAMES: Record<Biome | 'farm' | 'dungeon', string> = {
   strand: 'Stranden',
   oken: 'Öknen',
   by: 'Staden',
+  trask: 'Träsket',
+  djungel: 'Djungeln',
+  vulkan: 'Vulkanen',
+  svamp: 'Svampskogen',
+  dino: 'Dinodalen',
+  godis: 'Godislandet',
+  rymdbas: 'Rymdbasen',
+  mane: 'Månen',
+  g_rot: 'Rotgrottan',
+  g_is: 'Isgrottan',
+  g_kristall: 'Kristallgrottan',
+  g_sjorovare: 'Sjörövargrottan',
+  g_pyramid: 'Pyramiden',
+  g_tempel: 'Tempelruinen',
+  g_lava: 'Lavagrottan',
+  g_svamp: 'Svampgrottan',
+  g_fossil: 'Fossilgrottan',
+  g_godis: 'Godisgrottan',
+  g_rymd: 'Rymdgrottan',
 };
-export const BIOME_EMOJI: Record<Biome | 'farm' | 'dungeon', string> = {
+export const BIOME_EMOJI: Record<Place, string> = {
   farm: '🏡',
   dungeon: '⚔️',
   skog: '🌲',
@@ -31,7 +56,32 @@ export const BIOME_EMOJI: Record<Biome | 'farm' | 'dungeon', string> = {
   strand: '🏖️',
   oken: '🌵',
   by: '🏘️',
+  trask: '🐸',
+  djungel: '🦜',
+  vulkan: '🌋',
+  svamp: '🍄',
+  dino: '🦕',
+  godis: '🍭',
+  rymdbas: '🚀',
+  mane: '🌙',
+  g_rot: '🕳️',
+  g_is: '🧊',
+  g_kristall: '💎',
+  g_sjorovare: '🏴‍☠️',
+  g_pyramid: '🔺',
+  g_tempel: '🗿',
+  g_lava: '🔥',
+  g_svamp: '🍄',
+  g_fossil: '🦴',
+  g_godis: '🍬',
+  g_rymd: '👾',
 };
+/** The biomes you can discover (the Gårdsbok counts them). */
+export const DISCOVERABLE: Biome[] = ['skog', 'ang', 'is', 'berg', 'strand', 'oken', 'by', 'trask', 'djungel', 'vulkan', 'svamp', 'dino', 'godis', 'rymdbas', 'mane'];
+export const isBiome = (b: string | undefined): b is Biome => !!b && (DISCOVERABLE as string[]).includes(b);
+/** Name and emoji of any map's place (falls back to the meadow for unknown ones). */
+export const placeName = (b: string | undefined): string => BIOME_NAMES[(b ?? 'ang') as Place] ?? BIOME_NAMES.ang;
+export const placeEmoji = (b: string | undefined): string => BIOME_EMOJI[(b ?? 'ang') as Place] ?? BIOME_EMOJI.ang;
 
 export const areaKey = (ax: number, ay: number): string => `a:${ax},${ay}`;
 export const parseAreaKey = (k: string): { ax: number; ay: number } | null => {
@@ -48,97 +98,106 @@ const hash = (ax: number, ay: number, salt: number): number => {
 };
 const noise = (ax: number, ay: number, salt: number): number => hash(ax, ay, salt) / 4294967296;
 
-/** Which biome an area has. North is colder, south warmer, mountains in the east, sea in the west. */
+/** Fixed places around the farm, so a new biome is never far away. */
+const NEAR_HOME: Record<string, Biome> = {
+  '0,-1': 'skog',
+  '-1,0': 'trask',
+  '0,1': 'ang',
+  '1,-1': 'svamp',
+  '-1,-1': 'skog',
+  '1,1': 'dino',
+  '-1,1': 'ang',
+  '2,0': 'berg',
+  '-2,0': 'strand',
+  '0,-2': 'is',
+  '0,2': 'oken',
+  '-1,2': 'djungel',
+  '2,2': 'vulkan',
+};
+
+/** Picks from weighted choices with a 0..1 roll. */
+const weighted = (roll: number, table: [Biome, number][]): Biome => {
+  const total = table.reduce((n, [, w]) => n + w, 0);
+  let r = roll * total;
+  for (const [b, w] of table) if ((r -= w) <= 0) return b;
+  return table[table.length - 1]![0];
+};
+
+/**
+ * Which biome an area has. Cities stay exactly where they always were. Near the farm the biomes are
+ * fixed; further out it gets colder to the north and hotter to the south (a few maps at a time), the
+ * sea is to the west and the mountains to the east, with every kind of place mixed in along the way,
+ * and Godislandet now and then, far, far away.
+ */
 export function biomeAt(ax: number, ay: number): Biome {
   if (ax === 1 && ay === 0) return 'by'; // Byn, right next door
   if (Math.abs(ax) + Math.abs(ay) >= 4 && noise(ax, ay, 9) < 0.07) return 'by';
-  const cold = -ay + (noise(ax, ay, 1) - 0.5) * 2; // ay < 0 is north
-  const dry = ay + (noise(ax, ay, 2) - 0.5) * 2;
-  if (cold >= 2.5) return 'is';
-  if (dry >= 3) return 'oken';
-  if (ax <= -2 && noise(ax, ay, 3) < 0.6) return 'strand';
-  if (ax >= 2 && noise(ax, ay, 4) < 0.6) return 'berg';
-  return noise(ax, ay, 5) < 0.55 ? 'skog' : 'ang';
-}
-
-/** Tile where a traveller arrives when entering from a side. */
-export const EDGE_GAP = 3; // openings at the middle of each edge are 2*EDGE_GAP wide
-export const arrivalTile = (from: 'n' | 's' | 'e' | 'w'): { x: number; y: number } => {
-  const mid = MAP_W / 2;
-  switch (from) {
-    case 'n':
-      return { x: mid, y: 1 };
-    case 's':
-      return { x: mid, y: MAP_H - 2 };
-    case 'w':
-      return { x: 1, y: mid };
-    case 'e':
-      return { x: MAP_W - 2, y: mid };
+  if (ax === SPACEPORT.ax && ay === SPACEPORT.ay) return 'rymdbas';
+  const near = NEAR_HOME[`${ax},${ay}`];
+  if (near) return near;
+  if (Math.abs(ax) + Math.abs(ay) >= 5 && noise(ax, ay, 21) < 0.035) return 'godis';
+  const cold = -ay / 4 + (noise(ax, ay, 1) - 0.5) * 1.6; // north is cold
+  const wet = -ax / 4 + (noise(ax, ay, 3) - 0.5) * 1.6; // the sea is to the west
+  const roll = noise(ax, ay, 10);
+  if (cold > 1.1)
+    return weighted(roll, [
+      ['is', 6],
+      ['berg', 2],
+      ['skog', 2],
+    ]);
+  if (cold < -1.1) {
+    if (wet > 0.4)
+      return weighted(roll, [
+        ['djungel', 6],
+        ['trask', 2],
+        ['strand', 2],
+      ]);
+    if (wet < -0.4)
+      return weighted(roll, [
+        ['vulkan', 5],
+        ['oken', 3],
+        ['dino', 2],
+      ]);
+    return weighted(roll, [
+      ['oken', 4],
+      ['dino', 3],
+      ['djungel', 2],
+      ['vulkan', 1],
+    ]);
   }
-};
-/** Is this tile inside one of the four edge openings? */
-export const inEdgeGap = (x: number, y: number): boolean => {
-  const mid = MAP_W / 2;
-  return (Math.abs(x - mid) < EDGE_GAP && (y < 4 || y >= MAP_H - 4)) || (Math.abs(y - mid) < EDGE_GAP && (x < 4 || x >= MAP_W - 4));
-};
-
-interface BiomeStyle {
-  ground: Terrain;
-  trees: number; // probability per tile in the border belt
-  innerTrees: number;
-  treeKinds: string[];
-  rocks: number;
-  rockKinds: string[];
-  tufts: number;
-  flowers: number;
-  bushes: number;
-  special: { kind: string; p: number }[];
-  water: 'pond' | 'sea' | 'frozen' | 'none';
+  if (wet > 1)
+    return weighted(roll, [
+      ['strand', 6],
+      ['trask', 3],
+      ['ang', 2],
+      ['skog', 1],
+    ]);
+  if (wet < -1)
+    return weighted(roll, [
+      ['berg', 6],
+      ['skog', 2],
+      ['svamp', 2],
+      ['ang', 1],
+    ]);
+  return weighted(roll, [
+    ['skog', 5],
+    ['ang', 5],
+    ['trask', 3],
+    ['svamp', 3],
+    ['berg', 2],
+    ['dino', 2],
+  ]);
 }
 
-const STYLES: Record<Biome, BiomeStyle> = {
-  skog: { ground: 'grass', trees: 0.75, innerTrees: 0.14, treeKinds: ['tree', 'tree', 'tree_pine'], rocks: 0.01, rockKinds: ['rock_small'], tufts: 0.05, flowers: 0.02, bushes: 0.03, special: [{ kind: 'mushroom', p: 0.012 }], water: 'none' },
-  ang: { ground: 'grass', trees: 0.5, innerTrees: 0.02, treeKinds: ['tree', 'tree_apple'], rocks: 0.01, rockKinds: ['rock_small'], tufts: 0.1, flowers: 0.12, bushes: 0.01, special: [{ kind: 'beehive', p: 0.003 }], water: 'pond' },
-  is: { ground: 'snow', trees: 0.5, innerTrees: 0.05, treeKinds: ['tree_pine'], rocks: 0.03, rockKinds: ['rock', 'rock_small'], tufts: 0, flowers: 0, bushes: 0, special: [{ kind: 'iceberry', p: 0.015 }, { kind: 'snowman_wild', p: 0.002 }], water: 'frozen' },
-  berg: { ground: 'gravel', trees: 0.3, innerTrees: 0.03, treeKinds: ['tree_pine'], rocks: 0.14, rockKinds: ['rock', 'rock', 'rock_small', 'ore'], tufts: 0.02, flowers: 0.01, bushes: 0.01, special: [], water: 'none' },
-  strand: { ground: 'sand', trees: 0.3, innerTrees: 0.02, treeKinds: ['palm'], rocks: 0.02, rockKinds: ['rock_small'], tufts: 0.03, flowers: 0, bushes: 0, special: [{ kind: 'shell', p: 0.02 }], water: 'sea' },
-  by: { ground: 'grass', trees: 0.6, innerTrees: 0.0, treeKinds: ['tree', 'tree_apple'], rocks: 0, rockKinds: [], tufts: 0.04, flowers: 0.06, bushes: 0, special: [], water: 'none' },
-  oken: { ground: 'sand', trees: 0.15, innerTrees: 0.01, treeKinds: ['palm'], rocks: 0.05, rockKinds: ['rock', 'rock_small'], tufts: 0.01, flowers: 0, bushes: 0, special: [{ kind: 'cactus', p: 0.02 }], water: 'none' },
-};
+export { EDGE_GAP, arrivalTile, inEdgeGap } from './worldgen.ts';
 
-/** Builds a biome area for grid coordinates (ax, ay). Deterministic. */
-export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldState {
-  const biome = biomeAt(ax, ay);
-  const st = STYLES[biome];
-  const rnd = mulberry32(hash(ax, ay, worldSeed));
-  const world = emptyWorld();
-  world.area = areaKey(ax, ay);
-  world.biome = biome;
+/** Version of the area generator. Explored maps built by an older one are rebuilt (if nobody changed them) or topped up. */
+export const AREA_GEN = 2;
+
+/** Builds a city's surroundings the way it always was (so new cities look like the old ones), then the city. */
+function paintCity(world: WorldState, rnd: () => number): void {
   const T = world.terrain;
-  T.fill(st.ground);
-
-  // Water
-  if (st.water === 'pond' || st.water === 'frozen') {
-    const cx = randInt(rnd, 18, 46);
-    const cy = randInt(rnd, 18, 46);
-    const rx = randInt(rnd, 4, 8);
-    const ry = randInt(rnd, 3, 6);
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
-        const dx = (x + 0.5 - cx) / rx;
-        const dy = (y + 0.5 - cy) / ry;
-        const d = dx * dx + dy * dy;
-        if (d <= 1) T[tileIndex(x, y)] = st.water === 'frozen' ? 'ice' : 'water';
-        else if (d <= 1.6 && st.water === 'pond') T[tileIndex(x, y)] = 'sand';
-      }
-  } else if (st.water === 'sea') {
-    // sea along the west side, wavy shoreline
-    for (let y = 0; y < MAP_H; y++) {
-      const shore = 10 + Math.round(Math.sin(y / 5) * 2 + (rnd() - 0.5) * 2);
-      for (let x = 0; x < shore; x++) if (!inEdgeGap(x, y)) T[tileIndex(x, y)] = 'water';
-    }
-  }
-
+  T.fill('grass');
   const tryObj = (x: number, y: number, kind: string) => {
     if (!inBounds(x, y) || inEdgeGap(x, y)) return;
     const t = T[tileIndex(x, y)];
@@ -147,51 +206,68 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
     addObject(world, kind, x, y);
   };
   const pick = (arr: string[]) => arr[Math.floor(rnd() * arr.length)]!;
-
-  // Border belt of trees (keeps areas feeling enclosed, openings at the edge gaps)
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {
       const edge = Math.min(x, y, MAP_W - 1 - x, MAP_H - 1 - y);
-      if (edge <= 1 && rnd() < 0.95) tryObj(x, y, pick(st.treeKinds));
-      else if (edge <= 3 && rnd() < st.trees) tryObj(x, y, pick(st.treeKinds));
+      if (edge <= 1 && rnd() < 0.95) tryObj(x, y, pick(['tree', 'tree_apple']));
+      else if (edge <= 3 && rnd() < 0.6) tryObj(x, y, pick(['tree', 'tree_apple']));
       else if (edge > 3) {
         const r = rnd();
-        if (r < st.innerTrees) tryObj(x, y, pick(st.treeKinds));
-        else if (r < st.innerTrees + st.rocks) tryObj(x, y, pick(st.rockKinds));
-        else if (r < st.innerTrees + st.rocks + st.bushes) tryObj(x, y, 'bush');
-        else if (r < st.innerTrees + st.rocks + st.bushes + st.tufts) tryObj(x, y, 'grass_tuft');
-        else if (r < st.innerTrees + st.rocks + st.bushes + st.tufts + st.flowers) tryObj(x, y, 'flower');
-        else {
-          for (const sp of st.special) if (rnd() < sp.p) tryObj(x, y, sp.kind);
-        }
+        if (r < 0.04) tryObj(x, y, 'grass_tuft');
+        else if (r < 0.1) tryObj(x, y, 'flower');
       }
     }
-  if (biome === 'by') buildCity(world);
-  spawnWildAnimals(world, biome, rnd);
-  // A signpost at every arrival tile pointing home-ish (decoration)
-  for (const side of ['n', 's', 'e', 'w'] as const) {
-    const a = arrivalTile(side);
-    const sx = side === 'e' || side === 'w' ? a.x : a.x + 2;
-    const sy = side === 'n' || side === 's' ? a.y : a.y + 2;
-    tryObj(sx, sy, 'signpost');
+  buildCity(world);
+}
+
+/** Builds a biome area for grid coordinates (ax, ay). Deterministic. */
+export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldState {
+  const biome = biomeAt(ax, ay);
+  const rnd = mulberry32(hash(ax, ay, worldSeed));
+  const world = emptyWorld();
+  world.area = areaKey(ax, ay);
+  world.biome = biome;
+  world.gen = AREA_GEN;
+  if (biome === 'by') paintCity(world, rnd);
+  else {
+    const g = new Painter(world, rnd, hash(ax, ay, worldSeed + 1));
+    g.showcase = !!NEAR_HOME[`${ax},${ay}`] || (ax === SPACEPORT.ax && ay === SPACEPORT.ay);
+    (PAINTERS[biome] ?? PAINTERS.ang!)(g);
+    world.renew = countRenewables(world);
   }
+  spawnWildAnimals(world, biome, rnd);
+  // A signpost beside every opening (decoration)
+  if (biome !== 'by')
+    for (const side of ['n', 's', 'e', 'w'] as const) {
+      const a = arrivalTile(side);
+      const sx = side === 'n' || side === 's' ? a.x + EDGE_GAP : side === 'w' ? a.x + 2 : a.x - 2;
+      const sy = side === 'w' || side === 'e' ? a.y + EDGE_GAP : side === 'n' ? a.y + 2 : a.y - 2;
+      const o = objectAt(world, sx, sy);
+      if (o && objectDef(o.kind).breakWith && !objectDef(o.kind).interact && !objectDef(o.kind).solid) removeObject(world, o.id);
+      if (!objectAt(world, sx, sy) && !WALL_TERRAIN.has(world.terrain[tileIndex(sx, sy)]!) && !wouldBlock(world, sx, sy)) addObject(world, 'signpost', sx, sy);
+    }
   return world;
 }
 
-/** Opens paths out of the farm at the middle of each edge (idempotent). */
 /** The wild species that live in a biome (predators stay out of the village). */
-export const wildSpeciesOf = (biome: Biome): AnimalDef[] =>
+export const wildSpeciesOf = (biome: string): AnimalDef[] =>
   Object.values(ANIMALS).filter((a) => a.wild && a.wild.split('|').includes(biome) && !(biome === 'by' && a.predator));
+
+/** Where wild animals may be found: tiles you can walk to from the way in. */
+const entryOf = (world: WorldState): { x: number; y: number } => (world.area === MOON_KEY ? rocketFront(MOON_ROCKET) : arrivalTile('n'));
 
 /**
  * Puts the biome's wild animals into an area. With `restock`, only tops up species whose untamed
  * count fell below their minimum (predators that were chased off, animals that were tamed).
  * Returns the animals that were added.
  */
-export function spawnWildAnimals(world: WorldState, biome: Biome, rnd: () => number, restock = false): AnimalState[] {
+export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => number, restock = false): AnimalState[] {
   const added: AnimalState[] = [];
+  const species = wildSpeciesOf(biome);
+  if (!species.length) return added;
   const T = world.terrain;
-  for (const def of wildSpeciesOf(biome)) {
+  const reach = reachableFrom(world, entryOf(world));
+  for (const def of species) {
     const [min, max] = def.wildCount ?? [3, 5];
     const have = Object.values(world.animals).filter((a) => a.species === def.species && !a.owner).length;
     const want = restock ? Math.max(0, min - have) : randInt(rnd, min, max);
@@ -200,8 +276,10 @@ export function spawnWildAnimals(world: WorldState, biome: Biome, rnd: () => num
     while (placed < want && tries++ < 200) {
       const x = randInt(rnd, 6, MAP_W - 7);
       const y = randInt(rnd, 6, MAP_H - 7);
-      const t = T[tileIndex(x, y)];
-      if (t === 'water' || t === 'ice' || objectAt(world, x, y) || inEdgeGap(x, y)) continue;
+      const t = T[tileIndex(x, y)]!;
+      if (WALL_TERRAIN.has(t) || t === 'ice' || objectAt(world, x, y) || inEdgeGap(x, y)) continue;
+      // in the open where you can get to them (an old map's pockets count too, if nothing else is free)
+      if (!reach[tileIndex(x, y)] && tries < 150) continue;
       if (Object.values(world.players).some((p) => Math.hypot(p.x - (x * TILE + 8), p.y - (y * TILE + 8)) < 8 * TILE)) continue;
       const id = world.nextId++;
       const a: AnimalState = {
@@ -223,6 +301,7 @@ export function spawnWildAnimals(world: WorldState, biome: Biome, rnd: () => num
         homeId: 0,
         waitMs: randInt(rnd, 500, 3000),
       };
+      if (def.variants) a.variant = randInt(rnd, 0, def.variants - 1);
       if (def.predator) {
         a.hp = def.predator.hp;
         a.attackAt = 0;
@@ -235,6 +314,7 @@ export function spawnWildAnimals(world: WorldState, biome: Biome, rnd: () => num
   return added;
 }
 
+/** Opens paths out of the farm at the middle of each edge (idempotent). */
 export function ensureFarmExits(world: WorldState): void {
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {

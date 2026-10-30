@@ -569,8 +569,189 @@ function animalParts(species: string, variant: number): PartSpec[] {
         { name: 'wingR', pivot: [2, 18, 0], swing: 'wingB', boxes: [box([0, -4, -0.5], [8, 1, 0.5], W, '#3a2a2a')] },
       ];
   }
+  const wider = widerWorldParts(species, variant);
+  if (wider) return wider;
   // unknown: a small generic animal
   return quadruped({ body: [6, 6, 10], legH: 5, head: [5, 5, 5], color: '#a08060' });
+}
+
+/** Two little eyes on the front (+z face at `z`) of a head. */
+const eyes = (y: number, z: number, dx: number, colour = '#111', size = 1): PartSpec['boxes'] => [
+  box([-dx - size / 2, y, z], [-dx + size / 2, y + size, z + 0.2], W, colour),
+  box([dx - size / 2, y, z], [dx + size / 2, y + size, z + 0.2], W, colour),
+];
+
+/** The wider world's wild animals and the dragon. */
+function widerWorldParts(species: string, variant: number): PartSpec[] | null {
+  switch (species) {
+    case 'frog': {
+      const c = '#4caf50';
+      const dark = '#2e7d32';
+      return [
+        { name: 'legL', pivot: [-3, 2, -1.5], swing: 'legA', boxes: [box([-2, -2, -2.5], [0.5, 1, 3], W, dark)] },
+        { name: 'legR', pivot: [3, 2, -1.5], swing: 'legB', boxes: [box([-0.5, -2, -2.5], [2, 1, 3], W, dark)] },
+        { name: 'armL', pivot: [-2.5, 1.5, 3], swing: 'legB', boxes: [box([-1, -1.5, -0.5], [0.5, 0.5, 1.5], W, dark)] },
+        { name: 'armR', pivot: [2.5, 1.5, 3], swing: 'legA', boxes: [box([-0.5, -1.5, -0.5], [1, 0.5, 1.5], W, dark)] },
+        { name: 'body', pivot: [0, 0, 0], boxes: [box([-3.5, 0.5, -3.5], [3.5, 5, 3], W, c), box([-3, 0.4, -3], [3, 1, 3.1], W, '#c8e6a0')] },
+        {
+          name: 'head',
+          pivot: [0, 3, 2.5],
+          swing: 'head',
+          boxes: [
+            box([-3.5, 0, -1], [3.5, 3, 3], W, c),
+            box([-3.2, 3, 0], [-1, 5, 2.2], W, c),
+            box([1, 3, 0], [3.2, 5, 2.2], W, c),
+            ...eyes(3.6, 2.2, 2.1, '#111', 1.2),
+            box([-2.5, 0.8, 3], [2.5, 1.2, 3.2], W, '#1b4d1e'),
+          ],
+        },
+      ];
+    }
+    case 'parrot': {
+      const [c, wing, beak] = [
+        ['#e53935', '#1e88e5', '#3a3a3a'],
+        ['#1e88e5', '#ffd54f', '#3a3a3a'],
+        ['#43a047', '#e53935', '#f0c040'],
+      ][variant % 3]!;
+      return [
+        { name: 'legL', pivot: [-1, 2, 0], swing: 'legA', boxes: [box([-0.5, -2, -0.5], [0.5, 0, 0.5], W, '#5a5a5a')] },
+        { name: 'legR', pivot: [1, 2, 0], swing: 'legB', boxes: [box([-0.5, -2, -0.5], [0.5, 0, 0.5], W, '#5a5a5a')] },
+        { name: 'body', pivot: [0, 2, 0], boxes: [box([-2, 0, -2], [2, 7, 2.5], W, c), box([-1, -4, -2.5], [1, 1, -1.5], W, wing)] },
+        { name: 'wingL', pivot: [-2, 8, 0], swing: 'wingA', boxes: [box([-1, -6, -2], [0, 0, 2.5], W, wing)] },
+        { name: 'wingR', pivot: [2, 8, 0], swing: 'wingB', boxes: [box([0, -6, -2], [1, 0, 2.5], W, wing)] },
+        { name: 'head', pivot: [0, 9, 0.5], swing: 'head', boxes: [box([-2, 0, -1.5], [2, 4, 2.5], W, c), box([-0.8, 0.6, 2.5], [0.8, 3, 4], W, beak), ...eyes(2.3, 2.5, 1.3, '#111', 0.8)] },
+      ];
+    }
+    case 'monkey': {
+      // sits up on short legs, long arms, a pale face with ears on the sides, a tail curling up behind
+      const c = '#7a5230';
+      const face = '#e0b890';
+      return [
+        { name: 'legL', pivot: [-1.5, 4, 0], swing: 'legA', boxes: [box([-1, -4, -1], [1, 0, 1.5], W, c)] },
+        { name: 'legR', pivot: [1.5, 4, 0], swing: 'legB', boxes: [box([-1, -4, -1], [1, 0, 1.5], W, c)] },
+        { name: 'body', pivot: [0, 4, 0], boxes: [box([-2.5, 0, -1.8], [2.5, 7, 1.8], W, c), box([-1.8, 1, 1.8], [1.8, 5, 2], W, face)] },
+        { name: 'armL', pivot: [-2.5, 10.5, 0], swing: 'armA', boxes: [box([-1.4, -8, -1], [0, 0, 1], W, c)] },
+        { name: 'armR', pivot: [2.5, 10.5, 0], swing: 'armB', boxes: [box([0, -8, -1], [1.4, 0, 1], W, c)] },
+        { name: 'tail', pivot: [0, 5, -1.8], swing: 'tail', boxes: [box([-0.6, -0.6, -6], [0.6, 0.6, 0], W, c), box([-0.6, 0, -6.6], [0.6, 5, -5.4], W, c), box([-0.6, 4.4, -6], [0.6, 5.6, -3.5], W, c)] },
+        {
+          name: 'head',
+          pivot: [0, 11, 0],
+          swing: 'head',
+          boxes: [
+            box([-2.8, 0, -2.4], [2.8, 5, 2.4], W, c),
+            box([-2, 0.4, 2.4], [2, 3.6, 3], W, face),
+            box([-4, 2, -0.6], [-2.8, 3.6, 0.6], W, face),
+            box([2.8, 2, -0.6], [4, 3.6, 0.6], W, face),
+            ...eyes(2.6, 3, 1, '#2a1a10', 0.8),
+          ],
+        },
+      ];
+    }
+    case 'salamander':
+      return [
+        { name: 'legs', pivot: [0, 1.5, 0], swing: 'legA', boxes: [box([-4, -1.5, 2], [4, 0, 3], W, '#1f1f1f'), box([-4, -1.5, -3], [4, 0, -2], W, '#1f1f1f')] },
+        { name: 'body', pivot: [0, 1.5, 0], boxes: [box([-2, 0, -5], [2, 2, 5], W, '#2a2a2a'), box([-1, 2, -3], [1, 2.2, -1], W, '#ff8a1a'), box([-1.5, 2, 1], [0.5, 2.2, 3], W, '#ffb02a')] },
+        { name: 'head', pivot: [0, 1.5, 5], swing: 'head', boxes: [box([-1.5, 0, 0], [1.5, 2, 3], W, '#2a2a2a'), box([-1, 2, 0.5], [1, 2.2, 1.5], W, '#ff8a1a'), box([-1.6, 1, 1], [-1.4, 1.6, 1.6], W, '#ffd040'), box([1.4, 1, 1], [1.6, 1.6, 1.6], W, '#ffd040')] },
+        { name: 'tail', pivot: [0, 1.5, -5], swing: 'tail', boxes: [box([-1, 0, -6], [1, 1.5, 0], W, '#2a2a2a'), box([-0.5, 0.2, -8], [0.5, 1.2, -6], W, '#ff8a1a')] },
+      ];
+    case 'hedgehog':
+      return [
+        { name: 'legs', pivot: [0, 1, 0], swing: 'legA', boxes: [box([-2.5, -1, 1.5], [2.5, 0, 2.5], W, '#5a4030'), box([-2.5, -1, -2.5], [2.5, 0, -1.5], W, '#5a4030')] },
+        { name: 'body', pivot: [0, 1, 0], boxes: [box([-3, 0, -3.5], [3, 3.5, 3], W, '#8a6a4a'), box([-3.5, 1.5, -4], [3.5, 5, 2], W, '#4a3828'), box([-2.5, 5, -3], [2.5, 5.6, 1], W, '#6a5038')] },
+        { name: 'head', pivot: [0, 1, 3], swing: 'head', boxes: [box([-2, 0, -0.5], [2, 3, 2.5], W, '#d8b890'), box([-0.8, 0.5, 2.5], [0.8, 1.6, 3.6], W, '#d8b890'), box([-0.5, 0.8, 3.6], [0.5, 1.5, 3.9], W, '#111'), ...eyes(1.9, 2.5, 1.1, '#111', 0.6)] },
+      ];
+    case 'dino': {
+      const c = ['#5aa83a', '#e08a2a', '#8a5ac8'][variant % 3]!;
+      const belly = ['#c8e0a0', '#f8d8a0', '#d8c8f0'][variant % 3]!;
+      const leg = (x: number): PartSpec['boxes'] => [box([x - 1.5, -9, -2], [x + 1.5, 0, 2], W, c), box([x - 1.5, -9, 2], [x + 1.5, -8, 4], W, c)];
+      return [
+        { name: 'legL', pivot: [-2.5, 9, 0], swing: 'legA', boxes: leg(0) },
+        { name: 'legR', pivot: [2.5, 9, 0], swing: 'legB', boxes: leg(0) },
+        { name: 'body', pivot: [0, 9, 0], boxes: [box([-4, 0, -5], [4, 8, 5], W, c), box([-3, -0.1, 0], [3, 6, 5.2], W, belly)] },
+        { name: 'tail', pivot: [0, 13, -5], swing: 'tail', boxes: [box([-2.5, -3, -7], [2.5, 2, 0], W, c), box([-1.5, -2, -13], [1.5, 1, -7], W, c)] },
+        { name: 'armL', pivot: [-3, 13, 4], swing: 'armA', boxes: [box([-1, -3, 0], [0, 0, 1.5], W, c)] },
+        { name: 'armR', pivot: [3, 13, 4], swing: 'armB', boxes: [box([0, -3, 0], [1, 0, 1.5], W, c)] },
+        {
+          name: 'head',
+          pivot: [0, 16, 3],
+          swing: 'head',
+          boxes: [
+            box([-3.5, 0, -2], [3.5, 6, 6], W, c),
+            box([-3, -2, 1], [3, 0, 6], W, c),
+            box([-2.8, -0.4, 5.6], [2.8, 0.3, 6.2], W, '#ffffff'),
+            box([-3.6, 3.5, 2], [-3.4, 4.7, 3.4], W, '#111'),
+            box([3.4, 3.5, 2], [3.6, 4.7, 3.4], W, '#111'),
+          ],
+        },
+      ];
+    }
+    case 'gummy': {
+      const c = ['#e53950', '#43c060', '#f8d040', '#f88a30'][variant % 4]!;
+      const light = ['#ff8a9a', '#8ae8a0', '#fff0a0', '#ffc08a'][variant % 4]!;
+      return [
+        { name: 'legL', pivot: [-1.8, 3, 0], swing: 'legA', boxes: [box([-1.4, -3, -1.4], [1.4, 0, 1.4], W, c)] },
+        { name: 'legR', pivot: [1.8, 3, 0], swing: 'legB', boxes: [box([-1.4, -3, -1.4], [1.4, 0, 1.4], W, c)] },
+        { name: 'body', pivot: [0, 3, 0], boxes: [box([-3, 0, -2.2], [3, 6, 2.2], W, c), box([-2, 1, 2.2], [2, 4.5, 2.5], W, light)] },
+        { name: 'armL', pivot: [-3, 8, 0], swing: 'armA', boxes: [box([-1.5, -3.5, -1.2], [0, 0, 1.2], W, c)] },
+        { name: 'armR', pivot: [3, 8, 0], swing: 'armB', boxes: [box([0, -3.5, -1.2], [1.5, 0, 1.2], W, c)] },
+        {
+          name: 'head',
+          pivot: [0, 9, 0],
+          swing: 'head',
+          boxes: [box([-2.8, 0, -2.2], [2.8, 4.5, 2.2], W, c), box([-2.8, 4, -0.8], [-1.4, 5.4, 0.8], W, c), box([1.4, 4, -0.8], [2.8, 5.4, 0.8], W, c), box([-1.2, 0.6, 2.2], [1.2, 2, 3], W, light), ...eyes(2.6, 2.2, 1.3, '#2a1a1a', 0.8)],
+        },
+      ];
+    }
+    case 'alien': {
+      const c = '#7ad65a';
+      return [
+        { name: 'legL', pivot: [-1.3, 5, 0], swing: 'legA', boxes: [box([-1, -5, -1], [1, 0, 1], W, c)] },
+        { name: 'legR', pivot: [1.3, 5, 0], swing: 'legB', boxes: [box([-1, -5, -1], [1, 0, 1], W, c)] },
+        { name: 'body', pivot: [0, 5, 0], boxes: [box([-2.5, 0, -1.5], [2.5, 6, 1.5], W, '#c0c8d0'), box([-1, 2, 1.5], [1, 4, 1.7], W, '#e8ff70')] },
+        { name: 'armL', pivot: [-2.5, 10.5, 0], swing: 'armA', boxes: [box([-1, -5, -0.8], [0, 0, 0.8], W, c)] },
+        { name: 'armR', pivot: [2.5, 10.5, 0], swing: 'armB', boxes: [box([0, -5, -0.8], [1, 0, 0.8], W, c)] },
+        {
+          name: 'head',
+          pivot: [0, 11, 0],
+          swing: 'head',
+          boxes: [
+            box([-4, 0, -3.5], [4, 6.5, 3.5], W, c),
+            box([-3.2, 2, 3.5], [-0.8, 4.4, 3.7], W, '#111'),
+            box([0.8, 2, 3.5], [3.2, 4.4, 3.7], W, '#111'),
+            box([-0.4, 6.5, -0.4], [0.4, 9.5, 0.4], W, '#3a8a2a'),
+            box([-1, 9.5, -1], [1, 11.5, 1], W, '#e8ff70'),
+          ],
+        },
+      ];
+    }
+    case 'dragon': {
+      const c = '#7a3ab0';
+      const wing = '#5a2a8a';
+      const horn = '#f0e0b0';
+      return [
+        ...quadruped({ body: [6, 5, 9], legH: 4, legW: 2, head: [5, 4, 5], color: c }).filter((p) => p.name !== 'head' && p.name !== 'body'),
+        { name: 'body', pivot: [0, 4, 0], boxes: [box([-3, 0, -5], [3, 5, 4], W, c), box([-2.5, -0.1, -4], [2.5, 0.5, 3], W, '#d8b8f0'), box([-0.5, 5, -4], [0.5, 6, 3], W, horn)] },
+        { name: 'wingL', pivot: [-3, 8, 0], swing: 'wingA', boxes: [box([-11, -0.5, -4], [0, 0.5, 3], W, wing), box([-11, 0.5, -1], [-1, 1, 0], W, horn)] },
+        { name: 'wingR', pivot: [3, 8, 0], swing: 'wingB', boxes: [box([0, -0.5, -4], [11, 0.5, 3], W, wing), box([1, 0.5, -1], [11, 1, 0], W, horn)] },
+        {
+          name: 'head',
+          pivot: [0, 8, 4],
+          swing: 'head',
+          boxes: [
+            box([-1.5, 0, -1], [1.5, 4, 2], W, c),
+            box([-2.5, 4, -1], [2.5, 8, 4], W, c),
+            box([-1.8, 4.5, 4], [1.8, 7, 7], W, c),
+            box([-2, 8, -1], [-1, 10, 0], W, horn),
+            box([1, 8, -1], [2, 10, 0], W, horn),
+            box([-2.6, 6, 2], [-2.4, 7, 3], W, '#ffe060'),
+            box([2.4, 6, 2], [2.6, 7, 3], W, '#ffe060'),
+          ],
+        },
+        { name: 'tail', pivot: [0, 6, -5], swing: 'tail', boxes: [box([-1.5, -1.5, -6], [1.5, 1.5, 0], W, c), box([-1, -1, -10], [1, 1, -6], W, c), box([-1.5, -0.2, -12], [1.5, 0.2, -10], W, horn)] },
+      ];
+    }
+  }
+  return null;
 }
 
 /** Monsters that walk upright reuse the character rig with their own colours. */

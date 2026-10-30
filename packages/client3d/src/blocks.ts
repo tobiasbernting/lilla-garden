@@ -391,6 +391,334 @@ const PAINTERS: Record<string, Painter> = {
   };
 });
 
+// ---------------------------------------------------------------------------- the wider world
+
+const pick = (p: Painter2D, pal: readonly string[]): string => pal[Math.floor(p.rnd() * pal.length)]!;
+/** A wavy line across the tile (x → y), for veins and swirls. */
+const wave = (p: Painter2D, y0: number, amp: number, freq: number, phase: number, c: string, thick = 1): void => {
+  for (let x = 0; x < 16; x++) {
+    const y = Math.round(y0 + Math.sin(x * freq + phase) * amp);
+    for (let t = 0; t < thick; t++) p.px(x, (y + t + 16) % 16, c);
+  }
+};
+/** Little 2-pixel sprinkles in candy colours. */
+const sprinkles = (p: Painter2D, n: number): void => {
+  const cols = ['#ffffff', '#ffe066', '#78cff0', '#9be37a', '#ff6f91', '#b48cf0'];
+  for (let i = 0; i < n; i++) {
+    const x = Math.floor(p.rnd() * 15);
+    const y = Math.floor(p.rnd() * 15);
+    if (p.rnd() < 0.5) p.rect(x, y, 2, 1, pick(p, cols));
+    else p.rect(x, y, 1, 2, pick(p, cols));
+  }
+};
+/** A ground's top colour running down over earth, like the side of a grass block. */
+const capSide = (top: readonly string[], under: readonly string[], deep = 3) => (p: Painter2D) => {
+  p.noise([...under], 1.4);
+  for (let x = 0; x < 16; x++) {
+    const d = deep + Math.floor(p.rnd() * 2) - (x % 3 === 0 ? 1 : 0);
+    for (let y = 0; y < d; y++) p.px(x, y, pick(p, top));
+  }
+};
+/** A crack wandering across the tile. */
+const crack = (p: Painter2D, c: string, glow?: string): void => {
+  let x = Math.floor(p.rnd() * 16);
+  let y = 0;
+  while (y < 16) {
+    p.px(x, y, c);
+    if (glow && p.rnd() < 0.5) p.px(x + 1, y, glow);
+    y += 1;
+    x += p.rnd() < 0.35 ? -1 : p.rnd() < 0.5 ? 1 : 0;
+  }
+};
+
+const LAVA = ['#d8460f', '#e85a16', '#c63a0c', '#f06e1c'];
+const BOG = ['#3f4b28', '#46532d', '#384422', '#4d5a32'];
+const CHOCO = ['#5b311a', '#522c17', '#66381e', '#4a2614'];
+const CANDY = ['#f6b3d0', '#f3a6c7', '#f9c1d9', '#f09cc0'];
+const MOON_DUST = ['#cfcfc9', '#c5c5bf', '#d8d8d2', '#bcbcb6'];
+const MOON_ROCK = ['#8f8f8a', '#86867f', '#99998f', '#7c7c76'];
+const ASH = ['#4b4845', '#43403d', '#545049', '#3b3936'];
+const MUD = ['#5d4231', '#53392a', '#674a37', '#4a3324'];
+const MOSS = ['#3e917b', '#378573', '#47a08a', '#327a69'];
+const REDSAND = ['#c9663b', '#bf5d35', '#d27044', '#b45630'];
+const SANDSTONE = ['#c97a42', '#bf6e3a', '#d48a50', '#b8663a'];
+const BASALT = ['#2b2b30', '#25252a', '#323238', '#1f1f24'];
+const DESERT_BRICK = ['#e4c88c', '#dcc084', '#ead096', '#d6b87a'];
+const GINGER = ['#a9652e', '#a05e2a', '#b26e34', '#985626'];
+const STEM = ['#e8e0cc', '#ded6c0', '#f0e8d6'];
+
+Object.assign(PAINTERS, {
+  // liquids (each scrolls in its own texture, see Voxels)
+  lava: (p: Painter2D) => {
+    p.noise(LAVA, 1.1);
+    wave(p, 4, 1.6, 0.7, 0, '#ffb52e', 2);
+    wave(p, 11, 1.4, 0.5, 2, '#ffa422');
+    p.dots(12, ['#ffe27a', '#fff2b0']);
+    p.dots(9, ['#9a2a0a', '#7a1e08']);
+  },
+  bog: (p: Painter2D) => {
+    p.noise(BOG, 1.2);
+    wave(p, 6, 1, 0.5, 1, '#55623a');
+    p.dots(16, ['#6f8f36', '#7fa040', '#5d7a2c']);
+    p.dots(6, ['#2a3218']);
+  },
+  choco: (p: Painter2D) => {
+    p.noise(CHOCO, 1.1);
+    wave(p, 5, 1.5, 0.6, 0, '#7c4a2a');
+    wave(p, 12, 1.5, 0.6, 3, '#744426');
+    p.dots(6, ['#8e5a36']);
+  },
+  // the wider world's grounds
+  candy: (p: Painter2D) => {
+    p.noise(CANDY, 1.2);
+    sprinkles(p, 12);
+  },
+  candy_side: (p: Painter2D) => {
+    p.noise(['#f3a6c7', '#ee98bd', '#f5b0cd'], 1.2);
+    p.rect(0, 9, 16, 1, '#e888b0');
+    sprinkles(p, 4);
+    // white icing running down
+    for (let x = 0; x < 16; x++) p.rect(x, 0, 1, 2 + (p.rnd() < 0.35 ? 2 : p.rnd() < 0.5 ? 1 : 0), p.rnd() < 0.15 ? '#ffe2ef' : '#fff6fa');
+  },
+  moon_dust: (p: Painter2D) => {
+    p.noise(MOON_DUST, 1.2);
+    for (const [x, y] of [[3, 4], [11, 9], [6, 12]] as const) p.rect(x, y, 2, 1, '#a9a9a3').px(x, y + 1, '#e2e2dc');
+    p.dots(10, ['#b0b0aa', '#e4e4de']);
+  },
+  moon_rock: (p: Painter2D) => {
+    p.noise(MOON_ROCK, 1.3);
+    for (const [x, y] of [[2, 2], [10, 5], [5, 10], [12, 12]] as const) p.rect(x, y, 2, 2, '#6a6a65').px(x + 1, y + 1, '#a8a8a2');
+    p.dots(8, ['#70706b']);
+  },
+  ash: (p: Painter2D) => {
+    p.noise(ASH, 1.2);
+    p.dots(10, ['#625e59', '#33312e']);
+    p.dots(4, ['#ff6a1a', '#ffa030', '#e04a12']);
+  },
+  ash_side: (p: Painter2D) => {
+    p.noise(ASH, 1.3);
+    p.dots(14, ['#33312e', '#5a5651']);
+    p.dots(2, ['#ff6a1a']);
+  },
+  mud: (p: Painter2D) => {
+    p.noise(MUD, 1.2);
+    p.rect(3, 9, 4, 2, '#3e2b1e').rect(4, 10, 2, 1, '#6b5040');
+    p.dots(10, ['#7d5d45', '#866650', '#3e2b1e']);
+  },
+  moss_top: (p: Painter2D) => {
+    p.noise(MOSS, 1.3);
+    p.dots(14, ['#6cc6ad', '#2a6658', '#58b49a']);
+  },
+  moss_side: capSide(MOSS, DIRT, 4),
+  redsand: (p: Painter2D) => {
+    p.noise(REDSAND, 1.2);
+    p.dots(10, ['#a84c2a', '#de8050']);
+  },
+  sandstone: (p: Painter2D) => {
+    // wavy layers of red rock, a crack or two
+    for (let x = 0; x < 16; x++) {
+      const off = Math.round(Math.sin(x * 0.55) * 1.2);
+      for (let y = 0; y < 16; y++) {
+        const band = SANDSTONE[Math.floor((y + off + 16) / 5) % SANDSTONE.length]!;
+        p.px(x, y, p.rnd() < 0.3 ? pick(p, SANDSTONE) : band);
+      }
+      if (p.rnd() < 0.7) p.px(x, (9 + off + 16) % 16, '#b0623a');
+    }
+    p.dots(6, ['#a65c32', '#dc9a60']);
+  },
+  sandstone_top: (p: Painter2D) => {
+    p.noise(['#cf8048', '#c77840', '#d68c52'], 1.1);
+    wave(p, 5, 1, 0.5, 0, '#b86a38');
+    wave(p, 12, 1, 0.5, 2, '#b86a38');
+  },
+  basalt: (p: Painter2D) => {
+    for (let x = 0; x < 16; x++) {
+      const c = BASALT[(x * 5 + 1) % BASALT.length]!;
+      for (let y = 0; y < 16; y++) p.px(x, y, p.rnd() < 0.2 ? pick(p, BASALT) : c);
+    }
+    for (const x of [0, 5, 10]) p.rect(x, 0, 1, 16, '#141418');
+    p.dots(8, ['#3e3e45']);
+  },
+  basalt_top: (p: Painter2D) => {
+    p.noise(BASALT, 1.2);
+    p.rect(0, 0, 16, 1, '#141418').rect(0, 0, 1, 16, '#141418').rect(0, 8, 8, 1, '#141418').rect(8, 4, 8, 1, '#141418').rect(8, 0, 1, 16, '#141418').rect(0, 12, 8, 1, '#141418');
+  },
+  magma: (p: Painter2D) => {
+    p.noise(['#3a1a10', '#2e140c', '#46200f'], 1.2);
+    crack(p, '#ff7a1a', '#ffb030');
+    crack(p, '#e85a12');
+    p.dots(6, ['#ffd050', '#ff8a2a']);
+  },
+  // built: the pyramid, the temple, the gingerbread house, the rocket, the UFO
+  sand_bricks: bricks('#c8a868', DESERT_BRICK),
+  sand_smooth: (p: Painter2D) => {
+    p.noise(['#e6cb8f', '#e0c588', '#ead296'], 1);
+    p.rect(0, 0, 16, 1, '#f2dca8').rect(0, 15, 16, 1, '#c8aa70');
+  },
+  chiseled_sand: (p: Painter2D) => {
+    p.noise(['#e6cb8f', '#e0c588', '#ead296'], 1);
+    p.rect(1, 1, 14, 14, '#d8bc80').rect(2, 2, 12, 12, '#e6cb8f');
+    // an eye
+    p.rect(4, 6, 8, 1, '#a07a40').rect(4, 9, 8, 1, '#a07a40').rect(3, 7, 1, 2, '#a07a40').rect(12, 7, 1, 2, '#a07a40').rect(7, 7, 2, 2, '#5a3e1a').rect(6, 10, 1, 3, '#a07a40');
+  },
+  mossy_bricks: (p: Painter2D) => {
+    stoneBricks(p);
+    p.dots(26, ['#5b7a3a', '#4d6b30', '#6a8a45']);
+    p.rect(2, 0, 3, 2, '#4d6b30').rect(10, 8, 2, 3, '#5b7a3a');
+  },
+  gingerbread: (p: Painter2D) => {
+    p.noise(GINGER, 1.1);
+    p.dots(10, ['#7a4520', '#c07a3e']);
+  },
+  icing: (p: Painter2D) => {
+    p.noise(['#fff6fb', '#ffeef6', '#ffffff'], 1);
+    p.dots(6, ['#f7a6c6', '#ffd0e2']);
+  },
+  roof_candy: (p: Painter2D) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.px(x, y, (x + y) % 8 < 4 ? '#f05a7a' : '#fff4f6');
+    p.dots(8, ['#ffe066', '#78cff0']);
+  },
+  door_choco: (p: Painter2D) => {
+    p.rect(0, 0, 16, 16, '#4a2614');
+    for (const [x, y] of [[1, 1], [8, 1], [1, 6], [8, 6], [1, 11], [8, 11]] as const) p.rect(x, y, 7, 4, '#6a3a1e').rect(x, y, 7, 1, '#8a5430');
+    p.rect(12, 8, 2, 2, '#ffe066');
+  },
+  rocket_white: (p: Painter2D) => {
+    p.noise(['#eef0f4', '#e6e9ee', '#f6f7fa'], 1);
+    p.rect(0, 7, 16, 1, '#c4c8d0').rect(0, 0, 1, 16, '#c4c8d0');
+    for (const [x, y] of [[2, 2], [13, 2], [2, 12], [13, 12]] as const) p.px(x, y, '#a8acb6');
+  },
+  rocket_red: (p: Painter2D) => {
+    p.noise(['#d23a30', '#c8342a', '#dc4236'], 1);
+    p.rect(0, 7, 16, 1, '#a8261e').rect(0, 0, 1, 16, '#a8261e');
+    for (const [x, y] of [[2, 2], [13, 2], [2, 12], [13, 12]] as const) p.px(x, y, '#ff7a6a');
+  },
+  porthole: (p: Painter2D) => {
+    PAINTERS.rocket_white!(p);
+    p.rect(4, 3, 8, 10, '#8a8f98').rect(3, 4, 10, 8, '#8a8f98');
+    p.rect(5, 4, 6, 8, '#6ec0ec').rect(4, 5, 8, 6, '#6ec0ec');
+    p.rect(5, 5, 2, 2, '#e0f6ff').px(7, 5, '#b8e6fa');
+  },
+  metal: (p: Painter2D) => {
+    p.noise(['#b8bec6', '#b0b6be', '#c2c8d0'], 1);
+    p.rect(0, 0, 16, 1, '#d8dee6').rect(0, 15, 16, 1, '#8a9098').rect(0, 7, 16, 1, '#9aa0a8');
+    for (const x of [2, 7, 13]) p.px(x, 3, '#7a8088').px(x, 11, '#7a8088');
+  },
+  ufo_light: (p: Painter2D) => {
+    p.noise(['#a8f070', '#98e060', '#b8ff80'], 1);
+    p.rect(4, 4, 8, 8, '#e0ffc0').rect(6, 6, 4, 4, '#ffffff');
+  },
+  // big plants
+  mushroom_stem: (p: Painter2D) => {
+    p.noise(STEM, 1);
+    for (const x of [3, 8, 12]) p.rect(x, 0, 1, 16, '#cfc6ae');
+  },
+  mushroom_red: (p: Painter2D) => {
+    p.noise(['#d8322a', '#cc2c24', '#e23c32'], 1);
+    for (const [x, y] of [[2, 2], [9, 1], [5, 8], [12, 9], [1, 12], [10, 13]] as const) p.rect(x, y, 3, 2, '#f8f2ea').px(x + 1, y + 2, '#f8f2ea');
+  },
+  mushroom_brown: (p: Painter2D) => {
+    p.noise(['#9a6a44', '#906240', '#a4744c'], 1.2);
+    p.dots(10, ['#7a5032', '#b48458']);
+  },
+  glow_cap: (p: Painter2D) => {
+    p.noise(['#3fc8dc', '#38bcd0', '#4ad8e8'], 1);
+    for (const [x, y] of [[2, 3], [10, 2], [6, 9], [12, 11], [2, 12]] as const) p.rect(x, y, 2, 2, '#b8f8ff').px(x, y, '#ffffff');
+  },
+  log_jungle: (p: Painter2D) => {
+    logSide(['#6a5232', '#5e482a', '#76603c', '#4e3b22'])(p);
+    for (const x of [2, 11]) for (let y = 0; y < 16; y++) if (p.rnd() < 0.6) p.px(x, y, '#3f7f27');
+  },
+  leaves_jungle: leaves(['#2f8a2a', '#38a032', '#287a24', '#44b03a']),
+  log_dead: (p: Painter2D) => {
+    logSide(['#4a433c', '#3e3833', '#56504a', '#332e2a'])(p);
+    for (const x of [3, 9, 13]) for (let y = 0; y < 16; y++) if (p.rnd() < 0.5) p.px(x, y, '#28231f');
+  },
+  log_dead_top: (p: Painter2D) => {
+    p.noise(['#4a433c', '#3e3833'], 1);
+    p.rect(2, 2, 12, 12, '#6e655a').rect(4, 4, 8, 8, '#5e564c').rect(6, 6, 4, 4, '#6e655a');
+  },
+  chiseled_stone: (p: Painter2D) => {
+    p.noise(STONE, 1.3);
+    p.rect(1, 1, 14, 14, '#6e6e6e').rect(2, 2, 12, 12, '#8a8a8a');
+    p.rect(4, 6, 8, 1, '#4e4e4e').rect(4, 9, 8, 1, '#4e4e4e').rect(3, 7, 1, 2, '#4e4e4e').rect(12, 7, 1, 2, '#4e4e4e').rect(7, 7, 2, 2, '#2e2e2e').rect(6, 10, 1, 3, '#4e4e4e');
+    p.dots(10, ['#5b7a3a', '#4d6b30']);
+  },
+  leaves_blueberry: leaves(LEAF, '#3a4fb0'),
+  // found in the world and in caves
+  fossil_stone: (p: Painter2D) => {
+    p.noise(['#b9a07e', '#ae9674', '#c4aa88'], 1.3);
+    // a curled shell
+    p.rect(5, 4, 6, 1, '#efe6cf').rect(4, 5, 1, 6, '#efe6cf').rect(5, 11, 6, 1, '#efe6cf').rect(11, 6, 1, 5, '#efe6cf').rect(7, 6, 3, 1, '#efe6cf').rect(7, 7, 1, 3, '#efe6cf').rect(8, 9, 2, 1, '#efe6cf');
+  },
+  packed_ice: (p: Painter2D) => {
+    p.noise(['#a8cff5', '#9cc6f0', '#b4d8fa', '#90bce8'], 1);
+    crack(p, '#e8f4ff');
+    p.dots(6, ['#ffffff']);
+  },
+  amethyst: (p: Painter2D) => {
+    p.noise(['#7a4fb0', '#6e44a2', '#8a5cc2', '#5e3a90'], 1);
+    for (const [x, y] of [[2, 3], [9, 2], [5, 9], [12, 10]] as const) p.rect(x, y, 2, 3, '#c09af0').px(x, y, '#ead8ff');
+  },
+  rooted_dirt: (p: Painter2D) => {
+    p.noise(['#5a4030', '#4e3626', '#64483a', '#45301f'], 1.3);
+    crack(p, '#8a6a44');
+    crack(p, '#7a5a3a');
+  },
+  moss_stone: (p: Painter2D) => {
+    p.noise(STONE, 1.5);
+    p.dots(34, ['#3e917b', '#47a08a', '#2f7262']);
+  },
+  candy_stripes: (p: Painter2D) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.px(x, y, (x - y + 32) % 8 < 3 ? '#e8303a' : '#fff6f6');
+  },
+  dragon_egg: (p: Painter2D) => {
+    p.noise(['#7a3ab0', '#6e32a2', '#8644be'], 1);
+    p.dots(14, ['#5ad0a0', '#f0c040', '#b884e8']);
+  },
+  // cross-sprites for small plants (cut out like leaves)
+  reeds: (p: Painter2D) => {
+    p.clear();
+    for (const x of [2, 5, 8, 11, 13]) {
+      const h = 9 + Math.floor(p.rnd() * 6);
+      for (let y = 0; y < h; y++) p.px(x + (y > h - 4 && x % 2 ? 1 : 0), 15 - y, y % 3 ? '#7a8f3a' : '#8a9a4a');
+      if (x % 3 === 2) p.rect(x, 15 - h, 2, 4, '#6a4224').px(x, 15 - h - 1, '#8a9a4a');
+    }
+  },
+  fern: (p: Painter2D) => {
+    p.clear();
+    for (const [x0, dir] of [[7, -1], [8, 1], [7, 0]] as const)
+      for (let y = 0; y < 13; y++) {
+        const x = Math.round(x0 + dir * y * 0.45);
+        p.px(x, 15 - y, '#2f7a2a');
+        if (y > 2 && y % 2 === 0) p.px(x - 1, 15 - y, '#3f9a36').px(x + 1, 15 - y, '#3f9a36');
+      }
+  },
+  jungle_flower: (p: Painter2D) => {
+    p.clear();
+    p.rect(7, 7, 2, 9, '#3a8a32').rect(4, 11, 3, 2, '#3a8a32').rect(9, 9, 3, 2, '#3a8a32');
+    p.rect(4, 2, 8, 5, '#e04a8a').rect(5, 1, 6, 7, '#e04a8a').rect(7, 3, 2, 2, '#ffe066').px(6, 2, '#f58ab8');
+  },
+  dig_x: (p: Painter2D) => {
+    p.clear();
+    for (let i = 2; i < 14; i++) p.rect(i, i, 2, 1, '#b8281e').rect(15 - i, i, 2, 1, '#b8281e');
+  },
+  crater: (p: Painter2D) => {
+    p.noise(['#a6a6a0', '#9c9c96', '#aeaea8'], 1.2);
+    p.rect(3, 3, 10, 10, '#8a8a84').rect(5, 5, 6, 6, '#7c7c76');
+    p.dots(8, ['#6e6e68', '#b8b8b2']);
+  },
+  lollipop_0: (p: Painter2D) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.px(x, y, (Math.floor(Math.hypot(x - 7.5, y - 7.5) + Math.atan2(y - 7.5, x - 7.5) * 1.3) & 2) ? '#f04a8a' : '#fff0f6');
+  },
+  lollipop_1: (p: Painter2D) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.px(x, y, (Math.floor(Math.hypot(x - 7.5, y - 7.5) + Math.atan2(y - 7.5, x - 7.5) * 1.3) & 2) ? '#4ab8f0' : '#f0faff');
+  },
+  lollipop_2: (p: Painter2D) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.px(x, y, (Math.floor(Math.hypot(x - 7.5, y - 7.5) + Math.atan2(y - 7.5, x - 7.5) * 1.3) & 2) ? '#f0c030' : '#fffbe8');
+  },
+} satisfies Record<string, Painter>);
+
 // ---------------------------------------------------------------------------- atlas
 
 const tileIndex = new Map<string, number>();
@@ -444,6 +772,26 @@ export const hasTile = (name: string): boolean => {
   return tileIndex.has(name);
 };
 
+const colourCache = new Map<string, string[]>();
+/** A few colours of a tile, picked from its pixels (crumbs when something breaks). */
+export function tileColours(name: string): string[] {
+  const hit = colourCache.get(name);
+  if (hit) return hit;
+  const { canvas } = atlas();
+  const i = tileIndex.get(name);
+  const out: string[] = [];
+  if (i !== undefined) {
+    const data = canvas.getContext('2d')!.getImageData((i % COLS) * TEX, Math.floor(i / COLS) * TEX, TEX, TEX).data;
+    for (const [x, y] of [[3, 3], [11, 5], [6, 11], [13, 13], [8, 8]] as const) {
+      const k = (y * TEX + x) * 4;
+      if (data[k + 3]! > 128) out.push(`rgb(${data[k]},${data[k + 1]},${data[k + 2]})`);
+    }
+  }
+  if (!out.length) out.push('#9a9a9a', '#7a7a7a');
+  colourCache.set(name, out);
+  return out;
+}
+
 // ---------------------------------------------------------------------------- blocks
 
 export interface BlockDef {
@@ -463,8 +811,13 @@ export interface BlockDef {
   cullSelf?: boolean;
   /** Emits block light (0..15). */
   light?: number;
-  /** Rendered in the translucent water pass. */
+  /** Rendered in the liquid pass, with its own flowing texture (the `top` tile). */
   liquid?: boolean;
+  /** Liquids: opacity (water 0.72) and how fast the surface flows (tiles per second). */
+  alpha?: number;
+  flow?: number;
+  /** Shines by itself whatever the light around it (lava). */
+  glow?: boolean;
   /** Top surface sits lower (farmland and paths: 15/16). */
   topInset?: number;
 }
@@ -516,7 +869,7 @@ add({ name: 'log_cherry', top: 'log_oak_top', bottom: 'log_oak_top', side: 'log_
 add({ name: 'bedrock' });
 add({ name: 'snow' });
 add({ name: 'ice' });
-add({ name: 'water', opaque: false, liquid: true });
+add({ name: 'water', opaque: false, liquid: true, alpha: 0.72, flow: 0.25 });
 add({ name: 'asphalt' });
 add({ name: 'crossing', top: 'crossing', side: 'asphalt', bottom: 'asphalt' });
 add({ name: 'sidewalk', top: 'sidewalk', side: 'smooth_stone', bottom: 'smooth_stone' });
@@ -556,6 +909,52 @@ add({ name: 'obsidian' });
 add({ name: 'melon' });
 add({ name: 'cow_hide' });
 for (let i = 1; i <= 6; i++) add({ name: `paint_${i}` });
+// the wider world: liquids
+add({ name: 'lava', opaque: false, liquid: true, alpha: 1, flow: 0.06, glow: true, light: 15 });
+add({ name: 'bog', opaque: false, liquid: true, alpha: 0.88, flow: 0.04 });
+add({ name: 'choco', opaque: false, liquid: true, alpha: 0.96, flow: 0.08 });
+// grounds and rock
+add({ name: 'candy', top: 'candy', side: 'candy_side', bottom: 'candy_side' });
+add({ name: 'candy_fill', all: 'candy_side' });
+add({ name: 'moon_dust' });
+add({ name: 'moon_rock' });
+add({ name: 'ash', top: 'ash', side: 'ash_side', bottom: 'ash_side' });
+add({ name: 'mud' });
+add({ name: 'moss', top: 'moss_top', side: 'moss_side', bottom: 'dirt' });
+add({ name: 'redsand' });
+add({ name: 'sandstone', top: 'sandstone_top', bottom: 'sandstone_top', side: 'sandstone' });
+add({ name: 'basalt', top: 'basalt_top', bottom: 'basalt_top', side: 'basalt' });
+add({ name: 'magma', light: 12 });
+add({ name: 'packed_ice' });
+add({ name: 'amethyst', light: 7 });
+add({ name: 'rooted_dirt' });
+add({ name: 'moss_stone' });
+add({ name: 'fossil_stone' });
+// built things
+add({ name: 'sand_bricks' });
+add({ name: 'sand_smooth' });
+add({ name: 'chiseled_sand', top: 'sand_smooth', bottom: 'sand_smooth', side: 'chiseled_sand' });
+add({ name: 'mossy_bricks' });
+add({ name: 'gingerbread' });
+add({ name: 'icing' });
+add({ name: 'roof_candy' });
+add({ name: 'door_choco', top: 'gingerbread', bottom: 'gingerbread', side: 'door_choco' });
+add({ name: 'candy_stripes' });
+add({ name: 'rocket_white' });
+add({ name: 'rocket_red' });
+add({ name: 'rocket_window', top: 'rocket_white', bottom: 'rocket_white', side: 'rocket_white', south: 'porthole', light: 9 });
+add({ name: 'metal' });
+add({ name: 'ufo_light', light: 13 });
+// big plants
+add({ name: 'mushroom_stem' });
+add({ name: 'mushroom_red' });
+add({ name: 'mushroom_brown' });
+add({ name: 'glow_cap', light: 13 });
+add({ name: 'log_jungle', top: 'log_oak_top', bottom: 'log_oak_top', side: 'log_jungle' });
+add({ name: 'leaves_jungle', opaque: false, cutout: true });
+add({ name: 'log_dead', top: 'log_dead_top', bottom: 'log_dead_top', side: 'log_dead' });
+add({ name: 'chiseled_stone', top: 'stone_bricks', bottom: 'stone_bricks', side: 'chiseled_stone' });
+add({ name: 'leaves_blueberry', opaque: false, cutout: true });
 
 export const blockTile = (b: BlockDef, face: 'top' | 'bottom' | 'north' | 'south' | 'east' | 'west'): string =>
   face === 'top' ? b.top : face === 'bottom' ? b.bottom : (b[face] ?? b.side);

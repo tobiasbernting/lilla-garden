@@ -27,11 +27,14 @@ export interface Scene {
   vy: number;
   vw: number;
   vh: number;
-  where: 'out' | 'inside' | 'bath' | 'cave';
+  /** 'space': the moon (outdoors, but no birds, mist or weather). */
+  where: 'out' | 'inside' | 'bath' | 'cave' | 'space';
   /** People and animals: birds fly from them, plants rustle. */
   movers: { x: number; y: number }[];
   /** Cells of open water. */
   water: [number, number][];
+  /** 0..1: how close the player is to lava. */
+  nearLava: number;
 }
 
 export const inView = (sc: Scene, x: number, y: number, w = 0, h = 0, margin = 8): boolean =>

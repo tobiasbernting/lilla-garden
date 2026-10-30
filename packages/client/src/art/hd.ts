@@ -4,6 +4,7 @@ import { Px, hash2, shade } from './px.js';
 import { R } from './style.ts';
 import { PAINT_COLORS, type ObjectArt, type TerrainTiles } from './world.js';
 import type { Terrain } from '@lilla-garden/shared';
+import { addBiomeTerrain, edgeGroup } from './terrain2.ts';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -354,6 +355,8 @@ export function drawTerrainTilesHD(): TerrainTiles {
     ctx.fillRect(0, 0, 16, 16);
     scatter(ctx, 120, 4, (x, y) => ellipse(ctx, x, y, 3, 2, 'rgba(255,255,255,0.03)'));
   });
+  // the wider world's grounds: the pixel tiles, scaled up
+  const biome = addBiomeTerrain((p) => add(upscale(p)), true);
 
   // several rows: a single row would exceed the GPU's texture width limit
   const cols = 32;
@@ -364,9 +367,12 @@ export function drawTerrainTilesHD(): TerrainTiles {
     count: tiles.length,
     rock,
     edges: true,
+    edgeGroup,
     waterFrames: [water[0]![0]!, water[0]![1]!],
     index: (t: Terrain, x: number, y: number, snowy: boolean, mask = 0, frame = 0) => {
       const h = hash2(x, y);
+      const wider = biome.index(t, x, y, snowy, mask, frame);
+      if (wider !== null) return wider;
       switch (t) {
         case 'grass':
           return snowy ? snow[h % 2]! : grass[h % grass.length]!;
@@ -404,6 +410,8 @@ export function drawTerrainTilesHD(): TerrainTiles {
           return crossing[mask & 5 ? 0 : 1]!;
         case 'rail':
           return rail;
+        default:
+          return grass[0]!;
       }
     },
   };
@@ -868,6 +876,37 @@ export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: 
     ellipse(ctx, 2.8, by + 6.6, 1.1, 1.1, skin);
     ellipse(ctx, 13.2, by + 6.6, 1.1, 1.1, skin);
   }
+  if (l.shirt.style === 'space') {
+    // astronaut suit: grey neck ring, belt and cuffs, a chest panel, a tiny Swedish flag and a backpack
+    const G = '#a2a9b4';
+    const Gd = '#737b88';
+    const flagHD = (x: number, y: number, w: number, h: number) => {
+      ctx.fillStyle = '#2f6fc8';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = '#f5d03a';
+      ctx.fillRect(x + w * 0.3, y, h * 0.28, h);
+      ctx.fillRect(x, y + h * 0.36, w, h * 0.28);
+    };
+    fillRR(ctx, 3.2, by + 5.3, 9.6, 1.1, 0.4, G);
+    if (dir === 'right') {
+      fillRR(ctx, 1.5, by + 0.3, 2.6, 6.2, 0.9, lin(ctx, 1.5, 0, 4.1, 0, [[0, G], [1, Gd]]));
+      flagHD(7.2, by + 2.5, 2.2, 1.6);
+      fillRR(ctx, 7, by + 5.4, 2.6, 0.9, 0.4, G);
+    } else if (dir === 'down') {
+      fillRR(ctx, 5, by - 0.2, 6, 1.1, 0.5, G);
+      flagHD(4.2, by + 2.4, 2.8, 1.9);
+      fillRR(ctx, 9, by + 2.4, 2.4, 2.1, 0.4, Gd);
+      ellipse(ctx, 9.6, by + 3.1, 0.35, 0.35, '#ff5a4a');
+      ellipse(ctx, 10.8, by + 3.8, 0.35, 0.35, '#5ae05a');
+      fillRR(ctx, 1.6, by + 5.3, 2.4, 0.9, 0.4, G);
+      fillRR(ctx, 12, by + 5.3, 2.4, 0.9, 0.4, G);
+    } else {
+      fillRR(ctx, 4.2, by + 0.8, 7.6, 5, 1.2, lin(ctx, 4.2, 0, 11.8, 0, [[0, G], [1, Gd]]));
+      fillRR(ctx, 5.2, by + 1.8, 5.6, 2.4, 0.6, Gd);
+      ellipse(ctx, 6.6, by + 3, 0.4, 0.4, '#ff5a4a');
+      ellipse(ctx, 9.4, by + 3, 0.4, 0.4, '#5ae05a');
+    }
+  }
 
   // head
   const hx = 8;
@@ -892,7 +931,7 @@ export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: 
   const hairC = l.hair;
   const hairD = shade(hairC, 0.75);
   const hairL = shade(hairC, 1.25);
-  const style = l.hairStyle;
+  const style = l.hat?.style === 'space' && (l.hairStyle === 'long' || l.hairStyle === 'ponytail') ? 'short' : l.hairStyle; // tucked into the helmet
   const hairGrad = lin(ctx, hx - 5, hy - 5, hx + 5, hy + 2, [[0, hairL], [0.5, hairC], [1, hairD]]);
   if (style !== 'bald') {
     ctx.beginPath();
@@ -1001,6 +1040,168 @@ export function drawCharacterHD(l: HdLook, dir: 'down' | 'up' | 'right', frame: 
           ctx.fill();
         }
         break;
+      case 'crown': {
+        // a band with three points and gems (everything has to stay below the top edge of the frame)
+        ctx.beginPath();
+        ctx.moveTo(hx - 4.9, hy - 1.4);
+        ctx.lineTo(hx - 4.9, hy - 3.5);
+        ctx.lineTo(hx - 4.1, hy - 4.9);
+        ctx.lineTo(hx - 2.1, hy - 3.3);
+        ctx.lineTo(hx, hy - 5.1);
+        ctx.lineTo(hx + 2.1, hy - 3.3);
+        ctx.lineTo(hx + 4.1, hy - 4.9);
+        ctx.lineTo(hx + 4.9, hy - 3.5);
+        ctx.lineTo(hx + 4.9, hy - 1.4);
+        ctx.closePath();
+        ctx.fillStyle = lin(ctx, hx - 5, 0, hx + 5, 0, [[0, Cl], [0.45, C], [1, Cd]]);
+        ctx.fill();
+        fillRR(ctx, hx - 4.9, hy - 1.9, 9.8, 0.6, 0.3, Cd);
+        for (const [x, y] of [[hx - 4.1, hy - 4.9], [hx, hy - 5.1], [hx + 4.1, hy - 4.9]] as const) ellipse(ctx, x, y + 0.1, 0.55, 0.55, Cl);
+        for (const [x, c] of [[hx - 2.7, '#e03a3a'], [hx, '#2f7ae8'], [hx + 2.7, '#2ab84a']] as const) {
+          ellipse(ctx, x, hy - 2.7, 0.65, 0.65, c);
+          ellipse(ctx, x - 0.2, hy - 2.9, 0.2, 0.2, 'rgba(255,255,255,0.8)');
+        }
+        break;
+      }
+      case 'pirate': {
+        // black tricorn with a gold-trimmed brim and a skull and crossbones
+        const sx = dir === 'right' ? 1 : 0;
+        const top = () => {
+          ctx.beginPath();
+          ctx.moveTo(hx - 7.3 + sx, hy - 4);
+          ctx.quadraticCurveTo(hx + sx, hy - 7.2, hx + 7.3 + sx, hy - 4);
+        };
+        top();
+        ctx.quadraticCurveTo(hx + 4.6 + sx, hy - 2.2, hx + 1.2 + sx, hy - 0.7);
+        ctx.lineTo(hx + sx, hy + 0.1);
+        ctx.lineTo(hx - 1.2 + sx, hy - 0.7);
+        ctx.quadraticCurveTo(hx - 4.6 + sx, hy - 2.2, hx - 7.3 + sx, hy - 4);
+        ctx.closePath();
+        ctx.fillStyle = lin(ctx, 0, hy - 6, 0, hy, [[0, shade(C, 1.4)], [1, shade(C, 0.85)]]);
+        ctx.fill();
+        top();
+        ctx.strokeStyle = '#e8c040';
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+        if (dir !== 'up') {
+          const kx = hx + (dir === 'right' ? 2.6 : 0);
+          const ky = hy - 2.7;
+          stroke(ctx, [[kx - 1.6, ky + 1.3], [kx + 1.6, ky - 0.4]], '#f4f0e6', 0.5);
+          stroke(ctx, [[kx - 1.6, ky - 0.4], [kx + 1.6, ky + 1.3]], '#f4f0e6', 0.5);
+          ellipse(ctx, kx, ky - 0.2, 1.15, 1, '#f4f0e6');
+          fillRR(ctx, kx - 0.6, ky + 0.4, 1.2, 0.7, 0.2, '#f4f0e6');
+          ellipse(ctx, kx - 0.45, ky - 0.1, 0.3, 0.32, '#2b2419');
+          ellipse(ctx, kx + 0.45, ky - 0.1, 0.3, 0.32, '#2b2419');
+        }
+        break;
+      }
+      case 'explorer': {
+        // pith helmet: a wide brim, a high dome and a darker band
+        ellipse(ctx, hx + (dir === 'right' ? 0.4 : 0), hy - 1.3, 7.8, 1.9, lin(ctx, hx - 8, 0, hx + 8, 0, [[0, Cl], [1, Cd]]));
+        ctx.beginPath();
+        ctx.ellipse(hx, hy - 1.8, 5.3, 4.3, 0, Math.PI, Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = lin(ctx, hx - 5, hy - 6, hx + 5, hy, [[0, Cl], [1, Cd]]);
+        ctx.fill();
+        fillRR(ctx, hx - 5.3, hy - 3.1, 10.6, 1.3, 0.5, shade(C, 0.6));
+        ellipse(ctx, hx - 2, hy - 4.5, 1.6, 0.7, 'rgba(255,255,255,0.35)');
+        break;
+      }
+      case 'space': {
+        // round glass astronaut helmet with a white rim: the head shows through the glass
+        const gy = hy + 0.2;
+        ellipse(ctx, hx, gy, 6.7, 6.3, rad(ctx, hx - 1.5, gy - 2, 8, [[0, 'rgba(225,240,255,0.12)'], [0.75, 'rgba(160,205,255,0.28)'], [1, 'rgba(140,190,255,0.5)']]));
+        ctx.beginPath();
+        ctx.ellipse(hx, gy, 6.4, 6, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(235,245,255,0.95)';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(hx, gy, 5.2, 4.9, 0, Math.PI * 1.08, Math.PI * 1.42);
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 0.9;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ellipse(ctx, hx + 3.5, gy - 3.4, 0.5, 0.5, 'rgba(255,255,255,0.8)');
+        fillRR(ctx, hx - 6.2, 10.1, 12.4, 2.1, 1, lin(ctx, 0, 10.1, 0, 12.2, [[0, Cl], [0.5, C], [1, shade(C, 0.7)]]));
+        break;
+      }
+      case 'frog': {
+        // green frog hat: a dome with a wide smile and two big eyes on top
+        dome(4.6);
+        if (dir !== 'up') stroke(ctx, [[hx - 3.6, hy - 2.7], [hx, hy - 1.8], [hx + 3.6, hy - 2.7]], shade(C, 0.5), 0.5);
+        const eyes: [number, number, number][] = dir === 'right' ? [[hx - 1.6, hy - 4.1, 1.4], [hx + 2.4, hy - 3.8, 1.7]] : [[hx - 3, hy - 3.8, 1.7], [hx + 3, hy - 3.8, 1.7]];
+        for (const [ex, ey, r] of eyes) {
+          ellipse(ctx, ex, ey, r + 0.35, r + 0.35, lin(ctx, ex - r, ey - r, ex + r, ey + r, [[0, Cl], [1, Cd]]));
+          if (dir === 'up') continue;
+          const look = dir === 'right' ? 0.55 : 0;
+          ellipse(ctx, ex, ey, r - 0.1, r - 0.1, '#ffffff');
+          ellipse(ctx, ex + look, ey + 0.25, r * 0.48, r * 0.52, '#2b2419');
+          ellipse(ctx, ex + look - 0.3, ey - 0.15, 0.25, 0.25, '#ffffff');
+        }
+        break;
+      }
+      case 'dino': {
+        // green dino hood: covers the top and sides of the head, orange spikes, white teeth over the forehead
+        const hood = lin(ctx, hx - 6, hy - 6, hx + 6, hy + 5, [[0, Cl], [0.6, C], [1, Cd]]);
+        const spike = (x: number, y: number, s: number, ang = 0) => {
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(ang);
+          ctx.beginPath();
+          ctx.moveTo(-s, 0.2);
+          ctx.lineTo(0, -s * 1.5);
+          ctx.lineTo(s, 0.2);
+          ctx.closePath();
+          ctx.fillStyle = lin(ctx, -s, 0, s, 0, [[0, '#ffb04a'], [1, '#e0701a']]);
+          ctx.fill();
+          ctx.restore();
+        };
+        const tooth = (x: number, y: number) => {
+          ctx.beginPath();
+          ctx.moveTo(x - 0.55, y - 0.1);
+          ctx.lineTo(x, y + 1);
+          ctx.lineTo(x + 0.55, y - 0.1);
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+        };
+        if (dir === 'up') {
+          ellipse(ctx, hx, hy - 0.3, 6.1, 5.9, hood);
+          fillRR(ctx, hx - 6.1, hy, 12.2, 5.6, 2.2, hood);
+          for (const y of [2, 4.6, 7.2, 9.8]) spike(hx, y, 1.05);
+        } else if (dir === 'right') {
+          ctx.beginPath();
+          ctx.moveTo(hx - 4.6, hy + 5.6);
+          ctx.lineTo(hx - 6.1, hy - 0.4);
+          ctx.ellipse(hx, hy - 0.4, 6.1, 5.9, 0, Math.PI, Math.PI * 2);
+          ctx.lineTo(hx + 6.4, hy - 0.6);
+          ctx.quadraticCurveTo(hx + 2.5, hy - 1.6, hx + 0.6, hy - 0.4);
+          ctx.quadraticCurveTo(hx - 0.4, hy + 2.5, hx + 0.6, hy + 5.6);
+          ctx.closePath();
+          ctx.fillStyle = hood;
+          ctx.fill();
+          for (const x of [1.6, 3.2, 4.8]) tooth(hx + x, hy - 1.1 + (x - 3.2) * (x - 3.2) * 0.05);
+          for (const a of [-1.75, -2.25, -2.75, -3.25]) spike(hx + Math.cos(a) * 5.9, hy - 0.4 + Math.sin(a) * 5.7, 0.95, a + Math.PI / 2);
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(hx, hy - 0.4, 6.1, 5.9, 0, Math.PI, Math.PI * 2);
+          ctx.lineTo(hx + 6.1, hy + 5.6);
+          ctx.lineTo(hx + 4, hy + 5.6);
+          ctx.lineTo(hx + 4.3, hy - 0.6);
+          ctx.quadraticCurveTo(hx, hy - 2.4, hx - 4.3, hy - 0.6);
+          ctx.lineTo(hx - 4, hy + 5.6);
+          ctx.lineTo(hx - 6.1, hy + 5.6);
+          ctx.closePath();
+          ctx.fillStyle = hood;
+          ctx.fill();
+          for (const t of [-3, -1, 1, 3]) tooth(hx + t, hy - 1.5 + t * t * 0.05);
+          spike(hx - 3.3, hy - 3.7, 0.9, -0.55);
+          spike(hx, hy - 4.3, 1.1);
+          spike(hx + 3.3, hy - 3.7, 0.9, 0.55);
+        }
+        break;
+      }
       default:
         dome(4.5);
     }

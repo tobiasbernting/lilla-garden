@@ -70,6 +70,7 @@ export class Net {
         client.weather = msg.world.weather ?? null;
         bus.emit('weather', client.weather);
         client.day = msg.world.day;
+        client.biomes = { ...msg.biomes };
         client.snaps.players.clear();
         client.snaps.animals.clear();
         client.snaps.npcs.clear();

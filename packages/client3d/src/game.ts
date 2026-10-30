@@ -13,6 +13,8 @@ import {
   inPool,
   isBaby,
   isBathKey,
+  isMoonKey,
+  isUnderground,
   isVehicle,
   MAP_H,
   MAP_W,
@@ -54,7 +56,7 @@ import type { HudTarget } from '@v1/ui/hud.ts';
 import { net } from '@v1/net.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '@v1/state.ts';
 import { usefulness, type Use } from './assist.ts';
-import { BLOCKS, atlas } from './blocks.ts';
+import { BLOCKS, atlas, blockTile, tileColours } from './blocks.ts';
 import { GeoBuilder } from './builder.ts';
 import { Fx } from './fx.ts';
 import { itemMaterial, itemMesh } from './items.ts';
@@ -69,6 +71,8 @@ import { chunkOf, GROUND, Voxels, type AreaKind } from './voxels.ts';
 
 const EYE = 1.62;
 const GRAVITY = 28;
+/** On the moon you jump higher and float down slowly (the moon has no block layer: the jump is for fun). */
+const MOON_GRAVITY = 9;
 const LOOK_SPEED = 0.0025;
 const TOUCH_LOOK = 0.006;
 
@@ -106,7 +110,10 @@ interface Target {
 }
 
 /** Blocks bare hands (and tools other than the pickaxe) can dig. */
-const SOFT = new Set(['grass', 'snowy_grass', 'dirt', 'farmland', 'farmland_wet', 'path', 'sand', 'gravel', 'snow']);
+const SOFT = new Set(['grass', 'snowy_grass', 'dirt', 'farmland', 'farmland_wet', 'path', 'sand', 'gravel', 'snow', 'mud', 'moss', 'redsand', 'candy', 'candy_fill', 'ash', 'moon_dust']);
+/** Animals that fly about, and ones that hop. */
+const FLYING = new Set(['bat', 'dragon']);
+const HOPPING = new Set(['slime', 'frog', 'gummy']);
 
 /** How far (radians) aim assist looks around the crosshair, and around a tapped point. */
 const ASSIST_VIEW = 0.95;
@@ -213,6 +220,8 @@ export class World3D implements HudTarget {
   private world!: WorldState;
   private area = 'farm';
   private kind: AreaKind = 'outdoor';
+  /** On the moon: a starry black sky, the Earth overhead, always sunlit, low gravity. */
+  private space = false;
   private players = new Map<string, ActorView>();
   private animals = new Map<number, ActorView>();
   private npcs = new Map<string, ActorView>();
@@ -415,7 +424,7 @@ export class World3D implements HudTarget {
   jump(): void {
     if (this.uiOpen) return;
     if (this.world?.voxel) this.jumpQueued = true;
-    else if (this.jumpY === 0) this.jumpV = 8.4;
+    else if (this.jumpY === 0) this.jumpV = this.space ? 9.5 : 8.4;
   }
 
   /** HUD action button (pressed): what the crosshair points at, else the tile in front. */
@@ -456,7 +465,10 @@ export class World3D implements HudTarget {
     this.labels.innerHTML = '';
     this.area = myArea();
     this.world = activeWorld()!;
-    this.kind = this.area === 'dungeon' ? 'dungeon' : isBathKey(this.area) ? 'bath' : 'outdoor';
+    // the farm's monster cave and the caves out in the world are all under ground
+    this.kind = isUnderground(this.area) ? 'dungeon' : isBathKey(this.area) ? 'bath' : 'outdoor';
+    this.space = isMoonKey(this.area);
+    this.sky.setSpace(this.space);
     this.vox.reset();
     this.models.clear();
     this.rebuildBlocks(true);
@@ -660,7 +672,7 @@ export class World3D implements HudTarget {
     }
     if (!v) {
       const rig = animalRig(a.species, a.variant ?? 0, isBaby(a), client.season === 'jul');
-      if (a.species === 'bat') rig.root.userData.flying = true;
+      if (FLYING.has(a.species)) rig.root.userData.flying = true;
       v = this.makeActor(rig, a.x, a.y, a.name, 'animal', key);
       v.yaw = yawOf(a.facing);
       this.animals.set(a.id, v);
@@ -918,8 +930,10 @@ export class World3D implements HudTarget {
       if (inBody && !(this.fall.vz > 0 && f.h + 1 <= z + 0.9)) return null;
       return { tx: f.x, ty: f.y, box, cell: c, front: f, block: 'place', use: { score: 2, repeat: true } };
     }
-    const name = BLOCKS[this.vox.blockAtWorld(c.x + 0.5, c.h - GROUND + 0.5, c.y + 0.5)]?.name ?? '';
-    if (name === 'bedrock' || name === 'water') return null;
+    const bdef = BLOCKS[this.vox.blockAtWorld(c.x + 0.5, c.h - GROUND + 0.5, c.y + 0.5)];
+    const name = bdef?.name ?? '';
+    // bedrock, and the surface of water, swamps, lava and chocolate, stay where they are
+    if (name === 'bedrock' || bdef?.liquid) return null;
     // the ground under a tree, a fence, a crop… stays (flat things like tufts just go with it)
     if (c.h === columnTop(this.world, c.x, c.y) - 1) {
       const id = this.world.occupancy[`${c.x},${c.y}`];
@@ -950,7 +964,16 @@ export class World3D implements HudTarget {
     const c = this.target?.cell;
     if (!me || !c) return;
     const name = BLOCKS[this.vox.blockAtWorld(c.x + 0.5, c.h - GROUND + 0.5, c.y + 0.5)]?.name ?? '';
-    const itemId = /sand/.test(name) ? 'sand' : /gravel/.test(name) ? 'gravel' : /planks/.test(name) ? 'wood' : /stone|cobble|ore|brick/.test(name) ? 'stone' : 'dirt';
+    const itemId =
+      name === 'sand' || name === 'redsand' || /^candy/.test(name)
+        ? 'sand'
+        : name === 'gravel' || name === 'ash' || name === 'moon_dust'
+          ? 'gravel'
+          : /planks/.test(name)
+            ? 'wood'
+            : /stone|cobble|ore|brick|basalt|rock/.test(name)
+              ? 'stone'
+              : 'dirt';
     if (me.inventory[me.selected]?.item === itemId) return;
     const slot = me.inventory.findIndex((s) => s?.item === itemId);
     if (slot < 0) {
@@ -1081,11 +1104,13 @@ export class World3D implements HudTarget {
     if (o?.kind.startsWith('tree') || o?.kind === 'stump' || o?.kind === 'palm') return ['#6b5131', '#4a8f2e', '#78603b', '#3f7f27'];
     if (o?.kind.includes('rock') || o?.kind === 'ore' || o?.kind === 'cave_wall') return ['#7d7d7d', '#5e5e5e', '#a2a2a2'];
     if (o) return ['#a2834f', '#8d6f40', '#c09a62'];
-    const b = this.vox.blockAtWorld(tx + 0.5, -0.5, ty + 0.5);
+    // the ground's own colours (on hills and down in holes too)
+    const b = this.vox.blockAtWorld(tx + 0.5, this.vox.surfaceAt(tx, ty) - 0.5, ty + 0.5);
     const name = BLOCKS[b]?.name ?? '';
     if (name.includes('grass')) return ['#5f9e3a', '#866043', '#73b34a'];
     if (name.includes('farm') || name === 'dirt' || name === 'path') return ['#866043', '#6b4a32', '#a07a58'];
-    return ['#9a9a9a', '#7a7a7a'];
+    const def = BLOCKS[b];
+    return def && b !== 0 ? tileColours(blockTile(def, 'top')) : ['#9a9a9a', '#7a7a7a'];
   }
 
   // ------------------------------------------------------------------ per frame
@@ -1181,18 +1206,18 @@ export class World3D implements HudTarget {
     if (me.moving || this.wasMoving || me.facing !== this.lastFacingSent || (me.z !== undefined && Math.abs(me.z - (this.lastZSent ?? me.z)) > 0.05)) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
-    // jumping in the flat world (just for fun: it has no height)
+    // jumping in the flat world (just for fun: it has no height), floaty on the moon
     if (!this.world.voxel) {
       if (this.jumpV !== 0 || this.jumpY > 0) {
-        this.jumpV -= GRAVITY * dt;
+        this.jumpV -= (this.space ? MOON_GRAVITY : GRAVITY) * dt;
         this.jumpY = Math.max(0, this.jumpY + this.jumpV * dt);
         if (this.jumpY === 0) this.jumpV = 0;
       }
       if (this.keys.has('Space') && this.jumpY === 0) this.jump();
     }
 
-    // walking off the edge of the map into the next area
-    if (this.area !== 'dungeon' && performance.now() - this.travelSentAt > 1500 && inEdgeGap(tileOf(me.x), tileOf(me.y))) {
+    // walking off the edge of the map into the next area (caves and the moon have no edges to walk off)
+    if (!isUnderground(this.area) && !this.space && performance.now() - this.travelSentAt > 1500 && inEdgeGap(tileOf(me.x), tileOf(me.y))) {
       let dir: 'n' | 's' | 'e' | 'w' | null = null;
       // how close to the edge a body can get (the block world's body is a little wider)
       const hw = (this.world.voxel ? Math.max(PLAYER_HALF_W, BODY_R * TILE) : PLAYER_HALF_W) + 1;
@@ -1331,7 +1356,7 @@ export class World3D implements HudTarget {
       if (snap) follow(v, snap.x, snap.y, 48);
       let lift = 0;
       if (v.rig.root.userData.flying) lift = 1.2 + Math.sin(this.time / 300 + v.phase) * 0.2;
-      if (a.species === 'slime' && a.moving) lift = Math.abs(Math.sin(this.time / 160 + v.phase)) * 0.4;
+      if (HOPPING.has(a.species) && a.moving) lift = Math.abs(Math.sin(this.time / 160 + v.phase)) * 0.4;
       this.placeRig(v, yawOf(a.facing), a.moving, dt, lift);
     }
     for (const [id, v] of this.npcs) {
@@ -1574,6 +1599,8 @@ export class World3D implements HudTarget {
       g.add(m);
       this.viewArm = g;
       this.viewModel.add(g);
+      // (the item in hand is rebuilt too: don't leave the old one floating in view)
+      if (this.viewItem) this.viewModel.remove(this.viewItem.mesh);
       this.viewItem = null;
     }
     const stack = heldItem(me);
@@ -1623,22 +1650,25 @@ export class World3D implements HudTarget {
     if (pv) shared.uLanternPos.value.copy(pv.rig.root.position).add(new THREE.Vector3(0, 1, 0));
     // a soft light around you at night, in the cave, and down in your own tunnels
     const [skyHere] = this.vox.lightAtWorld(this.camera.position.x, this.camera.position.y, this.camera.position.z);
-    shared.uLantern.value = this.kind === 'dungeon' ? 0.55 : outdoor ? Math.max((0.75 - day) * 0.9, skyHere < 0.6 ? 0.6 : 0, 0) : 0.2;
+    // (a treasure cave out in the world is a little less gloomy than the monster cave)
+    const worldCave = this.kind === 'dungeon' && this.area !== 'dungeon';
+    shared.uLantern.value = this.kind === 'dungeon' ? (worldCave ? 0.65 : 0.55) : outdoor ? Math.max((0.75 - day) * 0.9, skyHere < 0.6 ? 0.6 : 0, 0) : 0.2;
     if (outdoor) {
       this.scene.background = this.sky.color;
       shared.uFogColor.value.copy(this.sky.fog);
-      shared.uFogNear.value = 34;
-      shared.uFogFar.value = 62;
-      shared.uMinLight.value = 0.1;
+      // no air on the moon: you see right across it
+      shared.uFogNear.value = this.space ? 70 : 34;
+      shared.uFogFar.value = this.space ? 150 : 62;
+      shared.uMinLight.value = this.space ? 0.18 : 0.1;
     } else {
       this.scene.background = new THREE.Color(this.kind === 'dungeon' ? 0x050608 : 0x1a1a22);
       shared.uFogColor.value.setHex(this.kind === 'dungeon' ? 0x050608 : 0x1a1a22);
-      shared.uFogNear.value = this.kind === 'dungeon' ? 8 : 24;
-      shared.uFogFar.value = this.kind === 'dungeon' ? 26 : 50;
-      shared.uMinLight.value = this.kind === 'dungeon' ? 0.13 : 0.25;
+      shared.uFogNear.value = this.kind === 'dungeon' ? (worldCave ? 10 : 8) : 24;
+      shared.uFogFar.value = this.kind === 'dungeon' ? (worldCave ? 30 : 26) : 50;
+      shared.uMinLight.value = this.kind === 'dungeon' ? (worldCave ? 0.2 : 0.13) : 0.25;
     }
-    // flowing water
-    this.vox.waterTex.offset.y = (this.vox.waterTex.offset.y - dt * 0.25) % 1;
+    // flowing water, swamps, chocolate and lava
+    this.vox.flowLiquids(dt);
     // sleeping: everything fades out
     this.sleepOverlay.style.opacity = me.sleeping ? '0.9' : '0';
   }

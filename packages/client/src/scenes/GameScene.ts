@@ -34,6 +34,9 @@ import {
   BATH_ROOM,
   inPool,
   isBathKey,
+  isUnderground,
+  LOOT_REFILL_DAYS,
+  MOON_KEY,
   tileOf,
   localWeather,
   type WeatherKind,
@@ -44,7 +47,7 @@ import {
   type Terrain,
   type WorldObject,
 } from '@lilla-garden/shared';
-import { animalKey, ANIMAL_SIZE, VEHICLE_VARIANTS } from '../art/animals.js';
+import { animalKey, ANIMAL_SIZE, ANIMAL_VARIANTS } from '../art/animals.js';
 import { CHAR_H, CHAR_W, dirOf, frameIndex, type Dir } from '../art/characters.js';
 import { characterTexture, getArt, registerTextures } from '../art/textures.js';
 import { EMOTE_GLYPH, PAINT_COLORS } from '../art/world.js';
@@ -219,7 +222,7 @@ export class GameScene extends Phaser.Scene {
     this.applySeason();
 
     // --- camera ---
-    if (this.area === 'dungeon') this.cameras.main.setBounds(0, 0, DUNGEON_W * TILE, DUNGEON_H * TILE);
+    if (isUnderground(this.area)) this.cameras.main.setBounds(0, 0, (this.world.cave?.w ?? DUNGEON_W) * TILE, (this.world.cave?.h ?? DUNGEON_H) * TILE);
     else if (this.bath) this.cameras.main.setBounds((BATH_ROOM.x - 2) * TILE, (BATH_ROOM.y - 3) * TILE, (BATH_ROOM.w + 4) * TILE, (BATH_ROOM.h + 5) * TILE);
     else this.cameras.main.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE);
     this.cameras.main.setRoundPixels(!HD);
@@ -273,13 +276,10 @@ export class GameScene extends Phaser.Scene {
     const art = getArt();
     const t = this.world.terrain[y * MAP_W + x]!;
     if (this.area === 'dungeon') return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
-    const snowy = this.snowGround;
-    if (!art.terrain.edges) return art.terrain.index(t, x, y, snowy, 0, t === 'water' || t === 'pool' ? frame : 0);
-    if (t === 'water') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'water' || n === undefined), frame);
-    if (t === 'pool') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'pool'), frame);
-    if (t === 'soil' || t === 'soil_wet') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'soil' || n === 'soil_wet' || n === undefined));
-    if (t === 'road' || t === 'crossing') return art.terrain.index(t, x, y, snowy, this.edgeMask(x, y, (n) => n === 'road' || n === 'crossing'));
-    return art.terrain.index(t, x, y, snowy);
+    if (t === 'rock' && isUnderground(this.area)) return art.terrain.rock;
+    const snowy = this.snowGround || (t === 'rock' && this.world.biome === 'is');
+    const same = art.terrain.edges ? art.terrain.edgeGroup(t) : null;
+    return art.terrain.index(t, x, y, snowy, same ? this.edgeMask(x, y, same) : 0, frame);
   }
 
   private rebuildTerrain(): void {
@@ -289,7 +289,7 @@ export class GameScene extends Phaser.Scene {
       for (let x = 0; x < MAP_W; x++) {
         this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
         const tt = world.terrain[y * MAP_W + x];
-        if (this.area !== 'dungeon' && (tt === 'water' || tt === 'pool')) this.waterTiles.push([x, y]);
+        if (this.area !== 'dungeon' && (tt === 'water' || tt === 'pool' || tt === 'bog' || tt === 'lava' || tt === 'choco')) this.waterTiles.push([x, y]);
       }
   }
 
@@ -298,7 +298,7 @@ export class GameScene extends Phaser.Scene {
     const t = world.terrain[y * MAP_W + x]!;
     this.layer.putTileAt(this.tileIndexFor(x, y, this.waterFrame), x, y);
     this.waterTiles = this.waterTiles.filter(([wx, wy]) => wx !== x || wy !== y);
-    if (t === 'water' || t === 'pool') this.waterTiles.push([x, y]);
+    if (t === 'water' || t === 'pool' || t === 'bog' || t === 'lava' || t === 'choco') this.waterTiles.push([x, y]);
     // neighbours' edges change too
     if (getArt().terrain.edges) for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) if (x + dx >= 0 && y + dy >= 0 && x + dx < MAP_W && y + dy < MAP_H) this.layer.putTileAt(this.tileIndexFor(x + dx, y + dy, this.waterFrame), x + dx, y + dy);
   }
@@ -433,7 +433,11 @@ export class GameScene extends Phaser.Scene {
     if (!art) return;
     let variant = (o.variant ?? 0) % art.frames.length;
     const isWall = WALL_KINDS.has(o.kind);
-    if (o.kind === 'fence') variant = this.fenceMask(o.x, o.y);
+    if (o.kind === 'loot_chest') {
+      // open (and empty) for you if you took this week's treasure
+      const last = o.openedBy?.[client.me];
+      variant = ((o.variant ?? 0) * 2 + (last !== undefined && client.day - last < LOOT_REFILL_DAYS ? 1 : 0)) % art.frames.length;
+    } else if (o.kind === 'fence') variant = this.fenceMask(o.x, o.y);
     else if (o.kind === 'gate') {
       const m = this.fenceMask(o.x, o.y);
       variant = m & 5 && !(m & 10) ? 1 : 0;
@@ -521,7 +525,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private putAnimal(a: AnimalState): void {
-    const texture = animalKey(a.species, isBaby(a), client.season === 'jul', (a.variant ?? 0) % VEHICLE_VARIANTS);
+    if (!ANIMAL_SIZE[a.species]) return; // a kind of animal this version has no picture for
+    const texture = animalKey(a.species, isBaby(a), client.season === 'jul', (a.variant ?? 0) % (ANIMAL_VARIANTS[a.species] ?? 1));
     this.ensureAnimalAnims(texture);
     let actor = this.animals.get(a.id);
     if (!actor) {
@@ -634,12 +639,12 @@ export class GameScene extends Phaser.Scene {
   /** The weather over this map (whether or not you are indoors); null in the cave and the bath house. */
   private mapWeather(): WeatherKind | null {
     const w = client.weather;
-    if (!w || this.area === 'dungeon' || this.bath) return null;
+    if (!w || isUnderground(this.area) || this.area === MOON_KEY || this.bath) return null;
     return localWeather(w.kind, this.world.biome);
   }
 
   private wantSnowGround(): boolean {
-    if (client.season === 'jul') return true;
+    if (client.season === 'jul') return !isUnderground(this.area) && !['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane'].includes(this.world.biome ?? '');
     return this.mapWeather() === 'snow' && serverNow() - (client.weather?.since ?? 0) > 25_000;
   }
 
@@ -1169,9 +1174,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawNight(): void {
-    const amount = this.area === 'dungeon' ? 0.82 : nightAmount(client.timeMs);
+    const under = isUnderground(this.area);
+    const amount = under ? 0.82 : this.area === MOON_KEY ? 0.45 : nightAmount(client.timeMs);
     this.night.clear();
-    if (NEW_ART && this.area !== 'dungeon' && !this.inside && !this.bath) {
+    if (NEW_ART && !under && this.area !== MOON_KEY && !this.inside && !this.bath) {
       const f = client.timeMs / DAY_LENGTH_MS;
       // golden morning light and a warm sunset that fades into the blue night
       if (f < 0.12) this.night.fill(0xffc070, 0.16 * (1 - f / 0.12));
@@ -1198,8 +1204,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (amount <= 0.01) return;
-    let color = this.area === 'dungeon' ? 0x05060c : client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
-    if (NEW_ART && this.area !== 'dungeon') {
+    let color = under ? 0x05060c : this.area === MOON_KEY ? 0x0a0c22 : client.season === 'halloween' ? 0x1c0a30 : 0x0b1030;
+    if (NEW_ART && !under && this.area !== MOON_KEY) {
       // dusk: the dark comes in warm (purple-red) and cools to blue as the night deepens
       const k = Math.min(1, Math.max(0, (client.timeMs / DAY_LENGTH_MS - 0.65) / 0.2));
       color = lerpColor(0x8a2a50, color, k);
@@ -1214,6 +1220,7 @@ export class GameScene extends Phaser.Scene {
       if (def.light || o.kind === 'torch') r = 1;
       else if (o.kind === 'cave_wall' && o.variant === 1) r = 1.2;
       else if (o.kind === 'treasure') r = 1;
+      else if (o.kind === 'loot_chest') r = 0.8;
       else if (o.kind === 'house') r = 1.6;
       else if (o.kind === 'pumpkin_lantern' || o.kind === 'xmas_tree' || o.kind === 'lights') r = 0.8;
       if (!r) continue;

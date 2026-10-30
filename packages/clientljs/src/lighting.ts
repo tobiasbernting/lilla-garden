@@ -125,6 +125,43 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       return { color: [1, 0.85, 0.35], radius: 2.4, strength: 0.8, flicker: 0.3, glow: 1.2, always: true };
     case 'cave_wall':
       return variant === 1 ? { color: [0.45, 0.75, 1], radius: 2.6, strength: 0.75, flicker: 0.2, glow: 1.2, always: true } : null;
+    // the wider world: things that glow by themselves, in caves, at night and on the moon
+    case 'crystal': {
+      const c: [number, number, number][] = [
+        [0.75, 0.45, 1],
+        [0.55, 0.85, 1],
+        [0.45, 1, 0.55],
+        [1, 0.55, 0.85],
+      ];
+      return { color: c[(variant ?? 0) % 4]!, radius: 2.4, strength: 0.8, flicker: 0.15, glow: 1.1, always: true };
+    }
+    case 'fire_crystal':
+      return { color: [1, 0.45, 0.2], radius: 2.4, strength: 0.85, flicker: 0.35, glow: 1.2, always: true };
+    case 'star_crystal':
+      return { color: [1, 0.95, 0.65], radius: 2.4, strength: 0.8, flicker: 0.2, glow: 1.2, always: true };
+    case 'glowshroom':
+      return { color: [0.35, 0.95, 0.9], radius: 1.8, strength: 0.6, flicker: 0.1, glow: 0.8, always: true };
+    case 'giant_glowshroom':
+      return { color: [0.35, 0.8, 1], radius: 3.4, strength: 0.7, flicker: 0.1, glow: 1.6, always: true };
+    case 'wisp':
+      return { color: [0.6, 0.95, 1], radius: 2.6, strength: 0.8, flicker: 0.6, glow: 1.4 };
+    case 'wisp_jar':
+      return { color: [0.6, 0.95, 1], radius: 2.6, strength: 0.75, flicker: 0.5, glow: 1.2 };
+    case 'crystal_lamp':
+      return { color: [0.8, 0.55, 1], radius: 3.2, strength: 0.85, flicker: 0.1, glow: 1.5 };
+    case 'mushroom_lamp':
+      return { color: [0.4, 0.95, 0.9], radius: 3.2, strength: 0.85, flicker: 0.1, glow: 1.5 };
+    case 'volcano':
+      return { color: [1, 0.42, 0.15], radius: 6, strength: 0.8, flicker: 0.4, glow: 3, always: true };
+    case 'ufo':
+      return { color: [0.5, 1, 0.7], radius: 3.5, strength: 0.75, flicker: 0.3, glow: 1.6, always: true };
+    case 'rocket':
+      return { color: [1, 0.9, 0.75], radius: 3, strength: 0.6, flicker: 0.05, glow: 1.2 };
+    case 'gingerbread_house':
+      return { color: WARM, radius: 4, strength: 0.7, flicker: 0.1, glow: 1.8 };
+    case 'loot_chest':
+      // a closed chest (frame even) glints so it can be found in the dark; an emptied one doesn't
+      return (variant ?? 0) % 2 === 0 ? { color: [1, 0.85, 0.35], radius: 1.8, strength: 0.5, flicker: 0.3, glow: 0.4, always: true } : null;
     case 'house':
     case 'house_small':
     case 'apartment':

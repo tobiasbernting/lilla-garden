@@ -22,14 +22,41 @@ function squareTexture(draw: (ctx: CanvasRenderingContext2D) => void, size = 16)
   return t;
 }
 
+/** The Earth seen from the moon: blue seas, green and brown land, white clouds, night on one side. */
+function drawEarth(ctx: CanvasRenderingContext2D): void {
+  const n = (x: number, y: number, s: number) => Math.sin(x * 0.9 * s + Math.sin(y * 0.7 * s) * 2) * Math.cos(y * 0.8 * s + Math.sin(x * 0.5 * s) * 1.5);
+  for (let y = 0; y < 32; y++)
+    for (let x = 0; x < 32; x++) {
+      const dx = x + 0.5 - 16;
+      const dy = y + 0.5 - 16;
+      const r = Math.hypot(dx, dy);
+      if (r > 15.5) continue;
+      let c = n(x, y, 0.35) > 0.25 ? (n(x, y, 0.8) > 0.3 ? '#a0884f' : '#4caf50') : r > 13.5 ? '#3a86e8' : '#2a6ad0';
+      if (Math.abs(y - 3) < 2 || Math.abs(y - 28) < 2) c = '#eef4f8'; // ice at the poles
+      if (n(x + 7, y + 3, 0.6) > 0.55) c = '#ffffff'; // clouds
+      ctx.fillStyle = c;
+      ctx.fillRect(x, y, 1, 1);
+      // the side turned away from the sun
+      if (dx + dy * 0.3 > 6) {
+        ctx.fillStyle = dx + dy * 0.3 > 10 ? 'rgba(4,10,30,0.75)' : 'rgba(4,10,30,0.4)';
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+}
+
 export class Sky {
   readonly group = new THREE.Group();
   private sun: THREE.Mesh;
   private moon: THREE.Mesh;
+  private earth: THREE.Mesh;
   private clouds: THREE.Mesh;
   private cloudTex: THREE.Texture;
   private stars: THREE.Points;
+  /** Stars all round (out in space, they are below you too). */
+  private spaceStars: THREE.Points;
   private snow: THREE.Points | null = null;
+  /** On the moon: a black sky full of stars, the Earth in it, no clouds or weather, always sunlit. */
+  private space = false;
   readonly color = new THREE.Color();
   readonly fog = new THREE.Color();
 
@@ -91,9 +118,51 @@ export class Sky {
     sg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }));
     this.group.add(this.stars);
+
+    // space: many more stars, some bigger and coloured, in every direction
+    const sp: number[] = [];
+    const sc: number[] = [];
+    let s = 4242;
+    const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const tints = [
+      [1, 1, 1],
+      [0.8, 0.88, 1],
+      [1, 0.95, 0.8],
+      [1, 0.8, 0.75],
+    ];
+    for (let i = 0; i < 1400; i++) {
+      const u = r() * 2 - 1;
+      const a = r() * Math.PI * 2;
+      const rr = Math.sqrt(1 - u * u);
+      sp.push(rr * Math.cos(a) * 150, u * 150, rr * Math.sin(a) * 150);
+      const t = tints[Math.floor(r() * tints.length)]!;
+      const b = 0.45 + r() * 0.55;
+      sc.push(t[0]! * b, t[1]! * b, t[2]! * b);
+    }
+    const spg = new THREE.BufferGeometry();
+    spg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+    spg.setAttribute('color', new THREE.Float32BufferAttribute(sc, 3));
+    this.spaceStars = new THREE.Points(spg, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, depthWrite: false, fog: false }));
+    this.spaceStars.visible = false;
+    this.group.add(this.spaceStars);
+
+    this.earth = new THREE.Mesh(plane, bodyMat(squareTexture(drawEarth, 32)));
+    this.earth.scale.setScalar(30);
+    this.earth.visible = false;
+    this.group.add(this.earth);
+  }
+
+  /** Out in space (the moon), or under an ordinary sky. */
+  setSpace(on: boolean): void {
+    this.space = on;
+    this.spaceStars.visible = on;
+    this.earth.visible = on;
+    this.clouds.visible = !on;
+    if (on) this.setSnow(false);
   }
 
   setSnow(on: boolean): void {
+    if (this.space) on = false;
     if (on && !this.snow) {
       const n = 900;
       const pos = new Float32Array(n * 3);
@@ -120,6 +189,23 @@ export class Sky {
    */
   update(timeMs: number, cam: THREE.Camera, dt: number, outdoor: boolean, season: string): number {
     const f = (timeMs % DAY_LENGTH_MS) / DAY_LENGTH_MS;
+    if (this.space) {
+      // no air: a black sky with every star out, the sun shining all day, and the Earth hanging in the north-east
+      this.color.setHex(0x020309);
+      this.fog.setHex(0x020309);
+      shared.uSkyTint.value.setRGB(1, 1, 1);
+      this.group.visible = outdoor;
+      this.group.position.copy(cam.position);
+      const a = (f / 0.75) * Math.PI;
+      this.sun.position.set(Math.cos(a) * 120, Math.max(0.35, Math.sin(a)) * 120, 25);
+      this.sun.lookAt(cam.position);
+      this.sun.visible = true;
+      this.moon.visible = false;
+      (this.stars.material as THREE.PointsMaterial).opacity = 0;
+      this.earth.position.set(0.56 * 150, 0.5 * 150, -0.66 * 150);
+      this.earth.lookAt(cam.position);
+      return 1;
+    }
     // the 2D game's day: bright until 0.65, dusk to 0.8, night after
     let day: number;
     if (f < 0.04) day = 0.55 + (f / 0.04) * 0.45;

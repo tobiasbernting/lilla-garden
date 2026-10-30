@@ -2,6 +2,7 @@
 // crops as "#"-shaped sprite planes, and everything else as crossed sprites of the 2D art.
 import { CROPS, objectDef, WALL_KINDS, type CropState, type WorldObject } from '@lilla-garden/shared';
 import { getArt } from '@v1/art/textures.ts';
+import { tileUV } from './blocks.ts';
 import { GeoBuilder, rgb, type RGB } from './builder.ts';
 import { sprite } from './sprites.ts';
 import { vehicleModel } from './mobs.ts';
@@ -99,6 +100,240 @@ function decal(sg: GeoBuilder, key: string, w: number, h: number, y = 0.2): bool
   return true;
 }
 
+/** A block tile lying flat on the ground over a rectangle (pixel units): an X in the sand, a crater floor. */
+function flatTile(g: GeoBuilder, tile: string, x0: number, z0: number, x1: number, z1: number, y = 0.2): void {
+  const [U0, V0, U1, V1] = tileUV(tile);
+  const S = 1 / 16;
+  const L = g.boxLight;
+  const c: RGB = [1, 1, 1];
+  g.quad(
+    [
+      [x0 * S, y * S, z1 * S],
+      [x1 * S, y * S, z1 * S],
+      [x1 * S, y * S, z0 * S],
+      [x0 * S, y * S, z0 * S],
+    ],
+    [
+      [U0, V0],
+      [U1, V0],
+      [U1, V1],
+      [U0, V1],
+    ],
+    [c, c, c, c],
+    [L, L, L, L],
+  );
+}
+
+const shade = (c: RGB, f: number): RGB => [Math.min(1, c[0] * f), Math.min(1, c[1] * f), Math.min(1, c[2] * f)];
+
+/** A cluster of crystal shards (each a wide foot and a narrow tip). */
+function shards(g: GeoBuilder, c: RGB, scale = 1): void {
+  const s = (x0: number, z0: number, w: number, h: number, f: number) => {
+    const y = h * scale;
+    g.box(x0, 0, z0, x0 + w, y, z0 + w, 'white', shade(c, f));
+    g.box(x0 + w / 4, y, z0 + w / 4, x0 + (3 * w) / 4, y + w * 0.7 * scale, z0 + (3 * w) / 4, 'white', shade(c, f * 1.2));
+  };
+  s(6, 6, 4, 10, 1);
+  s(2.5, 8, 3, 6, 0.85);
+  s(10.5, 3.5, 3, 7, 0.9);
+  s(9, 10.5, 2.5, 4, 0.8);
+}
+
+/** A mushroom with a stem and a cap (pixel units, centred on cx, cz). */
+function mushroomModel(g: GeoBuilder, cx: number, cz: number, h: number, r: number, cap: string): void {
+  g.box(cx - r / 3, 0, cz - r / 3, cx + r / 3, h, cz + r / 3, 'mushroom_stem');
+  g.box(cx - r, h, cz - r, cx + r, h + r * 0.6, cz + r, cap);
+  g.box(cx - r * 0.6, h + r * 0.6, cz - r * 0.6, cx + r * 0.6, h + r, cz + r * 0.6, cap);
+}
+
+const BONE: RGB = rgb('#efe6cf');
+/** A bone lying along x or z (pixel units), knobbly at both ends. */
+function bone(g: GeoBuilder, x0: number, z0: number, len: number, alongX: boolean, y = 0): void {
+  if (alongX) {
+    g.box(x0, y, z0, x0 + len, y + 1.5, z0 + 1.5, 'white', BONE);
+    for (const x of [x0 - 1, x0 + len - 1]) g.box(x, y, z0 - 1, x + 2, y + 2, z0 + 2.5, 'white', BONE);
+  } else {
+    g.box(x0, y, z0, x0 + 1.5, y + 1.5, z0 + len, 'white', BONE);
+    for (const z of [z0 - 1, z0 + len - 1]) g.box(x0 - 1, y, z, x0 + 2.5, y + 2, z + 2, 'white', BONE);
+  }
+}
+
+/** A dinosaur skeleton lying (or standing, as a souvenir) over 3×2 tiles. */
+function skeleton(g: GeoBuilder, standing: boolean): void {
+  const y = standing ? 12 : 1;
+  if (standing) for (const [x, z] of [[14, 12], [14, 20], [30, 12], [30, 20]] as const) g.box(x, 0, z, x + 2, y, z + 2, 'white', BONE);
+  g.box(6, y + 4, 15, 42, y + 7, 17, 'white', BONE); // spine
+  for (let i = 0; i < 6; i++) {
+    const x = 14 + i * 4;
+    const h = 9 - Math.abs(i - 2.5) * 1.2;
+    g.box(x, y, 10, x + 1.5, y + h, 11.5, 'white', BONE).box(x, y, 20.5, x + 1.5, y + h, 22, 'white', BONE);
+    g.box(x, y + h - 1.5, 11.5, x + 1.5, y + h, 20.5, 'white', BONE);
+  }
+  g.box(40, y + 2, 12, 48, y + 10, 20, 'white', BONE); // skull
+  g.box(41, y + 3, 12.5, 43, y + 5, 19.5, 'white', rgb('#3a3226')); // eye holes
+  g.box(44, y, 13, 48, y + 2, 19, 'white', BONE); // jaw
+  g.box(0, y + 3, 15.25, 6, y + 5, 16.75, 'white', BONE); // tail
+}
+
+const CHEST_LOOK = ['planks_oak', 'gold_block', 'planks_dark', 'packed_ice', 'metal', 'candy'];
+const CRYSTAL_COLOURS = ['#b06af0', '#7ad0f0', '#6af08a', '#f08ac8'].map(rgb);
+/** Stalagmites take the colour of their cave (the variant is the cave's theme). */
+const STALAGMITE_LOOK: Record<number, string> = { 1: 'packed_ice', 2: 'amethyst', 4: 'sand_smooth', 6: 'basalt', 7: 'moss_stone', 8: 'sandstone', 9: 'candy_fill', 10: 'moon_rock' };
+
+/** The wider world's small things. Returns false when the kind is not one of them. */
+function widerWorldModel(o: WorldObject, g: GeoBuilder): boolean {
+  const v = o.variant ?? 0;
+  switch (o.kind) {
+    case 'earth':
+      return true; // it hangs in the moon's sky instead (sky.ts)
+    case 'rocket': {
+      // the pointed nose over the block-built body (two blocks wide, ten high)
+      const y = 160;
+      g.box(2, y, 18, 30, y + 8, 46, 'rocket_red').box(6, y + 8, 22, 26, y + 16, 42, 'rocket_red').box(10, y + 16, 26, 22, y + 24, 38, 'rocket_red');
+      g.box(14, y + 24, 30, 18, y + 32, 34, 'rocket_white');
+      return true;
+    }
+    case 'crystal':
+      shards(g, CRYSTAL_COLOURS[v % CRYSTAL_COLOURS.length]!);
+      return true;
+    case 'fire_crystal':
+      shards(g, rgb('#ff8a2a'), 1.1);
+      return true;
+    case 'star_crystal':
+      shards(g, rgb('#fff0a0'), 0.9);
+      return true;
+    case 'crystal_lamp':
+      g.box(4, 0, 4, 12, 3, 12, 'stone_bricks');
+      g.off = [g.off[0], g.off[1] + 3 / 16, g.off[2]];
+      shards(g, CRYSTAL_COLOURS[0]!, 0.8);
+      g.off = [g.off[0], g.off[1] - 3 / 16, g.off[2]];
+      return true;
+    case 'moon_cheese':
+      g.box(3, 0, 4, 13, 7, 12, 'white', rgb('#f2d24e'));
+      g.box(3, 7, 4, 8, 9, 12, 'white', rgb('#f6dc68'));
+      for (const [x, y] of [[5, 2], [9, 4], [11, 1.5]] as const) g.box(x, y, 11.9, x + 2, y + 2, 12.1, 'white', rgb('#c8a434'));
+      return true;
+    case 'stalagmite': {
+      const tex = STALAGMITE_LOOK[v] ?? 'stone';
+      g.box(3, 0, 3, 13, 5, 13, tex).box(4, 5, 4, 12, 10, 12, tex).box(5, 10, 5, 11, 15, 11, tex).box(6, 15, 6, 10, 19, 10, tex).box(7, 19, 7, 9, 23, 9, tex);
+      return true;
+    }
+    case 'loot_chest': {
+      const tex = CHEST_LOOK[v % CHEST_LOOK.length]!;
+      chest(g, tex);
+      // gold bands: it is treasure
+      g.box(3, 0, 0.9, 4, 14, 15.1, 'gold_block').box(12, 0, 0.9, 13, 14, 15.1, 'gold_block');
+      return true;
+    }
+    case 'barrel':
+      g.box(3, 0, 3, 13, 14, 13, { all: 'planks_spruce', top: 'log_oak_top', bottom: 'log_oak_top' });
+      for (const y of [2, 11]) g.box(2.8, y, 2.8, 13.2, y + 1, 13.2, 'white', rgb('#3a3a40'));
+      return true;
+    case 'bones':
+      bone(g, 3, 7, 10, true);
+      bone(g, 8, 3, 9, false, 1.5);
+      return true;
+    case 'dino_bones':
+      skeleton(g, false);
+      return true;
+    case 'dino_skeleton':
+      skeleton(g, true);
+      return true;
+    case 'glowshroom':
+      mushroomModel(g, 7, 7, 5, 3.5, 'glow_cap');
+      mushroomModel(g, 12, 11, 3, 2, 'glow_cap');
+      return true;
+    case 'mushroom_lamp':
+      g.box(4, 0, 4, 12, 2, 12, 'planks_oak');
+      mushroomModel(g, 8, 8, 10, 5, 'glow_cap');
+      return true;
+    case 'cloudberry':
+      g.box(3, 0, 5, 8, 1, 10, 'leaves_oak').box(8, 0, 4, 13, 1, 9, 'leaves_oak').box(5, 0, 9, 10, 1, 13, 'leaves_oak');
+      g.box(7.5, 0, 7.5, 8.5, 4, 8.5, 'white', rgb('#4a7a2a'));
+      g.box(6.5, 4, 6.5, 9.5, 7, 9.5, 'white', rgb('#f0a030')).box(7, 6.5, 7, 8, 7.5, 8, 'white', rgb('#ffd070'));
+      return true;
+    case 'banana_plant': {
+      const leaf = 'leaves_jungle';
+      g.box(7, 0, 7, 9, 18, 9, 'white', rgb('#5a8a2a'));
+      g.box(-3, 15, 6, 7, 16, 10, leaf).box(9, 14, 6, 19, 15, 10, leaf).box(6, 16, -3, 10, 17, 7, leaf).box(6, 13, 9, 10, 14, 19, leaf);
+      g.box(9, 8, 6, 12, 13, 9, 'white', rgb('#f0d040')).box(4, 9, 8, 7, 13, 11, 'white', rgb('#e8c838'));
+      return true;
+    }
+    case 'fern':
+      g.cross('fern', 16, 14, 8, 8, 0);
+      return true;
+    case 'reed':
+      g.cross('reeds', 16, 16, 8, 8, 0).cross('reeds', 12, 13, 4, 12, 0);
+      return true;
+    case 'jungle_flower':
+      g.cross('jungle_flower', 14, 14, 8, 8, 0);
+      return true;
+    case 'candy_cane':
+      g.box(7, 0, 7, 10, 21, 10, 'candy_stripes');
+      g.box(7, 18, 10, 10, 21, 15, 'candy_stripes').box(7, 13, 12, 10, 18, 15, 'candy_stripes');
+      return true;
+    case 'lollipop_tree': {
+      const swirl = `lollipop_${v % 3}`;
+      g.box(7, 0, 7.5, 9, 18, 8.5, 'white', rgb('#f4f2ec'));
+      g.box(1, 16, 7, 15, 30, 9, { all: swirl, top: 'candy_side', bottom: 'candy_side', east: 'candy_side', west: 'candy_side' });
+      return true;
+    }
+    case 'dig_spot':
+      g.box(3, 0, 3, 13, 1, 13, 'sand');
+      flatTile(g, 'dig_x', 2, 2, 14, 14, 1.1);
+      return true;
+    case 'crater':
+      for (const [x0, z0, x1, z1] of [[2, 2, 30, 5], [2, 27, 30, 30], [2, 5, 5, 27], [27, 5, 30, 27]] as const) g.box(x0, 0, z0, x1, 2, z1, 'moon_dust');
+      flatTile(g, 'crater', 5, 5, 27, 27, 0.1);
+      return true;
+    case 'fairy_ring':
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2;
+        const cx = 16 + Math.cos(a) * 11;
+        const cz = 16 + Math.sin(a) * 11;
+        g.box(cx - 0.8, 0, cz - 0.8, cx + 0.8, 3, cz + 0.8, 'mushroom_stem');
+        g.box(cx - 2.2, 3, cz - 2.2, cx + 2.2, 5, cz + 2.2, k % 3 ? 'mushroom_red' : 'glow_cap');
+      }
+      return true;
+    case 'steam_vent':
+      for (const [x0, z0, x1, z1] of [[3, 3, 13, 5], [3, 11, 13, 13], [3, 5, 5, 11], [11, 5, 13, 11]] as const) g.box(x0, 0, z0, x1, 2, z1, 'basalt');
+      flatTile(g, 'dark_opening', 5, 5, 11, 11, 0.3);
+      return true;
+    case 'wisp':
+      g.box(6, 8, 6, 10, 12, 10, 'glow_cap').box(7, 12, 7, 9, 13, 9, 'glow_cap');
+      return true;
+    case 'wisp_jar':
+      g.box(4, 0, 4, 12, 12, 12, 'glass');
+      g.box(6, 3, 6, 10, 8, 10, 'glow_cap');
+      g.box(5, 12, 5, 11, 14, 11, 'planks_oak');
+      return true;
+    case 'dragon_egg':
+      g.box(5, 0, 5, 11, 2, 11, 'dragon_egg').box(4, 2, 4, 12, 9, 12, 'dragon_egg').box(5, 9, 5, 11, 12, 11, 'dragon_egg').box(6, 12, 6, 10, 13, 10, 'dragon_egg');
+      return true;
+    case 'flag_se': {
+      const yellow = rgb('#f5d020');
+      g.box(7.5, 0, 7.5, 8.5, 30, 8.5, 'white', rgb('#e8e8e8'));
+      g.box(8.5, 20, 7.75, 22.5, 29, 8.25, 'white', rgb('#2a6ad0'));
+      g.box(8.5, 23.5, 7.7, 22.5, 25.5, 8.3, 'white', yellow).box(12.5, 20, 7.7, 14.5, 29, 8.3, 'white', yellow);
+      return true;
+    }
+    case 'satellite_dish':
+      g.box(10, 0, 10, 22, 4, 22, 'metal').box(14, 4, 14, 18, 14, 18, 'metal');
+      g.box(4, 14, 4, 28, 16, 28, 'quartz');
+      for (const [x0, z0, x1, z1] of [[4, 4, 28, 6], [4, 26, 28, 28], [4, 6, 6, 26], [26, 6, 28, 26]] as const) g.box(x0, 16, z0, x1, 18, z1, 'quartz');
+      g.box(15.5, 16, 15.5, 16.5, 26, 16.5, 'metal').box(14, 26, 14, 18, 29, 18, 'metal');
+      return true;
+    case 'ufo':
+      g.box(10, 0, 8, 38, 3, 24, 'metal');
+      g.box(2, 3, 4, 46, 7, 28, 'metal');
+      g.box(8, 7, 7, 40, 9, 25, 'metal');
+      g.box(16, 9, 10, 32, 17, 22, 'ice');
+      for (const [x, z] of [[1, 14], [45, 14], [22, 3], [22, 27], [9, 6], [37, 6], [9, 24], [37, 24]] as const) g.box(x, 4, z, x + 2, 6, z + 2, 'ufo_light');
+      return true;
+  }
+  return false;
+}
+
 /**
  * Adds the model of `o` to `g` (block textures) and/or `sg` (2D sprites). Both builders must already be
  * offset to the object's tile and lit. Returns false for objects drawn as blocks or dynamically.
@@ -107,6 +342,7 @@ export function buildModel(o: WorldObject, ctx: ModelCtx, g: GeoBuilder, sg: Geo
   const def = objectDef(o.kind);
   const art = getArt().objects[o.kind];
   const frame = art ? (o.variant ?? 0) % art.frames.length : 0;
+  if (widerWorldModel(o, g)) return;
   switch (o.kind) {
     case 'fence':
       fence(g, linkMask(ctx, o.x, o.y, fenceLinked));

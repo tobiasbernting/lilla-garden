@@ -68,6 +68,25 @@ add(I('cactus_fruit', 'crop', { sell: 16 }));
 add(I('gold', 'material', { sell: 10 }));
 add(I('gem', 'material', { sell: 150 }));
 add(I('heartberry', 'crop', { sell: 20 }));
+// The wider world: found in the new biomes, their caves and on the moon
+add(I('blueberry', 'crop', { sell: 6 }));
+add(I('cloudberry', 'crop', { sell: 30 }));
+add(I('banana', 'crop', { sell: 14, food: { boostMs: 20_000 } }));
+add(I('glowshroom', 'crop', { sell: 25 }));
+add(I('fairy_dust', 'material', { sell: 50 }));
+add(I('obsidian', 'material', { sell: 25 }));
+add(I('crystal', 'material', { sell: 40 }));
+add(I('fire_crystal', 'material', { sell: 80 }));
+add(I('fossil', 'material', { sell: 35 }));
+add(I('pearl', 'material', { sell: 90 }));
+add(I('old_coin', 'material', { sell: 60 }));
+add(I('scarab', 'material', { sell: 150 }));
+add(I('idol', 'material', { sell: 250 }));
+add(I('polkagris', 'crop', { sell: 8, food: { boostMs: 30_000 } }));
+add(I('lollipop', 'crop', { sell: 10, food: { boostMs: 30_000 } }));
+add(I('moon_rock', 'material', { sell: 30 }));
+add(I('star_crystal', 'material', { sell: 120 }));
+add(I('moon_cheese', 'crop', { sell: 40, food: { boostMs: 45_000 } }));
 
 // Animal products
 add(I('egg', 'animal_product', { sell: 15 }));
@@ -84,6 +103,8 @@ add(I('pumpkin_pie', 'crop', { sell: 120 }));
 add(I('strawberry_jam', 'crop', { sell: 55 }));
 add(I('fish_soup', 'crop', { sell: 65 }));
 add(I('bread', 'crop', { sell: 30 }));
+add(I('cloudberry_jam', 'crop', { sell: 150 }));
+add(I('blueberry_pie', 'crop', { sell: 110 }));
 // Pizzeria menu (bought in the village, eaten for pizzapower)
 add(I('pizza', 'crop', { sell: 10, buy: 30, tab: 'pizzeria', food: { boostMs: 60_000 } }));
 add(I('pizza_kebab', 'crop', { sell: 12, buy: 40, tab: 'pizzeria', food: { boostMs: 60_000 } }));
@@ -163,6 +184,12 @@ place('easter_twigs', { buy: 30, tab: 'season', season: 'pask', sell: 5 });
 place('egg_basket', { buy: 25, tab: 'season', season: 'pask', sell: 5 });
 place('maypole', { buy: 80, tab: 'season', season: 'midsommar', sell: 10 });
 place('flower_wreath_decor', { buy: 20, tab: 'season', season: 'midsommar', sell: 5 });
+// Souvenirs from the wider world (crafted from what you find, or found as they are)
+place('crystal_lamp', { sell: 60 });
+place('mushroom_lamp', { sell: 45 });
+place('dino_skeleton', { sell: 120 });
+place('wisp_jar', { sell: 30 });
+place('dragon_egg');
 
 // Clothing
 const cloth = (
@@ -225,6 +252,15 @@ starCloth('gown_blue', 'shirt', 'gown', '#3b6fd9', 15);
 // Cave treasure clothes (not for sale)
 add(I('hat_viking', 'clothing', { clothing: { slot: 'hat', style: 'viking', color: '#9d9a92' }, stack: 1 }));
 add(I('shirt_knight', 'clothing', { clothing: { slot: 'shirt', style: 'plain', color: '#b8bcc4' }, stack: 1 }));
+// Found in the caves and on the moon (not for sale)
+const found = (id: string, slot: 'hat' | 'shirt', style: string, color: string) => add(I(id, 'clothing', { clothing: { slot, style, color }, stack: 1 }));
+found('hat_pirate', 'hat', 'pirate', '#2b2622');
+found('hat_explorer', 'hat', 'explorer', '#d9c48f');
+found('hat_space', 'hat', 'space', '#e8eef5');
+found('shirt_space', 'shirt', 'space', '#eef1f5');
+found('hat_frog', 'hat', 'frog', '#5aae4a');
+found('hat_dino', 'hat', 'dino', '#4f9a3a');
+found('hat_ice_crown', 'hat', 'crown', '#bfe3f5');
 
 export const item = (id: string): ItemDef => {
   const d = ITEMS[id];
@@ -280,6 +316,60 @@ addO(O('palm', { breakWith: 'axe', drops: [{ item: 'wood', min: 2, max: 4 }] }))
 addO(O('shell', { solid: false, flat: true, harvest: true, drops: [{ item: 'shell', min: 1, max: 1 }] }));
 addO(O('cactus', { harvest: true, drops: [{ item: 'cactus_fruit', min: 1, max: 2 }] }));
 addO(O('signpost', { breakWith: undefined }));
+// The wider world (2026-10-29). Skogen: blueberries. Träsket: cloudberries, reeds, dead trees and will-o'-the-wisps
+addO(O('blueberry_bush', { harvest: true, drops: [{ item: 'blueberry', min: 2, max: 4 }] }));
+addO(O('cloudberry', { solid: false, flat: true, harvest: true, drops: [{ item: 'cloudberry', min: 1, max: 2 }] }));
+addO(O('reed', { solid: false, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 2 }] }));
+addO(O('dead_tree', { breakWith: 'axe', drops: [{ item: 'wood', min: 1, max: 3 }] }));
+addO(O('wisp', { solid: false, harvest: true, light: true, drops: [{ item: 'wisp_jar', min: 1, max: 1 }] }));
+// Djungeln
+addO(O('jungle_tree', { breakWith: 'axe', drops: [{ item: 'wood', min: 4, max: 6 }] }));
+addO(O('banana_plant', { harvest: true, drops: [{ item: 'banana', min: 1, max: 3 }] }));
+addO(O('jungle_flower', { solid: false, flat: true, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 1 }] }));
+addO(O('ruin_pillar', { breakWith: undefined }));
+// Vulkanen
+addO(O('obsidian_rock', { breakWith: 'pick', drops: [{ item: 'obsidian', min: 1, max: 2 }, { item: 'stone', min: 0, max: 1 }] }));
+addO(O('fire_crystal', { breakWith: 'pick', light: true, drops: [{ item: 'fire_crystal', min: 1, max: 1 }] }));
+addO(O('steam_vent', { solid: false, flat: true, breakWith: undefined }));
+// Svampskogen
+addO(O('giant_mushroom', { breakWith: 'axe', drops: [{ item: 'fiber', min: 2, max: 3 }, { item: 'mushroom', min: 0, max: 2 }] }));
+addO(O('giant_glowshroom', { breakWith: 'axe', light: true, drops: [{ item: 'fiber', min: 2, max: 3 }, { item: 'glowshroom', min: 1, max: 2 }] }));
+addO(O('glowshroom', { solid: false, flat: true, harvest: true, light: true, drops: [{ item: 'glowshroom', min: 1, max: 2 }] }));
+addO(O('fairy_ring', { w: 2, h: 2, solid: false, flat: true, breakWith: undefined, interact: 'fairy', loot: 'fairy' }));
+// Dinodalen
+addO(O('fern', { solid: false, breakWith: 'scythe', drops: [{ item: 'fiber', min: 1, max: 2 }] }));
+addO(O('dino_bones', { w: 3, h: 2, breakWith: undefined }));
+addO(O('fossil_rock', { breakWith: 'pick', drops: [{ item: 'stone', min: 1, max: 1 }], loot: 'fossil_rock' }));
+// Godislandet
+addO(O('lollipop_tree', { harvest: true, drops: [{ item: 'lollipop', min: 1, max: 2 }] }));
+addO(O('candy_cane', { harvest: true, drops: [{ item: 'polkagris', min: 1, max: 2 }] }));
+// Buried treasure: an X in the sand, dug up with the hoe (the loot depends on the biome)
+addO(O('dig_spot', { solid: false, flat: true, breakWith: 'hoe', loot: 'dig' }));
+// Landmarks. Cave mouths, the temple, the pyramid and the gingerbread house lead into caves.
+addO(O('cave_mouth', { w: 2, h: 2, interact: 'grotto', breakWith: undefined }));
+addO(O('temple', { w: 4, h: 3, interact: 'grotto', breakWith: undefined }));
+addO(O('pyramid', { w: 6, h: 4, interact: 'grotto', breakWith: undefined }));
+addO(O('gingerbread_house', { w: 3, h: 3, interact: 'grotto', breakWith: undefined, light: true }));
+addO(O('volcano', { w: 6, h: 5, breakWith: undefined, light: true }));
+addO(O('shipwreck', { w: 4, h: 2, breakWith: undefined }));
+// Rymdbasen and the moon
+addO(O('rocket', { w: 2, h: 3, interact: 'rocket', breakWith: undefined, light: true }));
+addO(O('satellite_dish', { w: 2, h: 2, breakWith: undefined }));
+addO(O('ufo', { w: 3, h: 2, breakWith: undefined, light: true }));
+addO(O('flag_se', { breakWith: undefined }));
+addO(O('earth', { w: 4, h: 4, solid: false, flat: true, breakWith: undefined }));
+addO(O('crater', { w: 2, h: 2, solid: false, flat: true, breakWith: undefined }));
+addO(O('moon_rock', { breakWith: 'pick', drops: [{ item: 'moon_rock', min: 1, max: 2 }] }));
+addO(O('star_crystal', { breakWith: 'pick', light: true, drops: [{ item: 'star_crystal', min: 1, max: 1 }] }));
+addO(O('moon_cheese', { solid: false, harvest: true, drops: [{ item: 'moon_cheese', min: 1, max: 1 }] }));
+// Inside the caves
+addO(O('crystal', { breakWith: 'pick', light: true, drops: [{ item: 'crystal', min: 1, max: 2 }] }));
+addO(O('gold_vein', { breakWith: 'pick', drops: [{ item: 'gold', min: 1, max: 3 }, { item: 'stone', min: 0, max: 1 }] }));
+addO(O('gem_vein', { breakWith: 'pick', drops: [{ item: 'gem', min: 1, max: 1 }] }));
+addO(O('stalagmite', { breakWith: 'pick', drops: [{ item: 'stone', min: 1, max: 1 }] }));
+addO(O('loot_chest', { interact: 'loot', breakWith: undefined }));
+addO(O('barrel', { drops: [{ item: 'wood', min: 1, max: 2 }] }));
+addO(O('bones', { solid: false, flat: true, breakWith: undefined }));
 // Village
 addO(O('house_small', { w: 3, h: 3, breakWith: undefined }));
 addO(O('market', { w: 2, h: 2, interact: 'catalogue', breakWith: undefined }));
@@ -349,6 +439,11 @@ built('easter_twigs');
 built('egg_basket');
 built('maypole', { w: 1, h: 2 });
 built('flower_wreath_decor', { solid: false, flat: true });
+built('crystal_lamp', { light: true });
+built('mushroom_lamp', { light: true });
+built('dino_skeleton', { w: 3, h: 2 });
+built('wisp_jar', { light: true });
+built('dragon_egg');
 
 // Farmhouse fixtures (not breakable)
 addO(O('house', { w: 5, h: 4, breakWith: undefined }));
@@ -388,6 +483,17 @@ export const ANIMALS: Record<string, AnimalDef> = {
   hare: { species: 'hare', house: '', growDays: 0, speed: 40, wild: 'ang', wildCount: [2, 4] },
   boar: { species: 'boar', house: '', growDays: 0, speed: 28, wild: 'skog', wildCount: [1, 2], tame: 0.5 },
   moose: { species: 'moose', house: '', growDays: 0, speed: 22, wild: 'skog', wildCount: [0, 1], tame: 0.2 },
+  // The wider world: one or two kinds per new biome (all can be caught with the lasso)
+  frog: { species: 'frog', house: '', growDays: 0, speed: 30, wild: 'trask', wildCount: [3, 5] },
+  parrot: { species: 'parrot', house: '', growDays: 0, speed: 40, wild: 'djungel', wildCount: [2, 4], variants: 3 },
+  monkey: { species: 'monkey', house: '', growDays: 0, speed: 38, wild: 'djungel', wildCount: [2, 3] },
+  salamander: { species: 'salamander', house: '', growDays: 0, speed: 26, wild: 'vulkan', wildCount: [2, 4] },
+  hedgehog: { species: 'hedgehog', house: '', growDays: 0, speed: 16, wild: 'svamp|skog', wildCount: [1, 3] },
+  dino: { species: 'dino', house: '', growDays: 0, speed: 34, wild: 'dino', wildCount: [3, 5], tame: 0.4, variants: 3 },
+  gummy: { species: 'gummy', house: '', growDays: 0, speed: 24, wild: 'godis', wildCount: [3, 6], variants: 4 },
+  alien: { species: 'alien', house: '', growDays: 0, speed: 28, wild: 'mane', wildCount: [3, 4], tame: 0.5 },
+  // Hatches from a dragon egg found in the volcano's cave; follows whoever put the egg down
+  dragon: { species: 'dragon', house: '', growDays: 0, speed: 64, pet: true },
   // Predators (mild): they chase you a little and bite one heart; a lasso makes them pets
   bear: { species: 'bear', house: '', growDays: 0, speed: 26, wild: 'skog', wildCount: [1, 1], tame: 0.3, predator: { hp: 5, aggroRange: 4 } },
   wolf: { species: 'wolf', house: '', growDays: 0, speed: 34, wild: 'berg|skog', wildCount: [1, 2], tame: 0.3, predator: { hp: 3, aggroRange: 4 } },
@@ -453,6 +559,9 @@ export const RECIPES: RecipeDef[] = [
   R('lasso', 1, ['fiber', 5], ['wood', 2]),
   R('bazooka', 1, ['stone', 12], ['wood', 8], ['gold', 2]),
   R('rocket', 3, ['stone', 2], ['wood', 1]),
+  R('crystal_lamp', 1, ['crystal', 2], ['stone', 2]),
+  R('mushroom_lamp', 1, ['glowshroom', 3], ['wood', 1]),
+  R('dino_skeleton', 1, ['fossil', 5]),
   ...PAINT_NAMES.map((c) => R(`paint_${c}`, 1, ['wood', 1], ['fiber', 2])),
 ];
 
@@ -465,6 +574,44 @@ export const TREASURE: { item: string; count: number; weight: number }[] = [
   { item: 'strawberry_seed', count: 5, weight: 20 },
 ];
 
+/** What loot chests, dig spots, fossil rocks and fairy rings give: `coins` kr, `stars` stars and `picks` draws from the pool. */
+export interface LootTable {
+  coins?: [number, number];
+  stars?: number;
+  picks: number;
+  /** Weighted; an empty item id means nothing this time. */
+  pool: { item: string; min: number; max: number; weight: number }[];
+}
+const L = (item: string, min: number, max: number, weight: number) => ({ item, min, max, weight });
+/** Cave chests are `cave_<theme>`, dig spots `dig_<biome>` (else `dig`). */
+export const LOOT: Record<string, LootTable> = {
+  cave_rot: { coins: [10, 25], stars: 1, picks: 2, pool: [L('gold', 2, 4, 30), L('crystal', 1, 1, 15), L('glowshroom', 2, 3, 20), L('mushroom', 2, 4, 20), L('old_coin', 1, 2, 15), L('gem', 1, 1, 8), L('hat_frog', 1, 1, 8)] },
+  cave_is: { coins: [10, 25], stars: 1, picks: 2, pool: [L('crystal', 1, 2, 30), L('iceberry', 3, 5, 25), L('gold', 2, 4, 20), L('gem', 1, 1, 10), L('hat_ice_crown', 1, 1, 8), L('fish_gold', 1, 1, 5)] },
+  cave_kristall: { coins: [15, 30], stars: 1, picks: 2, pool: [L('crystal', 2, 3, 35), L('gold', 3, 5, 25), L('gem', 1, 1, 20), L('gem', 2, 2, 5)] },
+  cave_sjorovare: { coins: [20, 40], stars: 1, picks: 2, pool: [L('gold', 4, 8, 30), L('pearl', 1, 2, 25), L('old_coin', 2, 4, 25), L('hat_pirate', 1, 1, 15), L('gem', 1, 1, 5)] },
+  cave_pyramid: { coins: [20, 40], stars: 1, picks: 2, pool: [L('gold', 4, 8, 30), L('scarab', 1, 1, 25), L('old_coin', 2, 3, 20), L('gem', 1, 1, 10)] },
+  cave_tempel: { coins: [20, 40], stars: 1, picks: 2, pool: [L('gold', 4, 8, 30), L('idol', 1, 1, 20), L('hat_explorer', 1, 1, 15), L('banana', 3, 5, 15), L('gem', 1, 1, 10)] },
+  cave_lava: { coins: [15, 30], stars: 1, picks: 2, pool: [L('fire_crystal', 1, 2, 30), L('obsidian', 2, 4, 25), L('gold', 3, 5, 20), L('gem', 1, 1, 10), L('dragon_egg', 1, 1, 9)] },
+  cave_svamp: { coins: [10, 25], stars: 1, picks: 2, pool: [L('glowshroom', 3, 5, 30), L('fairy_dust', 1, 2, 25), L('mushroom', 3, 5, 20), L('crystal', 1, 1, 10), L('gem', 1, 1, 5)] },
+  cave_fossil: { coins: [10, 25], stars: 1, picks: 2, pool: [L('fossil', 1, 3, 35), L('gold', 2, 4, 20), L('old_coin', 1, 2, 15), L('hat_dino', 1, 1, 12), L('gem', 1, 1, 8)] },
+  cave_godis: { coins: [10, 25], stars: 1, picks: 2, pool: [L('polkagris', 3, 6, 30), L('lollipop', 2, 4, 30), L('gold', 2, 4, 15), L('crystal', 1, 1, 10), L('gem', 1, 1, 5)] },
+  cave_rymd: { coins: [20, 40], stars: 2, picks: 2, pool: [L('star_crystal', 1, 1, 25), L('moon_rock', 2, 4, 25), L('moon_cheese', 1, 2, 20), L('hat_space', 1, 1, 12), L('shirt_space', 1, 1, 12)] },
+  // the chest by the shipwreck, and the one in the crashed UFO on the moon
+  shipwreck: { coins: [15, 30], stars: 1, picks: 2, pool: [L('gold', 3, 6, 30), L('pearl', 1, 1, 20), L('old_coin', 1, 3, 25), L('hat_pirate', 1, 1, 15), L('fish_gold', 1, 1, 5)] },
+  ufo: { coins: [20, 40], stars: 2, picks: 2, pool: [L('hat_space', 1, 1, 30), L('shirt_space', 1, 1, 30), L('star_crystal', 1, 2, 25), L('moon_cheese', 2, 2, 15)] },
+  // the secret room behind the rubble in a cave (break it with the pickaxe)
+  secret: { coins: [20, 50], stars: 2, picks: 1, pool: [L('gem', 1, 2, 40), L('gold', 5, 10, 40), L('crystal', 2, 3, 20)] },
+  dig_strand: { picks: 1, pool: [L('old_coin', 1, 2, 30), L('gold', 1, 3, 30), L('shell', 2, 3, 25), L('pearl', 1, 1, 10), L('hat_pirate', 1, 1, 5)] },
+  dig_oken: { picks: 1, pool: [L('old_coin', 1, 2, 30), L('gold', 2, 3, 35), L('cactus_fruit', 1, 2, 20), L('scarab', 1, 1, 10), L('gem', 1, 1, 5)] },
+  dig_dino: { picks: 1, pool: [L('fossil', 1, 1, 55), L('old_coin', 1, 1, 15), L('gold', 1, 3, 20), L('gem', 1, 1, 10)] },
+  dig_mane: { picks: 1, pool: [L('moon_rock', 1, 2, 40), L('star_crystal', 1, 1, 20), L('moon_cheese', 1, 1, 40)] },
+  dig: { picks: 1, pool: [L('old_coin', 1, 2, 40), L('gold', 1, 3, 50), L('gem', 1, 1, 10)] },
+  fossil_rock: { picks: 1, pool: [L('fossil', 1, 1, 60), L('', 0, 0, 40)] },
+  fairy: { picks: 1, pool: [L('fairy_dust', 1, 1, 70), L('fairy_dust', 2, 2, 20), L('gem', 1, 1, 10)] },
+};
+/** Days before a loot chest has something for the same player again. */
+export const LOOT_REFILL_DAYS = 7;
+
 /** Recipes cooked at the stove (same shape as crafting recipes). */
 export const COOKING: RecipeDef[] = [
   R('bread', 2, ['wheat', 3]),
@@ -474,6 +621,8 @@ export const COOKING: RecipeDef[] = [
   R('strawberry_jam', 1, ['strawberry', 4]),
   R('fish_soup', 1, ['fish_perch', 1], ['potato', 2], ['carrot', 1]),
   R('truffle_pasta', 1, ['truffle', 1], ['wheat', 2], ['milk', 1]),
+  R('cloudberry_jam', 1, ['cloudberry', 4]),
+  R('blueberry_pie', 1, ['blueberry', 6], ['wheat', 2], ['egg', 1]),
 ];
 
 // ---------- Villagers ----------
@@ -696,6 +845,16 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('tame_1', 'tame', 1, 1, 'lasso'),
   A('tame_bear', 'tame_bear', 1, 2, 'fur'),
   A('tame_5', 'tame_species', 5, 3, 'animal_dog'),
+  A('biomes_5', 'biomes', 5, 2, 'signpost'),
+  A('biomes_all', 'biomes', 15, 6, 'star_crystal'),
+  A('caves_1', 'caves', 1, 1, 'crystal'),
+  A('caves_10', 'caves', 10, 3, 'gem'),
+  A('loot_5', 'loot', 5, 2, 'old_coin'),
+  A('loot_25', 'loot', 25, 4, 'idol'),
+  A('dig_5', 'dig', 5, 2, 'pearl'),
+  A('fossil_5', 'fossil', 5, 2, 'fossil'),
+  A('moon_1', 'moon', 1, 3, 'moon_rock'),
+  A('dragon_1', 'dragon', 1, 5, 'dragon_egg'),
 ];
 
 /** Fish and how likely they bite (weights). */

@@ -6,7 +6,7 @@ import { GeoBuilder } from './builder.ts';
 import { makeMaterial } from './material.ts';
 import { buildCrop, buildModel, DYNAMIC, type ModelCtx } from './models.ts';
 import { spriteAtlas } from './sprites.ts';
-import { VOXEL_KINDS } from './structures.ts';
+import { MODEL_LIGHT_AT, MODEL_TOO, VOXEL_KINDS } from './structures.ts';
 import { chunkOf, type Voxels } from './voxels.ts';
 
 export class ModelLayer {
@@ -33,7 +33,7 @@ export class ModelLayer {
       return s;
     };
     for (const o of Object.values(world.objects)) {
-      if (VOXEL_KINDS.has(o.kind) || DYNAMIC.has(o.kind)) continue;
+      if ((VOXEL_KINDS.has(o.kind) && !MODEL_TOO.has(o.kind)) || DYNAMIC.has(o.kind)) continue;
       const k = chunkOf(o.x, o.y);
       if (chunks && !chunks.has(k)) continue;
       slot(k).objs.push(o);
@@ -58,7 +58,8 @@ export class ModelLayer {
       for (const o of s.objs) {
         const y = vox.surfaceAt(o.x, o.y);
         g.off = sg.off = [o.x, y, o.y];
-        g.boxLight = sg.boxLight = vox.lightAtWorld(o.x + 0.5, y + 0.5, o.y + 0.5);
+        const [lx, ly, lz] = MODEL_LIGHT_AT[o.kind] ?? [0.5, 0.5, 0.5];
+        g.boxLight = sg.boxLight = vox.lightAtWorld(o.x + lx, y + ly, o.y + lz);
         buildModel(o, ctx, g, sg);
       }
       for (const [key, c] of s.crops) {

@@ -990,6 +990,75 @@ body:not(.touch) .run-btn {
   text-shadow: 0 calc(1 * var(--u)) 0 var(--ink), 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.5);
 }
 
+/* the rocket to the moon */
+.ride.rocket {
+  background: #05061a;
+}
+.ride.rocket .ride-sky {
+  inset: 0;
+  background:
+    radial-gradient(1px 1px at 12% 22%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 32% 12%, #fff 60%, transparent),
+    radial-gradient(2px 2px at 58% 30%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 77% 16%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 88% 40%, #fff 60%, transparent),
+    radial-gradient(2px 2px at 22% 48%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 46% 60%, #cfe0ff 60%, transparent),
+    linear-gradient(#03041a, #142060 70%, #3a5aa0);
+  animation: rocket-sky 3s ease-in forwards;
+}
+@keyframes rocket-sky {
+  from {
+    filter: brightness(1.4);
+  }
+  to {
+    filter: brightness(0.7);
+  }
+}
+.ride.rocket .ride-ground {
+  height: 16%;
+  background: linear-gradient(#d8c690 0 40%, #9a9aa4 40% 100%);
+  animation: rocket-ground 2.6s ease-in forwards;
+}
+@keyframes rocket-ground {
+  0%,
+  30% {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(120%);
+  }
+}
+.ride-rocket {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  height: calc(44 * var(--u));
+  image-rendering: pixelated;
+  transform: translateX(-50%);
+  animation: rocket-up 2.8s cubic-bezier(0.55, 0, 0.9, 0.5) forwards, rocket-shake 0.07s linear infinite alternate;
+}
+@keyframes rocket-up {
+  0%,
+  25% {
+    bottom: 14%;
+  }
+  to {
+    bottom: 140%;
+  }
+}
+@keyframes rocket-shake {
+  from {
+    margin-left: calc(-0.4 * var(--u));
+  }
+  to {
+    margin-left: calc(0.4 * var(--u));
+  }
+}
+.ride.rocket .ride-text {
+  top: 30%;
+}
+
 /* ---- 2D game: chat, pet buttons, weather chip, villager conversations ---- */
 .social {
   position: absolute;

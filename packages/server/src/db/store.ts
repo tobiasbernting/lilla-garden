@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, initVoxel, rebuildOccupancy, voxelMode, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, initVoxel, rebuildOccupancy, voxelMode, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -127,6 +127,22 @@ export class PgStore implements Store {
       world.areas[row.key] = a;
     }
     if (Object.keys(world.areas).length) console.log(`loaded ${Object.keys(world.areas).length} explored areas`);
+    // Maps from before the wider world (new biomes, caves, treasure): untouched ones are rebuilt, the rest topped up
+    let rebuilt = 0;
+    let topped = 0;
+    for (const [k, a] of Object.entries(world.areas)) {
+      if ((a.gen ?? 1) >= AREA_GEN) continue;
+      const up = upgradeSavedArea(a, k);
+      this.dirtyAreas.add(k);
+      if (!up.rebuilt) {
+        topped++;
+        continue;
+      }
+      rebuilt++;
+      world.areas[k] = up.area;
+      for (const p of Object.values(world.players)) if (p.area === k) settlePlayer(up.area, p);
+    }
+    if (rebuilt || topped) console.log(`the wider world: rebuilt ${rebuilt} untouched explored areas, topped up ${topped}`);
     // Villages saved before the bath house existed get one
     for (const [k, a] of Object.entries(world.areas)) {
       if (ensureBathhouse(a)) {

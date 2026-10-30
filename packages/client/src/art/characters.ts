@@ -166,6 +166,23 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     for (let x = 2; x < 14; x += 3) p.rect(x, 20, 2, 1, '#f4f4f4');
     if (dir !== 'up') p.rect(5, 12, 2, 2, OUTLINE).rect(9, 12, 2, 2, OUTLINE);
   }
+  if (l.shirt.style === 'space') {
+    // astronaut suit: grey collar ring, belt and cuffs, a chest panel, a tiny Swedish flag and a backpack
+    const G = '#a2a9b4';
+    const Gd = '#737b88';
+    const flag = { B: '#2f6fc8', Y: '#f5d03a' };
+    p.rect(3, 15 + bob, 10, 1, G);
+    if (dir === 'down') {
+      p.rect(5, 10 + bob, 6, 1, G).rect(2, 15 + bob, 2, 1, G).rect(12, 15 + bob, 2, 1, G);
+      p.tpl(4, 12 + bob, ['BYBB', 'YYYY', 'BYBB'], flag);
+      p.rect(9, 12 + bob, 2, 2, Gd).px(9, 12 + bob, '#ff5a4a').px(10, 13 + bob, '#5ae05a');
+    } else if (dir === 'right') {
+      p.rect(2, 10 + bob, 2, 6, Gd).rect(2, 11 + bob, 1, 3, G);
+      p.tpl(6, 12 + bob, ['BYB', 'YYY', 'BYB'], flag).rect(6, 15 + bob, 3, 1, G);
+    } else {
+      p.rect(4, 11 + bob, 8, 5, Gd).rect(5, 12 + bob, 6, 3, G).px(6, 13 + bob, '#ff5a4a').px(9, 13 + bob, '#5ae05a');
+    }
+  }
 
   if (dress) drawDressPixel(p, l.shirt.style, shirtC, dir, frame);
 
@@ -189,7 +206,7 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
   // --- hair ---
   const H = l.hair;
   const Hd = shade(H, 0.75);
-  const style = l.hairStyle;
+  const style = l.hat?.style === 'space' && (l.hairStyle === 'long' || l.hairStyle === 'ponytail') ? 'short' : l.hairStyle; // tucked into the helmet
   if (style !== 'bald') {
     // cap of hair on top of head
     p.rect(hx - 1, hy - 1, 10, 2, H).rect(hx, hy - 2, 8, 1, H);
@@ -213,6 +230,14 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
       if (dir === 'right') p.rect(hx - 3, hy + 2, 3, 2, H).rect(hx - 3, hy + 3, 2, 5, H).px(hx - 3, hy + 7, Hd);
       if (dir === 'down') p.px(hx - 1, hy + 4, H).px(hx + 8, hy + 4, H);
     }
+  }
+
+  if (NEW_ART) {
+    // soft shading: darker right edge of torso and head, hair highlight, eye shine (before the hat, which covers it)
+    p.rect(12, 10 + bob, 1, 7, shade(shirtC, 0.72));
+    p.rect(11, 2 + bob, 1, 7, shade(l.skin, 0.85));
+    if (style !== 'bald') p.rect(hx + 1, hy - 1, 3, 1, shade(l.hair, 1.35));
+    if (dir === 'down') p.px(hx + 2, hy + 4, '#ffffff').px(hx + 6, hy + 4, '#ffffff');
   }
 
   // --- hat ---
@@ -254,20 +279,62 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
         p.px(hx + 2, hy - 4, '#ffffff').px(hx + 5, hy - 2, '#ffffff').px(hx + 4, hy - 6, '#5aa0e8');
         break;
       case 'crown':
-        p.rect(hx, hy - 3, 8, 3, C).rect(hx, hy - 5, 2, 2, C).rect(hx + 3, hy - 5, 2, 2, C).rect(hx + 6, hy - 5, 2, 2, C).rect(hx, hy - 1, 8, 1, Cd);
-        p.px(hx + 1, hy - 2, '#e03a3a').px(hx + 4, hy - 2, '#4ad0ff').px(hx + 6, hy - 2, '#7aff7a');
+        // three points stand above the band (they have to fit in the two rows above the head)
+        p.tpl(0, hy - 2, ['....L..LL..L....', '....CC.CC.CC....', '....CRCBBCGC....', '....DDDDDDDD....'], { C, L: shade(C, 1.4), D: Cd, R: '#e03a3a', B: '#2f7ae8', G: '#2ab84a' });
         break;
       case 'bunny':
         p.rect(hx - 1, hy - 2, 10, 2, C).rect(hx, hy - 8, 2, 6, C).rect(hx + 6, hy - 8, 2, 6, C).rect(hx, hy - 7, 1, 4, '#ffb0c8').rect(hx + 7, hy - 7, 1, 4, '#ffb0c8');
         break;
+      case 'pirate': {
+        // black tricorn with a gold-trimmed brim and a white skull on the front
+        const pal = { B: C, T: '#e8c040', W: '#f4f0e6', K: OUTLINE };
+        if (dir === 'right') p.tpl(0, hy - 2, ['.TTTTTTTTTTTTT..', '.BBBBBBBBWWBBBT.', '..BBBBBBWKKWBB..', '...BBBBBBWWBB...', '.......BBBBB....'], pal);
+        else p.tpl(0, hy - 2, ['.TTTTTTTTTTTTTT.', '.BBBBBBWWBBBBBB.', '..BBBBWKKWBBBB..', '...BBBBWWBBBB...', '.....BBBBBB.....'].map((r) => (dir === 'up' ? r.replace(/[WK]/g, 'B') : r)), pal);
+        break;
+      }
+      case 'explorer': {
+        // beige pith helmet: a high dome, a darker band and a wide brim
+        const pal = { C, L: shade(C, 1.3), N: shade(C, 0.6), D: shade(C, 0.8) };
+        if (dir === 'right') p.tpl(0, hy - 2, ['....LCCCCCCC....', '...LCCCCCCCCC...', '...NNNNNNNNNN...', '..DDDDDDDDDDDD..', '.D............D.'], pal);
+        else p.tpl(0, hy - 2, ['....LLCCCCCC....', '...LCCCCCCCCC...', '...NNNNNNNNNN...', '.DDDDDDDDDDDDDD.'], pal);
+        break;
+      }
+      case 'space': {
+        // round glass astronaut helmet with a white rim: the head shows through the glass
+        const inside = (x: number, y: number) => ((x + 0.5 - 8) / 6) ** 2 + ((y + 0.5 - 5.5 - bob) / 5.5) ** 2 <= 1;
+        for (let y = 0; y < 10 + bob; y++) for (let x = 0; x < CHAR_W; x++) if (!inside(x, y)) p.clear(x, y, 1, 1); // hair stays inside
+        for (let y = 0; y < 11 + bob; y++)
+          for (let x = 2; x < 14; x++) {
+            if (!inside(x, y)) continue;
+            const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+            p.px(x, y, edge ? 'rgba(226,242,255,0.92)' : 'rgba(150,205,255,0.3)');
+          }
+        p.px(4, 2 + bob, 'rgba(255,255,255,0.9)').px(3, 3 + bob, 'rgba(255,255,255,0.9)').px(3, 4 + bob, 'rgba(255,255,255,0.7)');
+        p.rect(2, 10 + bob, 12, 1, C).rect(2, 11 + bob, 12, 1, shade(C, 0.72));
+        break;
+      }
+      case 'frog': {
+        // green frog hat with two big eyes on top (no hair peeking out between them)
+        const pal = { G: C, D: shade(C, 0.72), W: '#ffffff', K: OUTLINE };
+        p.clear(hx - 1, hy - 2, 10, 1);
+        if (dir === 'down') p.tpl(0, hy - 2, ['...GGG....GGG...', '..GWWWGGGGWWWG..', '..GWKWGGGGWKWG..', '..GGGGGGGGGGGG..', '...DDDDDDDDDD...'], pal);
+        else if (dir === 'up') p.tpl(0, hy - 2, ['...GGG....GGG...', '..GGGGGGGGGGGG..', '..GGGGGGGGGGGG..', '..GGGGGGGGGGGG..', '...DDDDDDDDDD...'], pal);
+        else p.tpl(0, hy - 2, ['....GG...GGG....', '...GGGGGGWWWG...', '...GGGGGGWWKG...', '..GGGGGGGGGGGG..', '..DDDDDDDDDDD...'], pal);
+        break;
+      }
+      case 'dino': {
+        // green dino hood with orange spikes, and a row of white teeth over the forehead
+        const pal = { G: C, D: shade(C, 0.75), O: '#f08a2a', W: '#ffffff' };
+        p.clear(hx - 1, hy - 2, 10, 1);
+        if (dir === 'down')
+          p.tpl(0, hy - 2, ['.....O.OO.O.....', '...GGOGOOGOGG...', '..GGGGGGGGGGGG..', '..GGGGGGGGGGGG..', '..GGWGW..WGWGG..', '..GG........GG..', '..GG........GG..', '..GG........GG..', '..DG........GD..', '..DD........DD..'], pal);
+        else if (dir === 'up')
+          p.tpl(0, hy - 2, ['.......OO.......', '...GGGOOOOGGG...', '..GGGGGGGGGGGG..', '..GGGGGOOGGGGG..', '..GGGGOOOOGGGG..', '..GGGGGGGGGGGG..', '..GGGGGOOGGGGG..', '..GGGGOOOOGGGG..', '..GGGGGGGGGGGG..', '..DDDDDDDDDDDD..'], pal);
+        else
+          p.tpl(0, hy - 2, ['....O..O..O.....', '...GOGGOGGOGG...', '..OGGGGGGGGGGG..', '..GGGGGGGGGGGGG.', '.OGGGG.W.W.W.W..', '..GGGG..........', '.OGGGG..........', '..GGGG..........', '..GGGG..........', '..DDDD..........'], pal);
+        break;
+      }
     }
-  }
-  if (NEW_ART) {
-    // soft shading: darker right edge of torso and head, hair highlight, eye shine
-    p.rect(12, 10 + bob, 1, 7, shade(shirtC, 0.72));
-    p.rect(11, 2 + bob, 1, 7, shade(l.skin, 0.85));
-    if (style !== 'bald') p.rect(hx + 1, hy - 1, 3, 1, shade(l.hair, 1.35));
-    if (dir === 'down') p.px(hx + 2, hy + 4, '#ffffff').px(hx + 6, hy + 4, '#ffffff');
   }
   return p.outline(NEW_ART ? '#2a2420' : OUTLINE);
 }

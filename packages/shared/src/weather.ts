@@ -6,6 +6,7 @@ import type { Change } from './protocol.ts';
 import { T, WEATHER_NEWS } from './sv.ts';
 import type { SimCtx } from './sim.ts';
 import { voxelMode } from './voxel.ts';
+import { isUnderground } from './caves.ts';
 
 export const WEATHER_KINDS: WeatherKind[] = ['sun', 'cloudy', 'rain', 'storm', 'snow', 'hail', 'wind', 'fog'];
 export const isWeatherKind = (v: unknown): v is WeatherKind => WEATHER_KINDS.includes(v as WeatherKind);
@@ -54,12 +55,23 @@ export function nextWeather(kind: WeatherKind, month: number, rnd: () => number)
   return options[options.length - 1]![0];
 }
 
-/** The weather as it looks in a biome: snow instead of rain on the ice, only wind in the desert. */
+/**
+ * The weather as it looks in a biome: snow instead of rain on the ice, only wind in the desert, no snow
+ * in the jungle or the volcano, mist over the swamp. The moon and the caves have no weather (the clients
+ * show none there).
+ */
 export function localWeather(kind: WeatherKind, biome: string | undefined): WeatherKind {
+  const cold = kind === 'snow' || kind === 'hail';
   if (biome === 'is' && (kind === 'rain' || kind === 'storm' || kind === 'hail')) return 'snow';
-  if (biome === 'oken' && (kind === 'rain' || kind === 'storm' || kind === 'snow' || kind === 'hail' || kind === 'fog')) return 'wind';
+  if ((biome === 'oken' || biome === 'rymdbas') && (kind === 'rain' || kind === 'storm' || cold || kind === 'fog')) return 'wind';
+  if ((biome === 'dino' || biome === 'vulkan') && cold) return 'wind';
+  if (biome === 'djungel' && cold) return 'rain';
+  if (biome === 'trask' && kind === 'cloudy') return 'fog';
   return kind;
 }
+
+/** Maps where the sky can't be seen: caves, and the moon (which has no weather). */
+export const noWeatherHere = (area: string | undefined): boolean => isUnderground(area) || area === 'moon';
 
 export const isWet = (kind: WeatherKind): boolean => kind === 'rain' || kind === 'storm';
 
@@ -70,7 +82,7 @@ export function setWeather(world: WorldState, kind: WeatherKind, ctx: SimCtx, fo
   const out: Change[] = [];
   const news = prev && prev !== kind ? (isWet(prev) && kind === 'sun' ? T.weatherRainbow : WEATHER_NEWS[kind]) : undefined;
   if (news) {
-    for (const p of Object.values(world.players)) if (p.online && p.area !== 'dungeon') out.push({ t: 'toast', to: p.id, text: news });
+    for (const p of Object.values(world.players)) if (p.online && !noWeatherHere(p.area)) out.push({ t: 'toast', to: p.id, text: news });
   }
   return out;
 }
