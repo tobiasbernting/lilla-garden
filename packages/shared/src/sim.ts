@@ -1783,7 +1783,8 @@ export function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: n
     }
   }
   if (!p.visited) p.visited = ['farm'];
-  const firstVisit = !p.visited.includes(keyStr);
+  // dungeons greet you themselves and are not places on the world map
+  const firstVisit = !isSagaKey(keyStr) && !p.visited.includes(keyStr);
   if (firstVisit) {
     p.visited.push(keyStr);
     if (isCaveKey(keyStr)) bump(p, 'caves', 1, out);
