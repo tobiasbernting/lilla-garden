@@ -1066,6 +1066,7 @@ export class SnowGame implements GameInstance, Arena {
         if (this.phaseT > 3.2 && !this.ended) {
           this.ended = true;
           this.phase = 'done';
+          this.hud.hideAll();
           this.ctx.end(this.finalScore, this.detail);
         }
         break;

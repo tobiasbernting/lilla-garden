@@ -30,7 +30,7 @@ export class Chunks {
 
   constructor(private max: number, shadows: boolean) {
     const g = new THREE.IcosahedronGeometry(1, 0);
-    this.mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0xffffff }), max);
+    this.mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x6a6a8a }), max);
     this.mesh.count = 0;
     this.mesh.castShadow = shadows;
     this.mesh.frustumCulled = false;

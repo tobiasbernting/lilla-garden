@@ -4,7 +4,7 @@
 
 const CSS = `
 .snw-hud{position:absolute;inset:0;pointer-events:none;overflow:hidden;color:#fff;user-select:none;-webkit-user-select:none;
-  font-family:ui-rounded,'Nunito','Trebuchet MS',system-ui,sans-serif;--u:7px;z-index:1}
+  font-family:ui-rounded,'Nunito','Trebuchet MS',system-ui,sans-serif;--u:7px}
 .snw-hud *{box-sizing:border-box}
 .snw-vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 55%,rgba(30,20,70,.32) 100%)}
 .snw-frost{position:absolute;inset:0;opacity:0;transition:opacity .4s;box-shadow:inset 0 0 calc(var(--u)*9) calc(var(--u)*3) rgba(205,225,255,.85);
@@ -508,8 +508,9 @@ export class Hud {
   revealTally(n: number): void {
     this.tallyEl.querySelectorAll('div').forEach((d, i) => d.classList.toggle('on', i < n));
   }
-  hideTally(): void {
-    this.tallyEl.classList.remove('on');
+  /** The run is over: the shell's result card takes over. */
+  hideAll(): void {
+    this.el.style.display = 'none';
   }
 
   update(dt: number): void {
