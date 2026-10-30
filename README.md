@@ -126,6 +126,29 @@ There is still no text chat: players can only use emotes.
 - `packages/arcade` – the minigames and the overlay they run in (title card, pause, results, one controller for
   keyboard, gamepad and touch). Each game is loaded only when played. `pnpm --filter @lilla-garden/arcade lab`
   opens a lab page that plays any game without the server (`?play=rally`, `?game=golf`, `?tv`, `&touch=1`).
+  The same lab serves `saga3d.html`, a proof of concept of the saga dungeons in third person (see below).
+
+## Saga 3D (proof of concept)
+
+Can the dungeons of Sagan om Världsträdet be played in third person, like the big online adventure games, on the
+family's old tablets? `packages/arcade/saga3d.html` is the experiment: one dungeon, built from its real plan
+in `shared`, drawn with Three.js in a chunky, cute style with a camera behind your character, the class's four
+spells, the monster packs, the bosses with their attacks marked on the floor, the gate and the rest stones. It
+runs without the server and without other players (a local copy of the rules, `src/saga3d/sim.ts`, covered by
+Vitest), so it says nothing about networking, only about how it feels and how fast it runs.
+
+```bash
+pnpm --filter @lilla-garden/arcade lab        # then open http://<your-computer-ip>:5180/saga3d.html on the tablet
+```
+
+- `?d=draug|frost|surt` picks the dungeon, `?c=vaktare|helare|krigare|magiker` the class.
+- Dator: WASD går, dra med musen för att vrida kameran, hjulet zoomar, `1–4` besvärjelser, `5` dryck, `Tab` byter mål, klicka på ett monster.
+- Surfplatta: styrspak till vänster, dra på högra halvan för att vrida kameran, nyp för att zooma, tryck på ett monster, knapparna nere till höger.
+- The corner readout shows the frame rate (with `?stats=1` also draw calls, triangles and the pixel ratio). The page
+  picks a low quality on touch screens and small screens (`?quality=high|low` overrides): no shadows, pixel ratio 1,
+  two roaming torch lights, and it lowers the pixel ratio by itself when the frame rate stays under 28.
+  **Steady 30 fps or more in a monster fight on the tablet means the idea works; under 20 means it needs a
+  different renderer, not more tuning.**
 
 ## Controls
 

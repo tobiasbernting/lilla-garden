@@ -105,3 +105,25 @@ Sharing the world beyond the family. Default on; `ACCESS=open` restores the old 
 - Rules: mode closed / family only / family + guests, play hours in Europe/Stockholm, pause/remove per device. The server re-checks open sockets on every change and every 15 s and closes them with code 4003; the clients then go to `/access`.
 - Parents: `PARENT_PASSWORD` (scrypt-compared), optional TOTP stored in `settings`, in-memory 8 h sessions, per-IP and global rate limits. Gate events go to `access_log`.
 - Sharing it publicly is meant to happen through a tunnel/proxy (`PUBLIC_URL`, `TRUST_PROXY=1`), not by opening ports.
+
+## Saga 3D proof of concept (2026-10-30)
+An experiment, not a feature: the saga dungeons in third person like the big online adventure games, in a cuter,
+chunkier look, to find out whether the old tablets can draw it. `packages/arcade/saga3d.html` + `src/saga3d/`.
+- Same data: the dungeon is `generateSaga(id)` from `shared`, the classes, spells, monsters and bosses are the real
+  ones, so the feel matches the 2D game. The rules run locally in `sim.ts` (packs with aggro and leash, ranged
+  shots, telegraphed boss moves with phases and adds, the gate, rest stones, the four spells, the potion, falling and
+  getting up), with the same interface the server would have: `move`, `cast`, `update`, a list of events. It is the
+  piece that would go away if this became real; the server's `sagasim.ts` already does all of it.
+- Drawn for weak GPUs: one merged floor, walls and decor baked per block, four (two on low quality) point lights that
+  jump to the nearest torches, light pools and flame halos baked or batched, fog as the ceiling, no shadow maps (blob
+  shadows), shared Lambert materials with vertex colours, chibi figures of a handful of meshes each, one particle
+  system, DOM for numbers and the HUD, shaders compiled before the first frame, pixel ratio capped and lowered by
+  itself under 28 fps.
+- Camera: behind the character, drag to orbit, pinch or wheel to zoom, swings behind the walking direction, climbs
+  over a wall behind you instead of going into it. Touch: a floating stick on the left half, the camera on the right,
+  tap a monster to target it, big spell buttons.
+- What decides it: the frame rate readout on the tablets in a pack fight and in the boss room. The JS side costs
+  about 2 ms a frame on a laptop, which is 10 ms on a 2017 tablet; the GPU side (lighting every pixel at 1920×1200)
+  is the unknown that only the real device can answer. If it holds 30 fps the next step is a client that renders
+  the server's saga snapshots this way; if it does not, the top-down 2D dungeons stay.
+
