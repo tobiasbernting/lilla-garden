@@ -9,6 +9,7 @@ import { SAGA_BOSSES, SAGA_MOBS, SPELLS, T, TILE, isSagaKey, type Change, type S
 import { FLAG, flagsOf, isSagaMonster, liveTarget, sagaSnap, setTarget } from '@v1/saga.ts';
 import { SAGA_SFX, bossWindup } from '@v1/sagasfx.ts';
 import { activeWorld, bus, client, myPlayer, serverNow } from '@v1/state.ts';
+import { zoomPx } from '@v1/ui/hud.ts';
 import type { Sprites } from './art.ts';
 import type { Effects } from './fx.ts';
 import { clamp01, DrawQueue, drawSprite, easeOutBack, easeOutCubic, lerp, rgba } from './gfx.ts';
@@ -41,8 +42,12 @@ interface Floater {
   on: string | number;
   x: number;
   y: number;
+  /** Where it rises, beside and above the others that came with it. */
   dx: number;
+  dy: number;
   born: number;
+  /** Seconds it is shown (as long as its animation in saga.css). */
+  life: number;
   /** Shown from this time (a fireball's number waits until it lands). */
   at: number;
 }
@@ -65,6 +70,21 @@ const MOVE_COLOUR: Record<string, [number, number, number]> = {
   nova: [0.85, 0.3, 1],
   summon: [0.5, 1, 0.5],
 };
+/** Some bosses' moves look like where they live: the frost giant's breath and snowstorm are icy, Surt's wrath is fire. */
+const BOSS_MOVE_COLOUR: Record<string, Record<string, [number, number, number]>> = {
+  rimturs: { cleave: [0.55, 0.88, 1], nova: [0.75, 0.92, 1] },
+  surt: { nova: [1, 0.45, 0.12] },
+};
+const moveColour = (move: string, by: string | number | undefined): [number, number, number] => {
+  const species = typeof by === 'number' ? activeWorld()?.animals[by]?.species : undefined;
+  return (species ? BOSS_MOVE_COLOUR[species]?.[move] : undefined) ?? MOVE_COLOUR[move] ?? [1, 0.4, 0.2];
+};
+/** The bottom of the boss's bars at the top of the screen (screen px; 0 without them). */
+function hudFloor(): number {
+  let floor = 0;
+  for (const el of document.querySelectorAll<HTMLElement>('.saga-boss, .saga-cast')) floor = Math.max(floor, el.getBoundingClientRect().bottom);
+  return floor;
+}
 /** Spells that fly from the caster to the target (pixels a second) and their colour. */
 const BOLTS: Record<string, { speed: number; c: [number, number, number]; size: number }> = {
   eldboll: { speed: 210, c: [1, 0.5, 0.12], size: 12 },
@@ -208,7 +228,7 @@ export class SagaView {
       return;
     }
     if (s.startsWith('cast_')) return this.windup(s.slice(5), c.by, from);
-    if (s.startsWith('land_')) return this.land(s.slice(5), from);
+    if (s.startsWith('land_')) return this.land(s.slice(5), from, c.by);
     switch (s) {
       case 'hugg':
         return this.slash(c.on, to ?? from, [0.9, 0.95, 1], 10, 1);
@@ -605,7 +625,7 @@ export class SagaView {
   private windup(move: string, by: string | number, at: { x: number; y: number }): void {
     const a = typeof by === 'number' ? activeWorld()?.animals[by] : undefined;
     const warn = (SAGA_BOSSES[a?.species ?? '']?.moves.find((m) => m.move === move)?.warn ?? 1500) / 1000;
-    const [r, g, b] = MOVE_COLOUR[move] ?? [1, 0.4, 0.2];
+    const [r, g, b] = moveColour(move, by);
     const sparks = [...Array(10)].map((_, i) => ({ a: (i / 10) * TAU, d: Math.random() * 0.7 }));
     const fx = this.add(warn, (layer, f, k) => {
       const s = this.find(by);
@@ -641,10 +661,10 @@ export class SagaView {
   }
 
   /** A boss's big attack lands where it was marked. */
-  private land(move: string, at: { x: number; y: number }): void {
+  private land(move: string, at: { x: number; y: number }, by: string | number): void {
     const zone = (activeWorld()?.saga?.zones ?? []).find((z) => Math.abs(z.x - at.x) < 1 && Math.abs(z.y - at.y) < 1);
     const r = (zone?.r ?? 2) * TILE;
-    const [cr, cg, cb] = MOVE_COLOUR[move] ?? [1, 0.4, 0.2];
+    const [cr, cg, cb] = moveColour(move, by);
     if (move === 'cleave' && zone?.shape === 'cone') {
       const dir = zone.dir ?? 0;
       const arc = ((zone.arc ?? 90) * Math.PI) / 180;
@@ -756,9 +776,11 @@ export class SagaView {
     const at = this.delay && this.delay.on === c.on && this.delay.until > now ? this.delay.until : now;
     el.style.visibility = at > now ? 'hidden' : '';
     if (at === now) this.labels.appendChild(el);
-    // numbers on the same body spread out a little
-    const others = this.floaters.filter((f) => f.on === c.on && now - f.born < 0.4).length;
-    this.floaters.push({ el, on: c.on, x: s.x, y: s.y + 4 - s.h, dx: (others % 3) * 7 - 7 + (Math.random() - 0.5) * 4, born: at, at });
+    // numbers that come together on the same body rise beside and above each other; healing rises to the right
+    const n = this.floaters.filter((f) => f.on === c.on && Math.abs(f.born - at) < 0.4).length % 3;
+    const side = cls.includes('heal') ? 10 : 0;
+    const life = c.kind === 'kick' ? 1.5 : c.kind === 'crit' ? 1.25 : 1.1;
+    this.floaters.push({ el, on: c.on, x: s.x, y: s.y + 4 - s.h, dx: side + [0, 9, -9][n]! + (Math.random() - 0.5) * 3, dy: -6 * n, born: at, life, at });
     // sounds for what matters to you
     const t = performance.now();
     if (c.on === client.me && c.kind === 'dmg' && t - this.lastHurtSound > 180) {
@@ -787,10 +809,10 @@ export class SagaView {
       this.labels.appendChild(f.el);
       f.el.style.visibility = '';
     }
-    const old = this.floaters.filter((f) => this.t - f.born > 1.15);
+    const old = this.floaters.filter((f) => this.t - f.born > f.life + 0.05);
     if (old.length) {
       for (const f of old) f.el.remove();
-      this.floaters = this.floaters.filter((f) => this.t - f.born <= 1.15);
+      this.floaters = this.floaters.filter((f) => this.t - f.born <= f.life + 0.05);
     }
     for (const [id, w] of this.windups) if (w.t >= w.dur) this.windups.delete(id);
   }
@@ -1033,17 +1055,22 @@ export class SagaView {
   // ------------------------------------------------------------------ labels
 
   /** Floating numbers and health bars follow whoever they belong to. */
-  placeLabels(place: (el: HTMLElement, x: number, y: number) => void): void {
+  /** `screenY`: where a world y is on the screen (px), to keep the numbers out from under the boss's bars. */
+  placeLabels(place: (el: HTMLElement, x: number, y: number) => void, screenY: (y: number) => number): void {
     if (!this.on) return;
+    // the lowest world y a number may end at: its text just below the boss's bars
+    const floor = this.floaters.length && sagaSnap()?.b ? hudFloor() : 0;
+    const zoom = screenY(1) - screenY(0);
+    const minY = floor && zoom > 0 ? (floor + 8 * zoomPx() - screenY(0)) / zoom : -Infinity;
     for (const f of this.floaters) {
       if (!f.el.isConnected) continue;
-      const k = clamp01((this.t - f.born) / 1.1);
+      const k = clamp01((this.t - f.born) / f.life);
       const s = this.find(f.on);
       if (s) {
         f.x = s.x;
         f.y = s.y + 4 - s.h;
       }
-      place(f.el, f.x + f.dx * k, f.y - 4 - 16 * easeOutCubic(k));
+      place(f.el, f.x + f.dx * (0.6 + 0.4 * k), Math.max(minY, f.y + f.dy - 4 - 16 * easeOutCubic(k)));
     }
     this.placeBars(place);
   }

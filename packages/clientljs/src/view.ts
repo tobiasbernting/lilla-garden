@@ -1712,10 +1712,12 @@ export class View implements HudTarget {
       el.style.transform = `translate(${Math.round((x - cx) * z + offX)}px, ${Math.round((y - cy) * z + offY)}px) translate(-50%, -100%)`;
     };
     // the dungeons' floating numbers and health bars
-    this.sagaFx.placeLabels(place);
-    for (const a of this.players.values()) {
-      place(a.label, a.x, a.y - 24);
-      if (a.bubble) place(a.bubble, a.x, a.y - 34);
+    this.sagaFx.placeLabels(place, (y) => (y - cy) * z + offY);
+    for (const [id, a] of this.players) {
+      // a fallen friend lies down: the name comes down too
+      const low = this.sagaFx.pose(id) === 'down' ? 12 : 0;
+      place(a.label, a.x, a.y - 24 + low);
+      if (a.bubble) place(a.bubble, a.x, a.y - 34 + low);
     }
     for (const a of this.npcs.values()) {
       place(a.label, a.x, a.y - 24);

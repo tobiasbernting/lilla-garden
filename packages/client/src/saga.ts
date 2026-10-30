@@ -190,8 +190,16 @@ export function drinkPotion(): void {
   net.send({ t: 'potion' });
 }
 
-/** Called every frame while in a dungeon: sends a waiting spell once it is ready. */
+/** A monster this far away is let go (you woke at the rest stone, or jumped to a friend). */
+const LET_GO_TILES = 16;
+
+/** Called every frame while in a dungeon: lets go of a monster left far behind, sends a waiting spell once it is ready. */
 export function sagaTick(): void {
+  if (typeof target === 'number') {
+    const me = myPlayer();
+    const at = posOf(target);
+    if (me && at && Math.hypot(at.x - me.x, at.y - me.y) > LET_GO_TILES * TILE) setTarget(null);
+  }
   if (!queued || performance.now() < inFlight) return;
   if (!canAct()) {
     queued = null;
