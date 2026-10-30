@@ -16,16 +16,17 @@ const factory: GameFactory = (ctx) => {
   const lcd = new Lcd(g, high);
   const screen = new Screen();
   const chip = new Chip(ctx.audio, ctx.out);
-  // the lab can start further on: ?play=hen&bana=3&ruta=120 (level 3, column 120)
+  // the lab can start further on: ?play=hen&bana=3&ruta=120 (level 3, column 120); never in a build
   let start = 0;
   let col = 0;
-  try {
-    const q = new URLSearchParams(location.search);
-    start = Math.max(0, Number(q.get('bana') ?? 1) - 1) || 0;
-    col = Number(q.get('ruta') ?? 0) || 0;
-  } catch {
-    start = 0;
-  }
+  if (import.meta.env.DEV)
+    try {
+      const q = new URLSearchParams(location.search);
+      start = Math.max(0, Number(q.get('bana') ?? 1) - 1) || 0;
+      col = Number(q.get('ruta') ?? 0) || 0;
+    } catch {
+      start = 0;
+    }
   const game = new Game({ chip, quality: ctx.quality, end: (score, detail) => ctx.end(score, detail), startLevel: start, startCol: col });
 
   const loop = new Loop(
