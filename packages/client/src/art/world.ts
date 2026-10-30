@@ -4,6 +4,7 @@ import { Px, hash2, shade } from './px.js';
 import { NEW_ART } from './style.ts';
 import { drawBiomeObjects } from './objects2.ts';
 import { caveWallThemed, drawLandmarks } from './landmarks.ts';
+import { drawArcade } from './arcade.ts';
 import { addBiomeTerrain, edgeGroup } from './terrain2.ts';
 
 export const OUTLINE = '#2b2419';
@@ -975,6 +976,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('treasure', [treasure()]);
   drawBiomeObjects(set);
   drawLandmarks(set);
+  drawArcade(set);
   return art;
 }
 

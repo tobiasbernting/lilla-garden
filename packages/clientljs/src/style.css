@@ -1,5 +1,5 @@
 /* LittleJS draws the world on canvases filling the window; the 2D game's HUD stays on its 320×180 grid on top,
-   anchored to the window's edges (the Phaser client letterboxes a 16:9 stage instead). */
+   anchored to the window's edges. */
 #game {
   position: fixed;
   inset: 0;

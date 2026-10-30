@@ -14,8 +14,6 @@ import {
   buy,
   completeQuest,
   cook,
-  digBlock,
-  placeBlock,
   craft,
   createPlayer,
   dropItem,
@@ -31,6 +29,8 @@ import {
   newDay,
   npcState,
   performAction,
+  arcadeScore,
+  buyPrize,
   seasonForDate,
   selectSlot,
   sell,
@@ -147,7 +147,6 @@ export class Game {
       const snap: PlayerSnap = { id: p.id, x: p.x, y: p.y, facing: p.facing, moving: p.moving, held: p.inventory[p.selected]?.item ?? null };
       if (p.emote) snap.emote = p.emote;
       if (p.area !== 'farm') snap.area = p.area;
-      if (p.z !== undefined) snap.z = p.z;
       players.push(snap);
     }
     const animals: AnimalSnap[] = Object.values(this.world.animals).map((a) => ({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving }));
@@ -334,14 +333,8 @@ export class Game {
     let changes: Change[] = [];
     switch (msg.t) {
       case 'move':
-        applyMove(w, pid, msg.x, msg.y, msg.facing, msg.moving, msg.z);
+        applyMove(w, pid, msg.x, msg.y, msg.facing, msg.moving);
         return;
-      case 'dig':
-        changes = tagArea(digBlock(w, pid, Math.floor(msg.x), Math.floor(msg.y), Math.floor(msg.h), this.ctx()), areaK);
-        break;
-      case 'place':
-        changes = tagArea(placeBlock(w, pid, Math.floor(msg.x), Math.floor(msg.y), Math.floor(msg.h)), areaK);
-        break;
       case 'act':
         changes = tagArea(performAction(w, pid, Math.floor(msg.tx), Math.floor(msg.ty), this.ctx()), areaK);
         break;
@@ -390,6 +383,12 @@ export class Game {
         break;
       case 'paint':
         changes = paint(w, pid, String(msg.pixels ?? ''));
+        break;
+      case 'arcade':
+        changes = arcadeScore(this.world, pid, String(msg.game ?? ''), Number(msg.score), this.ctx());
+        break;
+      case 'prize':
+        changes = buyPrize(this.world, pid, String(msg.item ?? ''));
         break;
       case 'quest':
         changes = completeQuest(w, pid, String(msg.id ?? ''));

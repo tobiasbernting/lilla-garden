@@ -15,7 +15,6 @@ export function untouched(a: WorldState): boolean {
   if (Object.values(a.objects).some((o) => o.by)) return false;
   if (Object.keys(a.crops).length || Object.keys(a.drops).length) return false;
   if (Object.values(a.animals).some((an) => an.owner || an.stay)) return false;
-  if (a.voxel && Object.keys(a.voxel.edits).length) return false;
   return !a.terrain.some((t) => t === 'soil' || t === 'soil_wet' || t === 'floor_wood' || t === 'floor_stone' || t === 'path_stone' || t === 'path_dirt');
 }
 
@@ -70,8 +69,7 @@ export function upgradeSavedArea(a: WorldState, k: string): { area: WorldState; 
     return { area: a, rebuilt: false };
   }
   if (untouched(a)) return { area: buildArea(c.ax, c.ay), rebuilt: true };
-  // (the 3D game's maps already have their own caves to dig; a painted hill there would stay flat)
-  if (!a.voxel) addCave(a, k);
+  addCave(a, k);
   ensureSpaceport(a);
   const have = countRenewables(a);
   const want = OLD_RENEW[a.biome ?? ''] ?? {};

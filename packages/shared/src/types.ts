@@ -34,8 +34,8 @@ export type Terrain =
   | 'sidewalk'
   | 'crossing' // zebra crossing
   | 'rail'
-  | 'dirt' // bare earth (3D game: a dug or placed dirt block on top)
-  | 'stone' // bare rock (3D game: mountains, dug rock)
+  | 'dirt' // bare earth
+  | 'stone' // bare rock
   // The wider world (2026-10-29): biome grounds, and ground nobody walks on (see WALL_TERRAIN)
   | 'rock' // a cliff, or the rock around a cave
   | 'sandstone' // red cliffs (the desert and Dinodalen)
@@ -49,7 +49,9 @@ export type Terrain =
   | 'candy' // Godislandet's sugar ground
   | 'choco' // Godislandet's chocolate river
   | 'moon' // moon dust
-  | 'space'; // the starry sky around the moon
+  | 'space' // the starry sky around the moon
+  // Minigames (2026-10-30)
+  | 'carpet'; // Spelhallen's patterned arcade carpet
 
 /** Ground nobody walks on or builds on: water and the like, cliffs, and the sky around the moon. */
 export const WALL_TERRAIN: ReadonlySet<Terrain> = new Set<Terrain>(['water', 'bog', 'lava', 'choco', 'rock', 'sandstone', 'basalt', 'space']);
@@ -104,12 +106,12 @@ export interface ItemDef {
   species?: string;
   /** Vehicles: colour variant of the bought vehicle. */
   variant?: number;
-  /** 3D game: the block placed when building with this item. */
-  block?: 'dirt' | 'sand' | 'gravel' | 'cobble' | 'planks';
   /** For tools. */
   tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
   paint?: number;
+  /** Game cartridges: the minigame it adds to the family's TV (never kept in the bag). */
+  game?: string;
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -141,7 +143,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores';
   /** A loot table (LOOT in data.ts) rolled when it is broken, dug up or opened. */
   loot?: string;
   /** Gives light at night (client). */
@@ -236,8 +238,6 @@ export interface PlayerState {
   fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
   /** Lifetime counters for the Gårdsbok (harvest, chop, …). */
   stats: Record<string, number>;
-  /** 3D game: height of the feet in blocks (undefined = standing on the ground). */
-  z?: number;
   /** Which map the player is on: 'farm', 'dungeon' or an area key 'a:x,y'. */
   area: string;
   /** Area keys the player has been to (for the world map and teleport). */
@@ -262,6 +262,22 @@ export interface PlayerState {
   sleeping?: boolean;
   /** Unlocked achievement ids. */
   achievements: string[];
+  /** Minigames: best scores, tickets and the TV games this player found. */
+  arcade?: ArcadeState;
+}
+
+export interface ArcadeState {
+  /** Best score per game. */
+  best: Record<string, number>;
+  /** Tickets to spend at Spelhallen's prize counter. */
+  tickets: number;
+  /** TV games this player found or won (the family's TV has everyone's). */
+  games: string[];
+  /** Tickets won on `day` (a daily limit keeps the prizes special). */
+  day: number;
+  won: number;
+  /** The TV or machine last opened (wall clock), so scores come from a real game. */
+  open?: { where: 'tv' | 'hall'; game?: string; at: number; last?: number };
 }
 
 export interface Achievement {
@@ -422,8 +438,6 @@ export interface WorldState {
   dungeon?: WorldState;
   /** Loaded overworld areas by key (farm world only). */
   areas?: Record<string, WorldState>;
-  /** 3D game: the block layer (see voxel.ts). */
-  voxel?: VoxelData;
   /** 2D game: today's weather, the same everywhere in the world (not persisted). */
   weather?: WeatherState;
   /** Dungeon: seed, size, whether the boss is beaten. */
@@ -468,10 +482,3 @@ export interface WeatherState {
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;
-
-/** 3D game: generated column heights (MAP_W × MAP_H) and every block players changed ("x,y,h" → block). */
-export interface VoxelData {
-  heights: number[];
-  edits: Record<string, number>;
-  seed: number;
-}

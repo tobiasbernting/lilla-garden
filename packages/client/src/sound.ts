@@ -166,8 +166,15 @@ export function setAmbience(kind: string | null): void {
   applyAmbience();
 }
 
+/** A minigame is open: the rain and wind keep quiet until it closes. */
+let hushed = false;
+export function hushAmbience(on: boolean): void {
+  hushed = on;
+  applyAmbience();
+}
+
 function applyAmbience(): void {
-  const want = muted ? null : ambKind;
+  const want = muted || hushed ? null : ambKind;
   if (!want) {
     if (amb && ctx) amb.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.6);
     return;

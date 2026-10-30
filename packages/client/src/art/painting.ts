@@ -1,9 +1,6 @@
-// Textures for paintings drawn by players (16×16 palette-index strings).
-import type Phaser from 'phaser';
+// Pictures of paintings drawn by players (16×16 palette-index strings).
 import { PAINT_SIZE, paintColor } from '@lilla-garden/shared';
-import { upscale } from './hd.ts';
 import { Px } from './px.js';
-import { HD } from './style.ts';
 import { getArt } from './textures.js';
 
 const FRAME = '#a5733a';
@@ -22,12 +19,6 @@ export function paintingPx(pixels: string): Px {
   return p;
 }
 
-const hashOf = (s: string): string => {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-  return h.toString(36);
-};
-
 const urls = new Map<string, string>();
 /** Data URL of a framed thumbnail for inventory slots (cached). */
 export function paintingIconUrl(pixels: string): string {
@@ -43,11 +34,4 @@ export function paintingIconUrl(pixels: string): string {
 export function stackIconUrl(stack: { item: string; data?: string }): string {
   if (stack.data !== undefined) return paintingIconUrl(stack.data);
   return getArt().iconUrl[stack.item] ?? '';
-}
-
-/** Ensures a texture for this drawing exists; returns its key. */
-export function paintingTexture(tm: Phaser.Textures.TextureManager, pixels: string): string {
-  const key = `painting-${hashOf(pixels)}`;
-  if (!tm.exists(key)) tm.addCanvas(key, (HD ? upscale(paintingPx(pixels)) : paintingPx(pixels)).canvas);
-  return key;
 }

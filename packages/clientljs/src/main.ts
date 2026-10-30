@@ -38,6 +38,7 @@ import { Hud } from '@v1/ui/hud.ts';
 import { Menus } from '@v1/ui/menus.ts';
 import { Picker } from '@v1/ui/picker.ts';
 import { initRide } from '@v1/ui/ride.ts';
+import { initArcade } from '@v1/ui/arcade.ts';
 import { initSound, isMuted, setMuted } from '@v1/sound.ts';
 import { Chat, SocialButtons, petCommand, weatherChip } from '@v1/ui/social.ts';
 import { forceQuality, on } from './features.ts';
@@ -77,8 +78,25 @@ const hud = new Hud(
 );
 hud.root.style.display = 'none';
 menus.onChange = (open) => (view.uiOpen = open);
-// chat, pets that stay or come when you whistle, weather, villager conversations
-menus.features2d = true;
+// ---- minigames: while one is open, the farm waits behind it unseen and unheard ----
+let arcadeOpen = false;
+let glowWas = true;
+initArcade((open) => {
+  arcadeOpen = open;
+  view.uiOpen = open || menus.isOpen();
+  view.hush(open);
+  // keys held when the TV went on would otherwise stay held in the game
+  inputClear();
+  gameEl.style.visibility = open ? 'hidden' : '';
+  labels.style.visibility = open ? 'hidden' : '';
+  if (postProcess) {
+    if (open) {
+      glowWas = postProcess.enabled;
+      postProcess.enabled = false;
+    } else postProcess.enabled = glowWas;
+  }
+});
+// chat, pets that stay or come when you whistle, weather
 hud.topExtras.push(weatherChip);
 bus.on('weather', () => hud.renderTop());
 const chat = new Chat(hud.root);
@@ -162,8 +180,11 @@ void engineInit(
     ready = true;
     if (client.world) start();
   },
-  () => view.update(timeDelta),
   () => {
+    if (!arcadeOpen) view.update(timeDelta);
+  },
+  () => {
+    if (arcadeOpen) return;
     view.placeLabels();
     // on a slow screen the glow and tilt-shift pass (the one costly extra) goes first
     if (postProcess?.enabled && !speedChecked && started && timeReal - startedAt > 8) {
@@ -181,8 +202,12 @@ void engineInit(
       postProcess.values.vignette = 0.3 + 0.22 * night;
     }
   },
-  () => view.render(),
-  () => view.renderPost(),
+  () => {
+    if (!arcadeOpen) view.render();
+  },
+  () => {
+    if (!arcadeOpen) view.renderPost();
+  },
   [],
   gameEl,
 );

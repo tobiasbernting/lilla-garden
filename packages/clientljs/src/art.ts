@@ -51,7 +51,7 @@ export interface Sprites {
 }
 
 /** Things with glass that glows at night. */
-const LIT_KINDS = new Set(['house', 'house_small', 'apartment', 'barn', 'bathhouse', 'coop', 'sheepfold', 'pigsty', 'shop', 'market', 'pizzeria', 'train_station', 'stall', 'sellstall', 'window', 'door']);
+const LIT_KINDS = new Set(['house', 'house_small', 'apartment', 'barn', 'bathhouse', 'coop', 'sheepfold', 'pigsty', 'shop', 'market', 'pizzeria', 'train_station', 'stall', 'sellstall', 'window', 'door', 'arcade_hall']);
 
 const canvas = (w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] => {
   const c = document.createElement('canvas');

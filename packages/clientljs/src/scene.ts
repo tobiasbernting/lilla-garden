@@ -28,7 +28,7 @@ export interface Scene {
   vw: number;
   vh: number;
   /** 'space': the moon (outdoors, but no birds, mist or weather). */
-  where: 'out' | 'inside' | 'bath' | 'cave' | 'space';
+  where: 'out' | 'inside' | 'bath' | 'hall' | 'cave' | 'space';
   /** People and animals: birds fly from them, plants rustle. */
   movers: { x: number; y: number }[];
   /** Cells of open water. */

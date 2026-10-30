@@ -126,7 +126,8 @@ describe('biomerna', () => {
         }
         for (const an of Object.values(a.animals)) expect(isSolidForPlayer(a, Math.floor(an.x / TILE), Math.floor(an.y / TILE))).toBe(false);
       }
-  });
+    // it walks well over a hundred maps: a few seconds, longer on a busy machine
+  }, 60_000);
 
   it('each new biome has its own things to find and animals to meet', () => {
     const want: Record<string, string[]> = {

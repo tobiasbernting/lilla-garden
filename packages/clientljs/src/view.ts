@@ -19,7 +19,8 @@ import {
   inInterior,
   inPool,
   isBaby,
-  isBathKey,
+  isHallKey,
+  isIndoorKey,
   isUnderground,
   isVehicle,
   LOOT_REFILL_DAYS,
@@ -110,7 +111,7 @@ const SWAY: Record<string, number> = {
 /** Small things that cast no sun shadow. */
 const FLAT_LOOKING = new Set(['grass_tuft', 'flower', 'wild_flower_mid', 'rock_small', 'mushroom', 'shell', 'rug', 'painting', 'clock', 'stump', 'ore', 'egg_basket', 'wild_pumpkin', 'iceberry', 'cloudberry', 'moon_rock', 'moon_cheese', 'gold_vein', 'gem_vein', 'fossil_rock', 'obsidian_rock', 'dragon_egg', 'wisp', 'loot_chest']);
 /** How far above the middle of its footprint a thing's light sits (pixels): the glowing part is up high. */
-const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8 };
+const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8 };
 /** Places where the trees never turn: the tropics, the desert, the volcano, candy land, the moon, the caves. */
 const TIMELESS = new Set(['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane']);
 /** How high animals hop as they walk (pixels). */
@@ -202,6 +203,8 @@ export class View implements HudTarget {
   /** On the moon: no weather, a dim starry light, and everyone walks with a bounce. */
   private moon = false;
   private bath = false;
+  /** Spelhallen (an indoor room too). */
+  private hall = false;
   private inside = false;
   private ground: Ground | null = null;
   private objects = new Map<number, ObjView>();
@@ -307,7 +310,9 @@ export class View implements HudTarget {
     this.area = myArea();
     this.cave = isUnderground(this.area);
     this.moon = this.area === MOON_KEY;
-    this.bath = isBathKey(this.area);
+    // an indoor room (the bath house or Spelhallen): the same room, lit inside and dark around it
+    this.bath = isIndoorKey(this.area);
+    this.hall = isHallKey(this.area);
     this.inside = false;
     this.snowGround = this.wantSnowGround();
     // the real calendar's seasons turn the trees only where there are seasons
@@ -872,7 +877,7 @@ export class View implements HudTarget {
     if (this.roofsDirty) {
       this.roofsDirty = false;
       releaseRoofs(this.roofs);
-      this.roofs = world.voxel || this.cave ? [] : buildRoofs(world, myTile);
+      this.roofs = this.cave ? [] : buildRoofs(world, myTile);
     }
     for (const r of this.roofs) {
       const target = r.tiles.has(myTile) ? 0 : 1;
@@ -919,7 +924,7 @@ export class View implements HudTarget {
       vy,
       vw,
       vh,
-      where: this.cave ? 'cave' : this.inside ? 'inside' : this.bath ? 'bath' : this.moon ? 'space' : 'out',
+      where: this.cave ? 'cave' : this.inside ? 'inside' : this.hall ? 'hall' : this.bath ? 'bath' : this.moon ? 'space' : 'out',
       movers,
       water: this.ground?.water ?? [],
       nearLava: this.nearLava(),
@@ -1074,6 +1079,10 @@ export class View implements HudTarget {
       // the sun shines on the moon from a black sky: pale cool light, long crisp shadows, the crystals aglow
       sky = { ...sky, ambient: [0.74, 0.77, 0.9], dark: 0.55, shadowX: 0.9, shadowY: 0.35, shadowLen: 1.6, shadowAlpha: 0.5, golden: 0, wind: 0 };
       on = 0.85;
+    } else if (this.hall) {
+      // Spelhallen is dim like every arcade, at any hour, so the machines and the neon glow
+      sky = { ...sky, ambient: [0.36, 0.31, 0.5], dark: 0.85, shadowAlpha: 0, wind: 0, golden: 0 };
+      on = 1;
     } else if (this.inside || this.bath) {
       // indoors: daylight through the windows, cosy lamp light at night
       const d = sky.dark;
@@ -1384,6 +1393,8 @@ export class View implements HudTarget {
       if (!inView(ov.x, ov.y, s.w, s.h)) continue;
       let sprite = s;
       if (ov.art?.animated && ov.art.frames.length > 1) sprite = ov.art.frames[Math.floor(t / 0.4) % ov.art.frames.length] ?? s;
+      // Spelhallen's machines: frames 0–5 are the six games, 6–11 the same screens lit up; each blinks in its own time
+      else if (ov.o.kind === 'arcade_machine' && ov.art && ov.art.frames.length >= 12) sprite = ov.art.frames[(ov.frame % 6) + 6 * (Math.floor(t * 1.6 + ov.phase * 3) % 2)] ?? s;
       const footX = ov.x + s.w / 2;
       const footY = ov.y + s.h;
       let angle = 0;
@@ -1544,6 +1555,11 @@ export class View implements HudTarget {
   }
 
   /** After LittleJS's objects, before the light map: black out what can't be seen from indoors. */
+  /** A minigame opened over the farm (or closed): its sounds keep quiet meanwhile. */
+  hush(on: boolean): void {
+    this.sounds.hush(on);
+  }
+
   renderPost(): void {
     if (!this.world) return;
     const black = rgb(0, 0, 0, 1);
@@ -1564,6 +1580,8 @@ export class View implements HudTarget {
       rect(x + w, y, Rr, y + h);
     };
     if (this.inside) hole((INTERIOR.x - 1) * TILE, (INTERIOR.y - 1) * TILE, (INTERIOR.w + 2) * TILE, (INTERIOR.h + 2) * TILE);
+    // the bath house's tall wall caps stand a tile above the room; Spelhallen's low walls only rise 2px
+    else if (this.hall) hole(BATH_ROOM.x * TILE, BATH_ROOM.y * TILE - 2, BATH_ROOM.w * TILE, BATH_ROOM.h * TILE + 2);
     else if (this.bath) hole(BATH_ROOM.x * TILE, (BATH_ROOM.y - 1) * TILE, BATH_ROOM.w * TILE, (BATH_ROOM.h + 1) * TILE);
   }
 

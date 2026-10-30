@@ -1,3 +1,4 @@
+import { ARCADE_GAMES, cartOf } from './arcade.ts';
 import type { Achievement, AnimalDef, CropDef, ItemDef, NpcDef, ObjectDef, RecipeDef } from './types.ts';
 
 // ---------- Items ----------
@@ -48,12 +49,11 @@ crop('sunflower', 20, 28);
 crop('wheat', 10, 10);
 
 // Materials
-add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials', block: 'planks' }));
-add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials', block: 'cobble' }));
-// 3D game: dug out of the ground, and built with
-add(I('dirt', 'material', { sell: 1, block: 'dirt' }));
-add(I('sand', 'material', { sell: 1, block: 'sand' }));
-add(I('gravel', 'material', { sell: 1, block: 'gravel' }));
+add(I('wood', 'material', { sell: 2, buy: 5, tab: 'materials' }));
+add(I('stone', 'material', { sell: 2, buy: 5, tab: 'materials' }));
+add(I('dirt', 'material', { sell: 1 }));
+add(I('sand', 'material', { sell: 1 }));
+add(I('gravel', 'material', { sell: 1 }));
 add(I('coal', 'material', { sell: 4 }));
 add(I('fiber', 'material', { sell: 1 }));
 add(I('paper', 'material', { sell: 1, buy: 3, tab: 'materials' }));
@@ -190,6 +190,16 @@ place('mushroom_lamp', { sell: 45 });
 place('dino_skeleton', { sell: 120 });
 place('wisp_jar', { sell: 30 });
 place('dragon_egg');
+// Minigames: the TV (shows every game the family has), game cartridges, and Spelhallen's prizes
+place('tv', { sell: 40, buy: 250, tab: 'furniture' });
+for (const g of ARCADE_GAMES) add(I(cartOf(g), 'material', { game: g, stack: 1 }));
+place('plush_cow', { sell: 5 });
+place('plush_hen', { sell: 5 });
+place('plush_dragon', { sell: 10 });
+place('trophy', { sell: 20 });
+place('lava_lamp', { sell: 10 });
+place('disco_ball', { sell: 15 });
+place('neon_sign', { sell: 15 });
 
 // Clothing
 const cloth = (
@@ -424,6 +434,21 @@ addO(O('cave_wall', { breakWith: undefined }));
 addO(O('cave_torch', { solid: false, breakWith: undefined, light: true }));
 addO(O('cave_rock', { breakWith: 'pick', drops: [{ item: 'stone', min: 1, max: 2 }] }));
 addO(O('treasure', { interact: 'treasure', breakWith: undefined }));
+// Minigames: the TV at home; Spelhallen with a machine per game (variant = ARCADE_GAMES index), the prize counter and the score board
+built('tv', { w: 2, h: 1, interact: 'tv', light: true });
+addO(O('arcade_hall', { w: 3, h: 2, interact: 'hall', breakWith: undefined, light: true }));
+addO(O('arcade_machine', { interact: 'machine', breakWith: undefined, light: true }));
+addO(O('prize_counter', { w: 3, h: 1, interact: 'prizes', breakWith: undefined, light: true }));
+addO(O('score_board', { w: 2, h: 1, interact: 'scores', breakWith: undefined, light: true }));
+addO(O('hall_wall', { breakWith: undefined }));
+addO(O('hall_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
+built('plush_cow');
+built('plush_hen');
+built('plush_dragon');
+built('trophy');
+built('lava_lamp', { light: true });
+built('disco_ball', { light: true });
+built('neon_sign', { light: true });
 built('coop', { w: 2, h: 2, houses: { species: 'hen', capacity: 4 } });
 built('hutch', { w: 1, h: 1, houses: { species: 'rabbit', capacity: 2 } });
 built('sheepfold', { w: 2, h: 2, houses: { species: 'sheep', capacity: 3 } });
@@ -585,20 +610,20 @@ export interface LootTable {
 const L = (item: string, min: number, max: number, weight: number) => ({ item, min, max, weight });
 /** Cave chests are `cave_<theme>`, dig spots `dig_<biome>` (else `dig`). */
 export const LOOT: Record<string, LootTable> = {
-  cave_rot: { coins: [10, 25], stars: 1, picks: 2, pool: [L('gold', 2, 4, 30), L('crystal', 1, 1, 15), L('glowshroom', 2, 3, 20), L('mushroom', 2, 4, 20), L('old_coin', 1, 2, 15), L('gem', 1, 1, 8), L('hat_frog', 1, 1, 8)] },
-  cave_is: { coins: [10, 25], stars: 1, picks: 2, pool: [L('crystal', 1, 2, 30), L('iceberry', 3, 5, 25), L('gold', 2, 4, 20), L('gem', 1, 1, 10), L('hat_ice_crown', 1, 1, 8), L('fish_gold', 1, 1, 5)] },
-  cave_kristall: { coins: [15, 30], stars: 1, picks: 2, pool: [L('crystal', 2, 3, 35), L('gold', 3, 5, 25), L('gem', 1, 1, 20), L('gem', 2, 2, 5)] },
+  cave_rot: { coins: [10, 25], stars: 1, picks: 2, pool: [L('gold', 2, 4, 30), L('crystal', 1, 1, 15), L('glowshroom', 2, 3, 20), L('mushroom', 2, 4, 20), L('old_coin', 1, 2, 15), L('gem', 1, 1, 8), L('hat_frog', 1, 1, 8), L('cart_rally', 1, 1, 10)] },
+  cave_is: { coins: [10, 25], stars: 1, picks: 2, pool: [L('crystal', 1, 2, 30), L('iceberry', 3, 5, 25), L('gold', 2, 4, 20), L('gem', 1, 1, 10), L('hat_ice_crown', 1, 1, 8), L('fish_gold', 1, 1, 5), L('cart_snow', 1, 1, 12)] },
+  cave_kristall: { coins: [15, 30], stars: 1, picks: 2, pool: [L('crystal', 2, 3, 35), L('gold', 3, 5, 25), L('gem', 1, 1, 20), L('gem', 2, 2, 5), L('cart_dance', 1, 1, 8)] },
   cave_sjorovare: { coins: [20, 40], stars: 1, picks: 2, pool: [L('gold', 4, 8, 30), L('pearl', 1, 2, 25), L('old_coin', 2, 4, 25), L('hat_pirate', 1, 1, 15), L('gem', 1, 1, 5)] },
   cave_pyramid: { coins: [20, 40], stars: 1, picks: 2, pool: [L('gold', 4, 8, 30), L('scarab', 1, 1, 25), L('old_coin', 2, 3, 20), L('gem', 1, 1, 10)] },
   cave_tempel: { coins: [20, 40], stars: 1, picks: 2, pool: [L('gold', 4, 8, 30), L('idol', 1, 1, 20), L('hat_explorer', 1, 1, 15), L('banana', 3, 5, 15), L('gem', 1, 1, 10)] },
   cave_lava: { coins: [15, 30], stars: 1, picks: 2, pool: [L('fire_crystal', 1, 2, 30), L('obsidian', 2, 4, 25), L('gold', 3, 5, 20), L('gem', 1, 1, 10), L('dragon_egg', 1, 1, 9)] },
   cave_svamp: { coins: [10, 25], stars: 1, picks: 2, pool: [L('glowshroom', 3, 5, 30), L('fairy_dust', 1, 2, 25), L('mushroom', 3, 5, 20), L('crystal', 1, 1, 10), L('gem', 1, 1, 5)] },
   cave_fossil: { coins: [10, 25], stars: 1, picks: 2, pool: [L('fossil', 1, 3, 35), L('gold', 2, 4, 20), L('old_coin', 1, 2, 15), L('hat_dino', 1, 1, 12), L('gem', 1, 1, 8)] },
-  cave_godis: { coins: [10, 25], stars: 1, picks: 2, pool: [L('polkagris', 3, 6, 30), L('lollipop', 2, 4, 30), L('gold', 2, 4, 15), L('crystal', 1, 1, 10), L('gem', 1, 1, 5)] },
-  cave_rymd: { coins: [20, 40], stars: 2, picks: 2, pool: [L('star_crystal', 1, 1, 25), L('moon_rock', 2, 4, 25), L('moon_cheese', 1, 2, 20), L('hat_space', 1, 1, 12), L('shirt_space', 1, 1, 12)] },
+  cave_godis: { coins: [10, 25], stars: 1, picks: 2, pool: [L('polkagris', 3, 6, 30), L('lollipop', 2, 4, 30), L('gold', 2, 4, 15), L('crystal', 1, 1, 10), L('gem', 1, 1, 5), L('cart_dance', 1, 1, 12)] },
+  cave_rymd: { coins: [20, 40], stars: 2, picks: 2, pool: [L('star_crystal', 1, 1, 25), L('moon_rock', 2, 4, 25), L('moon_cheese', 1, 2, 20), L('hat_space', 1, 1, 12), L('shirt_space', 1, 1, 12), L('cart_star', 1, 1, 12)] },
   // the chest by the shipwreck, and the one in the crashed UFO on the moon
   shipwreck: { coins: [15, 30], stars: 1, picks: 2, pool: [L('gold', 3, 6, 30), L('pearl', 1, 1, 20), L('old_coin', 1, 3, 25), L('hat_pirate', 1, 1, 15), L('fish_gold', 1, 1, 5)] },
-  ufo: { coins: [20, 40], stars: 2, picks: 2, pool: [L('hat_space', 1, 1, 30), L('shirt_space', 1, 1, 30), L('star_crystal', 1, 2, 25), L('moon_cheese', 2, 2, 15)] },
+  ufo: { coins: [20, 40], stars: 2, picks: 2, pool: [L('hat_space', 1, 1, 30), L('shirt_space', 1, 1, 30), L('star_crystal', 1, 2, 25), L('moon_cheese', 2, 2, 15), L('cart_star', 1, 1, 25)] },
   // the secret room behind the rubble in a cave (break it with the pickaxe)
   secret: { coins: [20, 50], stars: 2, picks: 1, pool: [L('gem', 1, 2, 40), L('gold', 5, 10, 40), L('crystal', 2, 3, 20)] },
   dig_strand: { picks: 1, pool: [L('old_coin', 1, 2, 30), L('gold', 1, 3, 30), L('shell', 2, 3, 25), L('pearl', 1, 1, 10), L('hat_pirate', 1, 1, 5)] },
@@ -848,6 +873,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('biomes_5', 'biomes', 5, 2, 'signpost'),
   A('biomes_all', 'biomes', 15, 6, 'star_crystal'),
   A('caves_1', 'caves', 1, 1, 'crystal'),
+  A('arcade_1', 'arcade', 1, 1, 'tv'),
+  A('arcade_25', 'arcade', 25, 2, 'cart_rally'),
+  A('tickets_200', 'tickets', 200, 2, 'trophy'),
   A('caves_10', 'caves', 10, 3, 'gem'),
   A('loot_5', 'loot', 5, 2, 'old_coin'),
   A('loot_25', 'loot', 25, 4, 'idol'),

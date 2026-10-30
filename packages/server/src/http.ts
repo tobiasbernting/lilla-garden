@@ -24,8 +24,8 @@ const MIME: Record<string, string> = {
 
 export function findClientDist(): string | null {
   const env = process.env.CLIENT_DIST;
-  // the 2D game drawn with LittleJS, else the earlier Phaser client (from src/ in dev, from dist/server/src/ built)
-  const builds = ['clientljs', 'client'].flatMap((c) => [path.resolve(here, `../../${c}/dist`), path.resolve(here, `../../../../${c}/dist`)]);
+  // the game's build (from src/ in dev, from dist/server/src/ built)
+  const builds = [path.resolve(here, '../../clientljs/dist'), path.resolve(here, '../../../../clientljs/dist')];
   const candidates = [env, ...builds].filter((c): c is string => !!c);
   return candidates.find((c) => fs.existsSync(path.join(c, 'index.html'))) ?? null;
 }

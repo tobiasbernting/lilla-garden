@@ -27,6 +27,11 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - Gräv upp skatter där det är ett kryss, dansa i älvringar, fånga dinosaurier och gelébjörnar med lasso, kläck ett
   drakägg – och åk raket till månen (månost, stjärnkristaller, rymdvarelser och ett kraschat ufo).
 - Gör souvenirer av fynden: kristallampa, svamplampa och ett dinosaurieskelett. Nya kläder finns i skattkistorna.
+- Minispel på TV:n i stugan och i Spelhallen i varje stad: Rallyt (3D-racing), Snöbollskriget (3D-skjutspel med
+  snöbollar), Minigolfen (3D), Hönan Hilda (plattformsspel i gammal grön handkonsol-stil), Dansbanan (rytmspel i
+  neondisco) och Stjärnstorm (rymdskjutspel i glödande vektorgrafik). Familjens topplista per spel; i Spelhallen
+  vinner man biljetter att byta mot gosedjur, lampor, pokaler och nya TV-spel. Fler spelkassetter finns i grottornas
+  skattkistor och i ufot på månen.
 
 ## Develop
 
@@ -34,10 +39,8 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 pnpm install
 pnpm db:up          # Postgres 17 in a container on port 5435
 cp .env.example .env
-pnpm dev            # server on :8080, the game on :5173, 3D client (v2) on :5174, the old Phaser client on :5175, also on your LAN IP
+pnpm dev            # server on :8080, the game on :5173, also on your LAN IP
 ```
-
-All the clients talk to the same dev server, so you can play the same farm in 2D and 3D side by side.
 
 Open `http://<your-computer-ip>:5173` on the tablet. The parent page is at `/admin`
 (force a season, save, skip to the next day, make it evening/morning).
@@ -55,13 +58,8 @@ DATABASE_URL=postgres://… node packages/server/dist/main.js   # serves the gam
 Or use the container image built by GitHub Actions: `ghcr.io/tobiasbernting/lilla-garden:latest`.
 It needs `DATABASE_URL` and listens on 8080. Migrations run on boot.
 
-The 3D version (v2) is the same server shipping the 3D client: `ghcr.io/tobiasbernting/lilla-garden-v2:latest`
-(built with `docker build --build-arg CLIENT=client3d .`). Run it as its own deployment, e.g. at
-`gard2.moderskepp.lan`, with its own database so the two farms don't share (or fight over) one save.
-
-The 2D game is drawn with LittleJS (`CLIENT=clientljs`, the default). The earlier Phaser client is still built as
-`ghcr.io/tobiasbernting/lilla-garden-phaser:latest` (`docker build --build-arg CLIENT=client .`), to switch back to
-with the same database. The main image is also tagged `lilla-garden-ljs`, which the `gard-ljs` trial farm runs.
+(The 3D version, the Phaser client and the `gard-ljs` trial farm were retired on 2026-10-30; their last images
+stay in the registry as they were.)
 
 Environment:
 
@@ -70,19 +68,19 @@ Environment:
 | `DATABASE_URL`    | Postgres connection string (required for persistence)     |
 | `PORT`            | HTTP/WebSocket port, default 8080                         |
 | `SEASON_OVERRIDE` | `halloween`, `jul`, `pask`, `midsommar` or `none`         |
-| `WORLD_MODE`      | `voxel` gives new maps hills, mountains and a block layer you can dig and build in (v2). Leave unset for the 2D game. |
 
 ## Layout
 
 - `packages/shared` – game data, world simulation, Swedish strings (no I/O). Vitest covers the sim.
 - `packages/server` – WebSocket game server (20 Hz), Postgres via Drizzle, `/api/players`, `/admin`, `/health`
-- `packages/clientljs` – the 2D game, drawn with [LittleJS](https://github.com/KilledByAPixel/LittleJS): light and
+- `packages/clientljs` – the game, drawn with [LittleJS](https://github.com/KilledByAPixel/LittleJS): light and
   shadow, animation and the cozy extras (see below). PWA, landscape. Its HUD, menus, networking, sounds and pixel art
-  are `packages/client`'s (the `@v1/*` alias, like v2); only the view is its own.
-- `packages/client` – the earlier 2D client (Phaser 3, 320×180 virtual resolution, integer scaled), kept as a fallback;
-  also home of the HTML menus, HUD, networking, sounds and generated pixel art all the clients share
-- `packages/client3d` – v2: Three.js client that draws the same world as Minecraft-style blocks. Reuses the 2D
-  client's networking, state, HUD, menus and pixel art (imported via the `@v1/*` alias); only the view is new.
+  come from `packages/client` (the `@v1/*` alias); the view is its own.
+- `packages/client` – the HTML menus, HUD, networking, client state, sounds and the pixel art generated in code
+  (once the Phaser client; that view is gone, the shared parts stay here)
+- `packages/arcade` – the minigames and the overlay they run in (title card, pause, results, one controller for
+  keyboard, gamepad and touch). Each game is loaded only when played. `pnpm --filter @lilla-garden/arcade lab`
+  opens a lab page that plays any game without the server (`?play=rally`, `?game=golf`, `?tv`, `&touch=1`).
 
 ## Controls
 
@@ -96,35 +94,9 @@ All pixel art (terrain, objects, crops, animals, characters, icons) is generated
 (`packages/client/src/art`). The design originally planned to use Kenney's CC0 roguelike tiles for
 terrain and objects; swapping those in later only touches `art/world.ts`.
 
-### 3D (v2)
-
-- Dator: klicka i spelet för att styra med musen. WASD går, musen tittar, klick använder verktyget på det du
-  tittar på (svart ram). Du behöver inte sikta exakt: spelet väljer det närmaste som verktyget kan användas på,
-  inom en ruta från dig. Håll in knappen för att fortsätta hugga, hacka, vattna, så eller bygga medan du går.
-  Mellanslag hoppar, Shift springer, `E`/`Q` ryggsäck, hjulet/`1–8` väljer verktyg, `F5` eller `V` byter kamera
-  (första person, bakifrån, framifrån), 🖱️ inverterar musen upp/ner, `Esc` släpper musen.
-- Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på något för att använda verktyget på det,
-  handknappen (håll in för att fortsätta) använder det du tittar på, annars rutan framför dig. ⤒ hoppar,
-  🎥 byter kamera, 🖱️ inverterar upp/ner.
-
-#### Gräva och bygga (`WORLD_MODE=voxel`)
-
-Med `WORLD_MODE=voxel` får världen kullar, berg vid kanterna, grottor och malm. Gården, huset och vägarna ut
-till grannkartorna hålls platta, och skogarna är glesare med ek, björk, mörk ek, körsbär, gran och rödgran.
-
-- Jord, sand, grus och snö gräver du med vad som helst (även händerna); sten och malm kräver hackan.
-  Sten ger sten, kolmalm kol, guldmalm guld, kristallmalm ädelstenar. Längst ner ligger berggrund.
-- Gräver du rakt fram tar du två block på höjden, så du kan gå in i berget.
-- Håll jord, sand, grus, sten (blir kullersten) eller trä (blir plankor) och klicka för att bygga ett block.
-  Hoppa och bygg under dig för att ta dig upp. Mittenklick väljer det block du tittar på från ryggsäcken.
-- Uppgrävd jord kan hackas till åker igen. Under träd, byggnader och grödor går det inte att gräva.
-
-Bytt läge på en befintlig gård får den ett blocklager men behåller sin gamla skog; en ny gård får allt.
-
-
 ### Grafiken (LittleJS)
 
-The 2D game is drawn by LittleJS at screen resolution (the earlier Phaser client used a 320×180 canvas), so things
+The game is drawn by LittleJS at screen resolution (the earlier Phaser client used a 320×180 canvas), so things
 can lean and squash smoothly. It starts in "Ny grafik"; the art button still cycles the styles. It needs WebGL 2
 (and says so on a screen without it).
 

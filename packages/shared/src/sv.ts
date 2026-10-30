@@ -206,6 +206,20 @@ export const ITEM_NAMES: Record<string, string> = {
   hat_frog: 'Grodmössa',
   hat_dino: 'Dinohuva',
   hat_ice_crown: 'Iskrona',
+  tv: 'TV',
+  cart_rally: 'Spelkassett: Rallyt',
+  cart_snow: 'Spelkassett: Snöbollskriget',
+  cart_golf: 'Spelkassett: Minigolfen',
+  cart_hen: 'Spelkassett: Hönan Hilda',
+  cart_dance: 'Spelkassett: Dansbanan',
+  cart_star: 'Spelkassett: Stjärnstorm',
+  plush_cow: 'Gosedjur: ko',
+  plush_hen: 'Gosedjur: höna',
+  plush_dragon: 'Gosedjur: drake',
+  trophy: 'Pokal',
+  lava_lamp: 'Lavalampa',
+  disco_ball: 'Discokula',
+  neon_sign: 'Neonskylt',
 };
 
 export const OBJECT_NAMES: Record<string, string> = {
@@ -247,6 +261,12 @@ export const OBJECT_NAMES: Record<string, string> = {
   bus_stop: 'Busshållplats',
   train_station: 'Tågstation',
   bath_exit: 'Ut ur badhuset',
+  arcade_hall: 'Spelhallen',
+  arcade_machine: 'Spelautomat',
+  prize_counter: 'Prisdisken',
+  score_board: 'Topplistan',
+  hall_wall: 'Vägg',
+  hall_exit: 'Ut ur Spelhallen',
   apartment: 'Hyreshus',
   shop: 'Affär',
   traffic_light: 'Trafikljus',
@@ -496,6 +516,24 @@ export const T = {
   enteredCave: 'Grottan är mörk och full av troll. Hitta skattkistan!',
   enteredBath: 'Välkommen till badhuset! Hoppa i poolen!',
   bathhouseName: 'Badhuset',
+  enteredHall: 'Välkommen till Spelhallen! Spela, vinn biljetter och byt dem mot priser i prisdisken.',
+  hallName: 'Spelhallen',
+  arcadeRecord: '👑 {name} slog familjerekordet i {game}: {score} poäng!',
+  notEnoughTickets: 'Du har inte tillräckligt med biljetter.',
+  familyHasGame: 'Familjen har redan det spelet på TV:n.',
+  prizeBought: '🎁 Du fick {item}!',
+  newTvGame: 'nytt spel på TV:n',
+  spareCart: '{n} biljetter (spelet fanns redan)',
+  tickets: 'biljetter',
+  prizesTitle: 'Prisdisken',
+  scoresTitle: 'Topplistan',
+  noScores: 'Ingen har spelat än.',
+  tvGamesHint: 'Fler spel finns i Spelhallen och ute i världen.',
+  prizesHint: 'Spela på automaterna och vinn biljetter: en biljett per {n} poäng. Byt dem mot priser här!',
+  scoresHint: 'Familjens bästa poäng i varje spel.',
+  tvGame: 'TV-spel',
+  alreadyOnTv: 'Finns på TV:n',
+  swap: 'Byt',
   caveNeedWeapon: 'Ta med ett svärd eller en pilbåge in i grottan',
   needRockets: 'Slut på raketer! Snickra fler vid arbetsbänken.',
   reloading: 'Laddar om…',
@@ -616,6 +654,9 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   biomes_5: { title: 'Äventyrare', text: 'Upptäck 5 olika sorters platser' },
   biomes_all: { title: 'Hela världen', text: 'Upptäck alla 15 sorters platser, månen också' },
   caves_1: { title: 'Grottforskare', text: 'Utforska en grotta ute i världen' },
+  arcade_1: { title: 'Spelare 1', text: 'Spela ett TV-spel eller en spelautomat' },
+  arcade_25: { title: 'Spelkung', text: 'Spela 25 omgångar' },
+  tickets_200: { title: 'Biljettsamlare', text: 'Vinn 200 biljetter i Spelhallen' },
   caves_10: { title: 'Grottkung', text: 'Utforska 10 olika grottor' },
   loot_5: { title: 'Skattletare', text: 'Öppna 5 skattkistor ute i världen' },
   loot_25: { title: 'Skattjägare', text: 'Öppna 25 skattkistor' },
@@ -660,8 +701,6 @@ export interface HelpStep {
 
 export interface HelpTopic {
   id: string;
-  /** Only shown in the 2D game. */
-  only2d?: boolean;
   emoji: string;
   title: string;
   intro?: string;
@@ -875,8 +914,21 @@ export const HELP: HelpTopic[] = [
     ],
   },
   {
+    id: 'arcade',
+    emoji: '🕹️',
+    title: 'TV-spel och Spelhallen',
+    intro: 'Sex minispel finns att spela: Rallyt, Snöbollskriget, Minigolfen, Hönan Hilda, Dansbanan och Stjärnstorm.',
+    steps: [
+      { icon: 'tv', text: 'TV:n i stugan har Hönan Hilda och Minigolfen från början. Gå fram till den och använd den för att spela.' },
+      { icon: 'emoji:🏙️', text: 'I varje stad ligger Spelhallen, bredvid badhuset. Där finns en spelautomat för varje spel.' },
+      { icon: 'emoji:🎟️', text: 'I Spelhallen vinner du biljetter: en biljett per 500 poäng. Byt dem mot gosedjur, lampor, pokaler och nya TV-spel i prisdisken.' },
+      { icon: 'cart_star', text: 'Spelkassetter ligger gömda i skattkistor i grottorna och i ufot på månen. Hittar du en kommer spelet på TV:n för hela familjen.' },
+      { icon: 'trophy', text: 'Topplistan visar familjens bästa poäng i varje spel. Slår du någon annans rekord får alla veta det!' },
+      { icon: 'emoji:⏸️', text: 'Escape eller pausknappen pausar spelet. Spelen fungerar med tangentbord, handkontroll och pekskärm.' },
+    ],
+  },
+  {
     id: 'friends',
-    only2d: true,
     emoji: '💬',
     title: 'Prata, djur och väder',
     steps: [

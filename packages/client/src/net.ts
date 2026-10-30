@@ -58,6 +58,10 @@ export class Net {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
+  connected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
   private handle(msg: ServerMsg): void {
     switch (msg.t) {
       case 'welcome':

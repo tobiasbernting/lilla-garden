@@ -5,7 +5,6 @@ import { MAP_H, MAP_W, key, type WeatherKind, type WorldState } from './types.ts
 import type { Change } from './protocol.ts';
 import { T, WEATHER_NEWS } from './sv.ts';
 import type { SimCtx } from './sim.ts';
-import { voxelMode } from './voxel.ts';
 import { isUnderground } from './caves.ts';
 
 export const WEATHER_KINDS: WeatherKind[] = ['sun', 'cloudy', 'rain', 'storm', 'snow', 'hail', 'wind', 'fog'];
@@ -91,9 +90,8 @@ export function setWeather(world: WorldState, kind: WeatherKind, ctx: SimCtx, fo
 const RAIN_SOAK_MS = 8000;
 const RAIN_CHECK_MS = 3000;
 
-/** Rolls the weather on and lets the rain water every field it falls on. Not in the 3D game. */
+/** Rolls the weather on and lets the rain water every field it falls on. */
 export function tickWeather(world: WorldState, ctx: SimCtx, out: Change[]): void {
-  if (voxelMode()) return;
   if (!world.weather) {
     world.weather = { kind: 'sun', since: ctx.now, until: ctx.now + weatherDuration('sun', ctx.rnd) };
     return;

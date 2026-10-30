@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Arkadlabbet</title>
+    <style>
+      body { margin: 0; min-height: 100vh; background: #2a3d1f; color: #fff; font-family: system-ui, sans-serif; }
+      main { max-width: 720px; margin: 0 auto; padding: 24px; }
+      h1 { margin-top: 0; }
+      .games { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+      .games button { font-size: 18px; padding: 12px 16px; border-radius: 12px; border: 0; cursor: pointer; }
+      label { display: inline-flex; gap: 6px; align-items: center; margin-right: 16px; }
+      pre { background: rgba(0, 0, 0, 0.3); padding: 12px; border-radius: 8px; min-height: 3em; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>🕹️ Arkadlabbet</h1>
+      <p>Varje minispel utan spelservern. Länkar: <code>?game=rally</code> visar spelets kort, <code>?play=rally</code> startar direkt, <code>?tv</code> öppnar TV:n, <code>&amp;touch=1</code> visar pekknapparna.</p>
+      <div class="games" id="games"></div>
+      <label><input type="checkbox" id="touch" /> Pekknappar</label>
+      <label><input type="checkbox" id="muted" /> Ljud av</label>
+      <h3>Resultat</h3>
+      <pre id="log"></pre>
+    </main>
+    <script type="module" src="/src/lab.ts"></script>
+  </body>
+</html>
