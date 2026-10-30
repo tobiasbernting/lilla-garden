@@ -46,8 +46,8 @@ export type Change =
   | { t: 'zone'; area: string; id: string; zone: SagaZone | null }
   /** Dungeons: a boss says something to everyone inside. */
   | { t: 'yell'; area: string; name: string; text: string }
-  /** Big words across the screen: a dungeon's name, a boss beaten, a new chapter. */
-  | { t: 'banner'; to: string | null; area?: string; text: string; sub?: string }
+  /** Big words across the screen: a dungeon's name, a boss beaten (celebrate!), a new chapter, a rest stone, everyone fallen. */
+  | { t: 'banner'; to: string | null; area?: string; text: string; sub?: string; kind?: 'enter' | 'boss' | 'cleared' | 'chapter' | 'reward' | 'rest' | 'wipe' }
   /** What a dungeon chest gave you (a loot window in rarity colours). */
   | { t: 'loot'; to: string; from: string; items: { item: string; count: number }[]; coins: number; stars: number };
 

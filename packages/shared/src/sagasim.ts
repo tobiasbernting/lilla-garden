@@ -131,7 +131,7 @@ function joined(h: Here, p: PlayerState, out: Change[], greet: boolean): void {
   delete h.inst.emptySince;
   if (greet) {
     const d = DUNGEONS[h.inst.id];
-    out.push({ t: 'banner', to: p.id, area: h.key, text: d.name, sub: d.intro });
+    out.push({ t: 'banner', to: p.id, area: h.key, text: d.name, sub: d.intro, kind: 'enter' });
   }
 }
 
@@ -352,7 +352,7 @@ export function sagaChapter(world: WorldState, playerId: string): Change[] {
   const out: Change[] = [];
   if (!prog.heard) {
     prog.heard = true;
-    out.push({ t: 'banner', to: p.id, text: prog.chapter === 0 ? ch.title : fmt(T.sagaChapter, { n: prog.chapter, title: ch.title }), sub: ch.goal }, playerChange(p));
+    out.push({ t: 'banner', to: p.id, text: prog.chapter === 0 ? ch.title : fmt(T.sagaChapter, { n: prog.chapter, title: ch.title }), sub: ch.goal, kind: 'chapter' }, playerChange(p));
     return out;
   }
   if (!chapterDone(prog)) return [toast(p.id, ch.goal)];
@@ -367,7 +367,7 @@ export function sagaChapter(world: WorldState, playerId: string): Change[] {
   }
   prog.chapter++;
   prog.heard = false;
-  out.push({ t: 'banner', to: p.id, text: fmt(T.sagaChapterDone, { title: ch.title }), sub: `+${r.coins} kr · +${r.stars} ⭐${r.item ? ` · ${itemName(r.item)}` : ''}` }, fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p));
+  out.push({ t: 'banner', to: p.id, kind: 'reward', text: fmt(T.sagaChapterDone, { title: ch.title }), sub: `+${r.coins} kr · +${r.stars} ⭐${r.item ? ` · ${itemName(r.item)}` : ''}` }, fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p));
   return out;
 }
 
@@ -919,7 +919,7 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
         out.push({ t: 'object', id: o.id, obj: null, area: h.key });
       }
     }
-    for (const p of party) out.push({ t: 'banner', to: p.id, area: h.key, text: fmt(T.sagaBossDown, { boss: boss.name }), sub: T.sagaGateOpen });
+    for (const p of party) out.push({ t: 'banner', to: p.id, area: h.key, text: fmt(T.sagaBossDown, { boss: boss.name }), sub: T.sagaGateOpen, kind: 'boss' });
   } else {
     h.inst.bossDown = true;
     const names: string[] = [];
@@ -930,7 +930,7 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
         bump(p, h.inst.id === 'draug' ? 'sagaDraug' : h.inst.id === 'frost' ? 'sagaFrost' : 'sagaSurt', 1, out);
       }
       names.push(p.name);
-      out.push({ t: 'banner', to: p.id, area: h.key, text: fmt(T.sagaBossDown, { boss: boss.name }), sub: fmt(T.sagaCleared, { dungeon: d.name }) });
+      out.push({ t: 'banner', to: p.id, area: h.key, text: fmt(T.sagaBossDown, { boss: boss.name }), sub: fmt(T.sagaCleared, { dungeon: d.name }), kind: 'cleared' });
     }
     out.push(toast(null, fmt(T.sagaFamilyWin, { names: names.join(' och '), boss: boss.name })));
   }
@@ -1395,7 +1395,7 @@ export function tickSaga(area: WorldState, key: string, dtMs: number, ctx: SimCt
           o.variant = 1;
           out.push({ t: 'object', id: o.id, obj: o, area: key });
         }
-        for (const q of party) out.push({ t: 'banner', to: q.id, area: key, text: T.sagaRestLit, sub: T.sagaRestSub });
+        for (const q of party) out.push({ t: 'banner', to: q.id, area: key, text: T.sagaRestLit, sub: T.sagaRestSub, kind: 'rest' });
       }
       if (!fighting) f.hp = Math.min(f.max, f.hp + f.max * REST_REGEN * sec);
     });
@@ -1421,7 +1421,7 @@ export function tickSaga(area: WorldState, key: string, dtMs: number, ctx: SimCt
       inst.wipeAt = now + WIPE_MS;
       const boss = Object.values(inst.mobs).find((m) => (m.kind === 'boss' || m.kind === 'mini') && m.state === 'fight');
       if (boss) out.push(yell(h, boss.species, SAGA_BOSSES[boss.species]!.yells.wipe));
-      for (const p of party) out.push({ t: 'banner', to: p.id, area: key, text: T.sagaWipe, sub: T.sagaWipeSub });
+      for (const p of party) out.push({ t: 'banner', to: p.id, area: key, text: T.sagaWipe, sub: T.sagaWipeSub, kind: 'wipe' });
     } else if (now >= inst.wipeAt) {
       delete inst.wipeAt;
       for (const m of Object.values(inst.mobs)) if (m.state === 'fight') resetMob(h, m, out);
