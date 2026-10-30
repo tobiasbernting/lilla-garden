@@ -426,7 +426,8 @@ export function sagaAct(world: WorldState, p: PlayerState, tx: number, ty: numbe
 }
 
 const POTION_HEAL = 0.6;
-const POTION_CD = 15_000;
+/** Time between two healing potions (the client's potion button shows it too). */
+export const POTION_CD = 15_000;
 
 /** Drinks a healing potion (the potion button, or pressing action with one in hand). */
 export function drinkPotion(world: WorldState, playerId: string, ctx: SimCtx): Change[] {

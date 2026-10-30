@@ -9,6 +9,7 @@ import {
   type Change,
   type PlayerSnap,
   type PlayerState,
+  type SagaSnap,
   type Season,
   type WeatherState,
   type WorldObject,
@@ -37,6 +38,8 @@ export interface Events {
   chat: Extract<Change, { t: 'chat' }>;
   /** 2D game: the weather turned. */
   weather: WeatherState | null;
+  /** Dungeons: the monster or friend you aim at changed. */
+  target: void;
 }
 
 class Bus {
@@ -77,6 +80,8 @@ export const client = {
   weather: null as WeatherState | null,
   /** 2D game: the latest chat line of each player, for the bubble over their head. */
   chatBubbles: new Map<string, { text: string; until: number }>(),
+  /** Dungeons: everyone's health and state in each dungeon with someone in it (the server sends it 10 times a second). */
+  saga: {} as Record<string, SagaSnap>,
 };
 
 export const serverNow = (): number => Date.now() - client.serverOffset;
@@ -126,6 +131,8 @@ export function applyChange(c: Change): void {
     return;
   }
   const areaK = ('area' in c && c.area) || 'farm';
+  // a dungeon's fight is only seen by those inside it
+  if ((c.t === 'spell' || c.t === 'hit' || c.t === 'zone' || c.t === 'yell' || c.t === 'banner') && 'area' in c && c.area && c.area !== myPlayer()?.area) return;
   const world = worldFor(areaK);
   if (!world) return;
   switch (c.t) {
@@ -147,7 +154,7 @@ export function applyChange(c: Change): void {
       if (c.animal) world.animals[c.id] = c.animal;
       else {
         delete world.animals[c.id];
-        client.snaps.animals.delete(c.id);
+        if ((client.snaps.animals.get(c.id)?.area ?? 'farm') === areaK) client.snaps.animals.delete(c.id);
       }
       break;
     case 'drop':
@@ -171,6 +178,31 @@ export function applyChange(c: Change): void {
       } else if (old) Object.assign(old, c.player);
       else world.players[c.id] = c.player;
       if (c.id === client.me && areaChanged) bus.emit('area', c.player.area);
+      break;
+    }
+    case 'warp': {
+      // the server moved someone (blink, charge, getting up): straight there, no sliding, no prediction
+      const p = farm.players[c.id];
+      if (p) {
+        p.x = c.x;
+        p.y = c.y;
+        p.moving = false;
+      }
+      const snap = client.snaps.players.get(c.id);
+      if (snap) {
+        snap.x = c.x;
+        snap.y = c.y;
+      }
+      break;
+    }
+    case 'zone': {
+      const zones = world.saga?.zones;
+      if (!zones) break;
+      const i = zones.findIndex((z) => z.id === c.id);
+      if (c.zone) {
+        if (i >= 0) zones[i] = c.zone;
+        else zones.push(c.zone);
+      } else if (i >= 0) zones.splice(i, 1);
       break;
     }
     case 'quests':
