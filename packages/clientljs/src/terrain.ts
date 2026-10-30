@@ -34,7 +34,8 @@ export class Ground {
     const art = getArt();
     const t = this.world.terrain[y * MAP_W + x]!;
     if (this.under === 'dungeon') return t === 'water' ? art.terrain.rock : art.terrain.index(t, x, y, false);
-    if (this.under === 'cave' && t === 'rock') return art.terrain.rock;
+    // (a saga dungeon is cut out of rock, or of basalt in Surt's mountain)
+    if (this.under === 'cave' && (t === 'rock' || t === 'basalt')) return art.terrain.rock;
     // ice-age rock and Christmas: snow on the cliffs too
     const snowy = this.snowy || (t === 'rock' && this.world.biome === 'is');
     const same = art.terrain.edges ? art.terrain.edgeGroup(t) : null;

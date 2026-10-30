@@ -10,6 +10,7 @@ import {
   countItem,
   CROPS,
   DAY_LENGTH_MS,
+  dungeonOfKey,
   DUNGEON_H,
   DUNGEON_W,
   facingTile,
@@ -17,6 +18,8 @@ import {
   inEdgeGap,
   INTERIOR,
   inInterior,
+  isMount,
+  isSagaKey,
   inPool,
   isBaby,
   isHallKey,
@@ -43,6 +46,7 @@ import {
   WALL_KINDS,
   type AnimalState,
   type Change,
+  type DungeonId,
   type DropState,
   type Facing,
   type PlayerState,
@@ -50,8 +54,9 @@ import {
   type WorldObject,
   type WorldState,
 } from '@lilla-garden/shared';
-import { ANIMAL_SIZE, ANIMAL_VARIANTS } from '@v1/art/animals.ts';
-import { dirOf, frameIndex } from '@v1/art/characters.ts';
+import { ANIMAL_SIZE, ANIMAL_VARIANTS, RIDE_LIFT } from '@v1/art/animals.ts';
+import { CHAR_H, dirOf, frameIndex, HEADROOM } from '@v1/art/characters.ts';
+import { SAGA_STEPPED } from '@v1/art/saga.ts';
 import { HD, NEW_ART } from '@v1/art/style.ts';
 import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
@@ -62,7 +67,7 @@ import { animalSprites, characterSprites, loadSprites, paintingSprite, type Obje
 import type { Sprite } from './atlas.ts';
 import { Effects } from './fx.ts';
 import { alpha, clamp01, DrawQueue, drawSheared, drawSprite, easeOutBack, easeOutElastic, lerp, rgba, smooth, WHITE } from './gfx.ts';
-import { Lamp, lampFor, LightPainter, setAmbient } from './lighting.ts';
+import { dungeonAmbient, dungeonLamps, Lamp, lampFor, lampForAnimal, LightPainter, setAmbient } from './lighting.ts';
 import { Critters } from './critters.ts';
 import { loadExtras, SNOWY, type Extras } from './extras.ts';
 import { on, yearSeason, type YearSeason } from './features.ts';
@@ -111,11 +116,13 @@ const SWAY: Record<string, number> = {
 /** Small things that cast no sun shadow. */
 const FLAT_LOOKING = new Set(['grass_tuft', 'flower', 'wild_flower_mid', 'rock_small', 'mushroom', 'shell', 'rug', 'painting', 'clock', 'stump', 'ore', 'egg_basket', 'wild_pumpkin', 'iceberry', 'cloudberry', 'moon_rock', 'moon_cheese', 'gold_vein', 'gem_vein', 'fossil_rock', 'obsidian_rock', 'dragon_egg', 'wisp', 'loot_chest']);
 /** How far above the middle of its footprint a thing's light sits (pixels): the glowing part is up high. */
-const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8 };
+const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8, saga_torch: 22, saga_rest: 6, saga_portal: 6, saga_stone: 12, saga_candles: 4, saga_icecrystal: 6, saga_brazier: 12, solruna: 6, yggdrasil: 14 };
+/** Things hung on the wall above their tile: they sort with the wall, behind whoever stands in front of them. */
+const ON_WALL = new Set(['saga_torch']);
 /** Places where the trees never turn: the tropics, the desert, the volcano, candy land, the moon, the caves. */
 const TIMELESS = new Set(['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane']);
 /** How high animals hop as they walk (pixels). */
-const HOP: Record<string, number> = { rabbit: 3, hare: 3.5, hen: 1.6, dog: 1.2, cat: 1, sheep: 0.9, goat: 1.2, pig: 0.8, fox: 1.4, deer: 1.6, lizard: 0.4, crab: 0.3, penguin: 1, slime: 2.5, wolf: 1.2, lynx: 1.2, boar: 0.8, frog: 3.5, parrot: 1, monkey: 1.8, salamander: 0.3, hedgehog: 0.4, dino: 1.2, gummy: 2.8, alien: 1.4, dragon: 1.6 };
+const HOP: Record<string, number> = { rabbit: 3, hare: 3.5, hen: 1.6, dog: 1.2, cat: 1, sheep: 0.9, goat: 1.2, pig: 0.8, fox: 1.4, deer: 1.6, lizard: 0.4, crab: 0.3, penguin: 1, slime: 2.5, wolf: 1.2, lynx: 1.2, boar: 0.8, frog: 3.5, parrot: 1, monkey: 1.8, salamander: 0.3, hedgehog: 0.4, dino: 1.2, gummy: 2.8, alien: 1.4, dragon: 1.6, skelett: 1, draugbage: 1, gravrotta: 1.2, isvarg: 1.2, isande: 1.5, eldimp: 2.2, eldhund: 1.2, korp: 2.4, fenrisvalp: 1.8, gullinbursti: 0.8 };
 
 interface ObjView {
   o: WorldObject;
@@ -200,6 +207,8 @@ export class View implements HudTarget {
   private world: WorldState | null = null;
   private area = 'farm';
   private cave = false;
+  /** In one of the saga's dungeons (dark like a cave, lit in its own colour). */
+  private saga: DungeonId | null = null;
   /** On the moon: no weather, a dim starry light, and everyone walks with a bounce. */
   private moon = false;
   private bath = false;
@@ -308,7 +317,8 @@ export class View implements HudTarget {
     this.loading = true;
     this.world = world;
     this.area = myArea();
-    this.cave = isUnderground(this.area);
+    this.saga = isSagaKey(this.area) ? dungeonOfKey(this.area) : null;
+    this.cave = isUnderground(this.area) || this.saga !== null;
     this.moon = this.area === MOON_KEY;
     // an indoor room (the bath house or Spelhallen): the same room, lit inside and dark around it
     this.bath = isIndoorKey(this.area);
@@ -427,6 +437,10 @@ export class View implements HudTarget {
     else if (o.kind === 'gate') {
       const m = this.fenceMask(o.x, o.y);
       variant = m & 5 && !(m & 10) ? 1 : 0;
+    } else if (o.kind === 'saga_gate') {
+      // the dungeon's look in o.variant; across a corridor that runs sideways it stands on end
+      const m = this.linkMask(o.x, o.y, (k) => k === 'saga_gate' || k === 'saga_wall');
+      variant = ((o.variant ?? 0) % 3) * 2 + (m & 5 && !(m & 10) ? 1 : 0);
     } else if (isWall) {
       // painted colour in o.variant; orientation from the neighbours
       const colour = (o.variant ?? 0) % PAINT_COLORS.length;
@@ -468,7 +482,7 @@ export class View implements HudTarget {
       frame: variant,
       x,
       y,
-      depth: def.flat ? 1 : (o.y + def.h) * TILE,
+      depth: def.flat ? 1 : ON_WALL.has(o.kind) ? o.y * TILE + 1 : (o.y + def.h) * TILE,
       flat: !!def.flat,
       cast: tall,
       blob: o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'bush',
@@ -597,6 +611,11 @@ export class View implements HudTarget {
     if (!actor) {
       actor = this.newActor('animal', frames, key, a.x, a.y, this.makeLabel(a.name, 'animal'), a.species);
       if (isVehicle(a)) actor.lamp = new Lamp(a.x, a.y, { color: [1, 0.95, 0.8], radius: 3, strength: 0.7 }); // headlights
+      else {
+        // creatures of fire, frost spirits and the golden boar glow in the dark
+        const glow = lampForAnimal(a.species);
+        if (glow) actor.lamp = new Lamp(a.x, a.y, glow);
+      }
       this.animals.set(a.id, actor);
     } else if (actor.key !== key) {
       actor.frames = frames;
@@ -828,7 +847,7 @@ export class View implements HudTarget {
     for (const [id, actor] of this.animals) {
       const a = world.animals[id];
       if (!a) continue;
-      const rider = a.species === 'horse' || isVehicle(a) ? Object.values(world.players).find((p) => p.riding === id) : undefined;
+      const rider = isMount(a) || isVehicle(a) ? Object.values(world.players).find((p) => p.riding === id) : undefined;
       const riderActor = rider ? this.players.get(rider.id) : undefined;
       if (riderActor && rider) {
         // glued under its rider (predicted for me, interpolated for others)
@@ -958,7 +977,8 @@ export class View implements HudTarget {
     let best = 0;
     for (const ov of this.objects.values()) {
       const k = ov.o.kind;
-      if (k !== 'torch' && k !== 'cave_torch' && k !== 'stove') continue;
+      // (the frost castle's lanterns hold a crystal, not a flame)
+      if (k !== 'torch' && k !== 'cave_torch' && k !== 'stove' && k !== 'saga_brazier' && !(k === 'saga_torch' && ov.o.variant !== 1)) continue;
       const d = Math.hypot(ov.o.x * TILE + TILE / 2 - me.x, ov.o.y * TILE + TILE / 2 - me.y);
       if (d < 96) best = Math.max(best, 1 - d / 96);
     }
@@ -1002,7 +1022,7 @@ export class View implements HudTarget {
     let by = 0;
     let bw = MAP_W * TILE;
     let bh = MAP_H * TILE;
-    if (this.cave) {
+    if (this.cave && !this.saga) {
       bw = (this.world?.cave?.w ?? DUNGEON_W) * TILE;
       bh = (this.world?.cave?.h ?? DUNGEON_H) * TILE;
     } else if (this.bath) {
@@ -1071,8 +1091,9 @@ export class View implements HudTarget {
     this.outdoor = sky;
     let on = smooth((sky.dark - 0.12) / 0.5);
     if (this.cave) {
-      // the caves out in the world are for exploring, not fighting: a little less pitch black than the troll cave
-      const amb: [number, number, number] = this.area === 'dungeon' ? [0.2, 0.19, 0.27] : [0.3, 0.28, 0.37];
+      // the caves out in the world are for exploring, not fighting: a little less pitch black than the troll cave;
+      // a saga dungeon is as dark as a cave but in its own colour, so its torches and rest stones pool light
+      const amb: [number, number, number] = this.saga ? dungeonAmbient(this.saga) : this.area === 'dungeon' ? [0.2, 0.19, 0.27] : [0.3, 0.28, 0.37];
       sky = { ...sky, ambient: amb, dark: 1, shadowAlpha: 0, wind: 0 };
       on = 1;
     } else if (this.moon) {
@@ -1100,9 +1121,9 @@ export class View implements HudTarget {
     const [r, g, b] = sky.ambient;
     setAmbient(Math.min(1, r + flash * 0.9), Math.min(1, g + flash * 0.95), Math.min(1, b + flash));
 
-    // lamps (a lantern only outdoors after dark, or in the cave; the one in bed glows softly). Indoors, the haze of
-    // lamps outside the room would show over the dark around it.
-    const lit = this.lampsOn;
+    // lamps (a lantern only outdoors after dark, or in the cave; the one in bed glows softly; in a saga dungeon as
+    // bright as its floor allows). Indoors, the haze of lamps outside the room would show over the dark around it.
+    const lit = this.lampsOn * (this.saga ? dungeonLamps(this.saga) : 1);
     const room = this.inside ? { x: INTERIOR.x - 1, y: INTERIOR.y - 1, w: INTERIOR.w + 2, h: INTERIOR.h + 2 } : this.bath ? { ...BATH_ROOM, y: BATH_ROOM.y - 1, h: BATH_ROOM.h + 1 } : null;
     const inRoom = (l: Lamp) => !room || (l.x >= room.x * TILE && l.x < (room.x + room.w) * TILE && l.y >= room.y * TILE && l.y < (room.y + room.h) * TILE);
     for (const ov of this.objects.values()) ov.lamp?.update(lit, this.t, inRoom(ov.lamp));
@@ -1117,9 +1138,10 @@ export class View implements HudTarget {
     for (const [id, a] of this.animals) {
       if (!a.lamp) continue;
       const an = this.world!.animals[id];
-      // headlights shine where the car is going
+      // headlights shine where the car is going; a glowing creature shines from its middle
       const f = an?.facing ?? 'right';
-      a.lamp.moveTo(a.x + (f === 'left' ? -18 : f === 'right' ? 18 : 0), a.y + (f === 'up' ? -14 : f === 'down' ? 14 : 0));
+      if (an && !isVehicle(an)) a.lamp.moveTo(a.x, a.y + 4 - (ANIMAL_SIZE[an.species]?.h ?? 16) / 2);
+      else a.lamp.moveTo(a.x + (f === 'left' ? -18 : f === 'right' ? 18 : 0), a.y + (f === 'up' ? -14 : f === 'down' ? 14 : 0));
       a.lamp.update(lit, this.t);
     }
     for (const f of this.flashLamps) {
@@ -1284,7 +1306,7 @@ export class View implements HudTarget {
     if (p.riding === undefined) return { lift: 0, cropLegs: false };
     const a = this.world!.animals[p.riding];
     if (a?.species === 'car') return { lift: 4, cropLegs: true };
-    return { lift: 7, cropLegs: false };
+    return { lift: RIDE_LIFT[a?.species ?? ''] ?? 7, cropLegs: false };
   }
 
   /**
@@ -1342,7 +1364,7 @@ export class View implements HudTarget {
     }
 
     // flat things lie on the ground under everything
-    for (const ov of this.objects.values()) if (ov.flat && inView(ov.x, ov.y, ov.sprite.w, ov.sprite.h)) drawSprite(ov.sprite, ov.x + ov.sprite.w / 2, ov.y + ov.sprite.h / 2);
+    for (const ov of this.objects.values()) if (ov.flat && inView(ov.x, ov.y, ov.sprite.w, ov.sprite.h)) drawSprite(this.stepped(ov) ?? ov.sprite, ov.x + ov.sprite.w / 2, ov.y + ov.sprite.h / 2);
 
     // --- shadows: soft ones under trees and feet, and the sun's ---
     const blob = art.fx.shadowBig?.[0];
@@ -1395,6 +1417,7 @@ export class View implements HudTarget {
       if (ov.art?.animated && ov.art.frames.length > 1) sprite = ov.art.frames[Math.floor(t / 0.4) % ov.art.frames.length] ?? s;
       // Spelhallen's machines: frames 0–5 are the six games, 6–11 the same screens lit up; each blinks in its own time
       else if (ov.o.kind === 'arcade_machine' && ov.art && ov.art.frames.length >= 12) sprite = ov.art.frames[(ov.frame % 6) + 6 * (Math.floor(t * 1.6 + ov.phase * 3) % 2)] ?? s;
+      else sprite = this.stepped(ov) ?? s;
       const footX = ov.x + s.w / 2;
       const footY = ov.y + s.h;
       let angle = 0;
@@ -1455,8 +1478,8 @@ export class View implements HudTarget {
     }
     for (const [id, a] of this.animals) {
       const an = world.animals[id];
-      if (!an || !inView(a.x - 30, a.y - 40, 60, 50)) continue;
-      const rider = an.species === 'horse' || isVehicle(an) ? Object.values(world.players).some((p) => p.riding === id) : false;
+      if (!an || !inView(a.x - 30, a.y - 64, 60, 74)) continue;
+      const rider = isMount(an) || isVehicle(an) ? Object.values(world.players).some((p) => p.riding === id) : false;
       const s = a.frames[a.wasMoving ? Math.floor(a.walk * 5) % 2 : 0];
       if (!s) continue;
       const hop = rider ? 0 : this.hopOf(a);
@@ -1489,6 +1512,14 @@ export class View implements HudTarget {
 
     // --- weather over everything (lit like the rest) ---
     this.weather.draw(vx, vy, vw, vh);
+  }
+
+  /** The dungeons' flames and glows: their frames hold every look, then every look again a step on (SAGA_STEPPED). */
+  private stepped(ov: ObjView): Sprite | null {
+    const looks = SAGA_STEPPED[ov.o.kind];
+    if (!looks || !ov.art) return null;
+    const steps = Math.floor(ov.art.frames.length / looks);
+    return ov.art.frames[(ov.frame % looks) + looks * (Math.floor(this.t / 0.3 + ov.phase) % steps)] ?? null;
   }
 
   private hopOf(a: Actor): number {
@@ -1527,7 +1558,7 @@ export class View implements HudTarget {
     const w = s.w * (1 + sq) * turnScale(a.flip);
     const h = s.h * (1 - sq);
     const footY = a.y + 4 - lift + bob + (swimming ? 7 : 0);
-    const part = swimming ? 15 / 24 : cropLegs ? 16 / 24 : 1;
+    const part = swimming ? (HEADROOM + 15) / CHAR_H : cropLegs ? (HEADROOM + 16) / CHAR_H : 1;
     this.queue.push(a.y + 4 + (lift > 0 ? 2 : 0), s, a.x, footY - h / 2, w, h, 0, WHITE, 0, part);
   }
 
@@ -1663,7 +1694,8 @@ export class View implements HudTarget {
       const hostile = an && (ANIMALS[an.species]?.mob || (ANIMALS[an.species]?.predator && !an.owner));
       const near = an && !onOwner && Math.hypot(an.x - me.x, an.y - me.y) < (hostile ? 140 : 40);
       a.label.style.display = near ? '' : 'none';
-      if (near) place(a.label, a.x, a.y - 18);
+      // over the head of a big one (a boss is twice as tall as a sheep)
+      if (near) place(a.label, a.x, a.y - Math.max(18, (ANIMAL_SIZE[an.species]?.h ?? 16) + 1));
     }
   }
 }

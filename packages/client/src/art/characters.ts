@@ -9,7 +9,9 @@ import { OUTLINE } from './world.js';
 export type Dir = 'down' | 'up' | 'right';
 export const DIRS: Dir[] = ['down', 'up', 'right'];
 export const CHAR_W = 16;
-export const CHAR_H = 24;
+/** Empty rows over the 24-row figure, so tall hats (a wizard's point, horns, wings) fit in the frame. */
+export const HEADROOM = 8;
+export const CHAR_H = 24 + HEADROOM;
 
 export const SKIN_TONES = ['#f7d7c0', '#f1c9a5', '#dba97d', '#b97a4e', '#8d5a32', '#5a3a22'];
 export const HAIR_COLORS = ['#f2d16b', '#d98b3a', '#8a4a1e', '#5a3a1e', '#2b2119', '#c43a2a', '#e87ab8', '#5aa0e8'];
@@ -48,14 +50,14 @@ export function lookOf(appearance: Appearance, outfit: Outfit): Look {
 export const lookKey = (l: Look): string =>
   [l.skin, l.hair, l.hairStyle, l.shirt.style, l.shirt.color, l.pants.style, l.pants.color, l.shoes.style, l.shoes.color, l.hat?.style ?? '-', l.hat?.color ?? '-'].join('|');
 
-export const DRESS_STYLES = ['dress', 'dress_belt', 'dress_flowers', 'gown'];
+export const DRESS_STYLES = ['dress', 'dress_belt', 'dress_flowers', 'gown', 'robe'];
 export const isDress = (style: string): boolean => DRESS_STYLES.includes(style);
 
-/** A-line skirt from the waist (row 15) to the hem (row 21), wider for a gown. */
+/** A-line skirt from the waist (row 15) to the hem (row 21), wider for a gown; a robe reaches the ankles. */
 function drawDressPixel(p: Px, style: string, c: string, dir: Dir, frame: number): void {
   const d = shade(c, 0.78);
   const lt = shade(c, 1.15);
-  const gown = style === 'gown';
+  const gown = style === 'gown' || style === 'robe';
   const hem = gown ? 22 : 21;
   const side = dir === 'right';
   for (let y = 15; y <= hem; y++) {
@@ -67,6 +69,20 @@ function drawDressPixel(p: Px, style: string, c: string, dir: Dir, frame: number
     p.rect(x0, y, w, 1, y === hem ? d : c);
     if (!side && y < hem) p.px(x0 + w - 1, y, d); // shaded edge
     if (!side && y < hem && y > 15) p.px(x0, y, lt);
+  }
+  if (style === 'robe') {
+    // a rope belt with its knot hanging, runes stitched down the front and round the hem
+    const rope = '#ecdcae';
+    const rune = '#fff0a0';
+    p.rect(side ? 5 : 3, 14, side ? 7 : 10, 1, rope);
+    if (dir !== 'up') p.px(side ? 10 : 9, 15, rope).px(side ? 10 : 9, 16, shade(rope, 0.8));
+    for (let x = 2; x < 14; x++) if (x % 3 === 0) p.px(x + (side && frame ? (frame === 1 ? 1 : -1) : 0), 21, rune);
+    if (dir === 'down') {
+      p.rect(7, 15, 2, 6, lt);
+      for (let y = 16; y < 21; y += 2) p.px(7, y, rune);
+    }
+    if (dir === 'up') p.rect(6, 16, 4, 1, lt).rect(7, 15, 2, 3, lt).px(7, 16, rune);
+    return;
   }
   if (style === 'dress_belt' || gown) {
     p.rect(side ? 5 : 3, 15, side ? 7 : 10, 1, '#ffffff');
@@ -82,9 +98,10 @@ function drawDressPixel(p: Px, style: string, c: string, dir: Dir, frame: number
   }
 }
 
-/** Draws one 16x24 frame. */
+/** Draws one frame: the 16x24 figure at the bottom, the HEADROOM rows above it free for a tall hat. */
 export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
   const p = new Px(CHAR_W, CHAR_H);
+  p.ctx.translate(0, HEADROOM);
   const skinD = shade(l.skin, 0.8);
   const legOff = frame === 0 ? [0, 0] : frame === 1 ? [-1, 1] : [1, -1]; // leg length deltas (walk)
   const bob = frame === 0 ? 0 : 0; // keep head steady for crisp pixels
@@ -184,6 +201,7 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     }
   }
 
+  drawNorseShirt(p, l.shirt.style, shirtC, dir, frame);
   if (dress) drawDressPixel(p, l.shirt.style, shirtC, dir, frame);
 
   // --- head (rows 2..10) ---
@@ -334,9 +352,245 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
           p.tpl(0, hy - 2, ['....O..O..O.....', '...GOGGOGGOGG...', '..OGGGGGGGGGGG..', '..GGGGGGGGGGGGG.', '.OGGGG.W.W.W.W..', '..GGGG..........', '.OGGGG..........', '..GGGG..........', '..GGGG..........', '..DDDD..........'], pal);
         break;
       }
+      default:
+        drawNorseHat(p, l.hat.style, C, dir, hx, hy);
     }
   }
+  p.ctx.setTransform(1, 0, 0, 1, 0, 0);
   return p.outline(NEW_ART ? '#2a2420' : OUTLINE);
+}
+
+// ---------------------------------------------------------------------------
+// Norse clothes: the dungeons' classes wear them all the time, and the bosses drop them
+// ---------------------------------------------------------------------------
+
+/** Mail, a bear's pelt, a long cloak or a tabard over mail (rows 10..17; a robe is a dress, see drawDressPixel). */
+function drawNorseShirt(p: Px, style: string, c: string, dir: Dir, frame: number): void {
+  const side = dir === 'right';
+  const L = shade(c, 1.22);
+  const D = shade(c, 0.74);
+  /** Little rings in two tones over a box. */
+  const mail = (m: string, x0: number, y0: number, w: number, h: number) => {
+    const ml = shade(m, 1.24);
+    const md = shade(m, 0.8);
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) p.px(x, y, (x + y) % 2 === 0 ? ml : (x + y * 3) % 4 === 1 ? md : m);
+  };
+  const sleeves = (col: string) => (side ? p.rect(6, 11, 3, 5, col) : p.rect(2, 11, 2, 5, col).rect(12, 11, 2, 5, col));
+  switch (style) {
+    case 'chainmail':
+    case 'tabard': {
+      // a shirt of rings with a short skirt of it over the legs, a leather belt
+      const m = style === 'chainmail' ? c : '#a4acb6';
+      mail(m, 3, 10, 10, 7);
+      if (side) mail(m, 6, 11, 3, 5);
+      else {
+        mail(m, 2, 11, 2, 5);
+        mail(m, 12, 11, 2, 5);
+      }
+      for (let x = side ? 5 : 3; x < (side ? 12 : 13); x++) p.px(x, 17, x % 2 ? shade(m, 0.7) : m);
+      p.rect(side ? 5 : 3, 10, side ? 6 : 10, 1, shade(m, 0.7));
+      if (style === 'chainmail') {
+        p.rect(3, 15, 10, 1, '#5a3a22');
+        if (dir === 'down') p.rect(7, 15, 2, 1, '#e8c040');
+        break;
+      }
+      // Väktarrustning: a tabard in the class's colour with a shield on the chest, steel on the shoulders
+      if (dir === 'up') {
+        p.rect(4, 10, 8, 8, c).rect(4, 10, 8, 1, L).rect(11, 11, 1, 7, D).rect(7, 11, 2, 7, L);
+      } else if (side) {
+        p.rect(8, 10, 4, 8, c).rect(8, 10, 4, 1, L).rect(11, 11, 1, 7, D);
+        p.rect(9, 12, 2, 2, '#f2c84a').px(9, 12, '#fff2b0');
+      } else {
+        p.rect(4, 10, 8, 9, c).rect(4, 10, 8, 1, L).rect(11, 11, 1, 8, D).rect(4, 18, 8, 1, D);
+        // the shield: a gold rim round a white field with a blue boss
+        p.rect(6, 11, 4, 4, '#f2c84a').rect(7, 12, 2, 2, '#f4f0e6').px(7, 12, '#ffffff').px(8, 13, c).px(6, 11, '#fff2b0');
+      }
+      p.rect(side ? 5 : 3, 15, side ? 7 : 10, 1, '#4a3020');
+      if (dir === 'down') p.rect(7, 15, 2, 1, '#e8c040');
+      // pauldrons
+      const steel = '#c4ccd6';
+      if (side) p.rect(5, 10, 5, 2, steel).rect(5, 11, 5, 1, '#8a94a4').px(5, 10, '#ffffff');
+      else p.rect(1, 10, 4, 2, steel).rect(11, 10, 4, 2, steel).rect(1, 11, 4, 1, '#8a94a4').rect(11, 11, 4, 1, '#8a94a4').px(1, 10, '#ffffff').px(11, 10, '#ffffff');
+      break;
+    }
+    case 'bearpelt': {
+      // a leather tunic, and a bear's pelt over the shoulders: shaggy, its paws hanging over the chest; from behind
+      // it covers the back, the bear's little ears peeking up at the neck
+      const tunic = '#6a4a30';
+      p.rect(3, 10, 10, 7, tunic).rect(3, 16, 10, 1, '#4a3020');
+      sleeves('#5a3e28');
+      p.rect(3, 15, 10, 1, '#3a2418');
+      const shag = (x: number, y: number) => ((x * 7 + y * 3) % 5 === 0 ? L : (x + y) % 3 === 0 ? D : c);
+      if (dir === 'up') {
+        for (let y = 9; y < 19; y++) for (let x = 2; x < 14; x++) if (y < 18 || x % 2 === 0) p.px(x, y, shag(x, y));
+        p.rect(3, 8, 2, 2, c).rect(11, 8, 2, 2, c).px(3, 8, L).px(11, 8, L).px(4, 9, D).px(12, 9, D);
+      } else if (side) {
+        for (let y = 9; y < 17; y++) for (let x = 2; x < 9 - (y > 13 ? 1 : 0); x++) if (y < 16 || x % 2 === 0) p.px(x, y, shag(x, y));
+        p.rect(8, 12, 2, 3, c).px(8, 15, '#f4f0e6').px(9, 15, '#f4f0e6');
+      } else {
+        for (let y = 9; y < 13; y++) for (let x = 1; x < 15; x++) if (y < 12 || x % 2 === 1) p.px(x, y, shag(x, y));
+        for (const px of [3, 11]) p.rect(px, 12, 2, 3, c).px(px, 12, L).px(px, 15, '#f4f0e6').px(px + 1, 15, '#f4f0e6');
+      }
+      break;
+    }
+    case 'cloak': {
+      // Odens mantel: a long dark cloak clasped at the neck with gold, a linen tunic under it; from behind a raven
+      const tunic = '#8e8678';
+      p.rect(3, 10, 10, 7, tunic).rect(3, 16, 10, 1, shade(tunic, 0.8));
+      sleeves(shade(tunic, 0.85));
+      p.rect(3, 15, 10, 1, '#4a3020');
+      const sway = frame === 1 ? 1 : frame === 2 ? -1 : 0;
+      if (dir === 'up') {
+        p.rect(2, 10, 12, 11, c).rect(2, 10, 12, 1, L).rect(13, 11, 1, 10, D).rect(5, 12, 1, 9, D).rect(10, 12, 1, 9, D);
+        for (let x = 2; x < 14; x += 2) p.px(x, 21, c);
+        // the raven
+        p.tpl(5, 13, ['..##..', '.####.', '######', '#.##.#', '..##..'], { '#': '#14121a' }).px(8, 14, '#ffffff');
+      } else if (side) {
+        for (let y = 10; y < 22; y++) {
+          const back = y > 15 ? sway * (y > 18 ? 2 : 1) : 0;
+          p.rect(1 - back, y, 4, 1, y === 10 ? L : (y + back) % 4 === 0 ? D : c);
+        }
+        p.rect(4, 10, 4, 2, c).px(7, 11, '#f2c84a');
+      } else {
+        p.rect(1, 10, 3, 11, c).rect(12, 10, 3, 11, c).rect(1, 10, 14, 2, c).rect(1, 10, 14, 1, L).rect(14, 11, 1, 10, D).rect(1, 11, 1, 10, L);
+        for (const x of [1, 13]) p.px(x + sway, 21, c);
+        p.rect(7, 10, 2, 2, '#f2c84a').px(7, 10, '#fff2b0');
+        p.rect(2, 16, 1, 1, tunic).rect(13, 16, 1, 1, tunic);
+      }
+      break;
+    }
+    case 'robe': {
+      // wide bell sleeves with pale cuffs (the rest of the robe is drawn like a dress)
+      if (side) p.rect(5, 11, 4, 5, D).rect(5, 15, 4, 1, L);
+      else p.rect(1, 11, 3, 5, D).rect(12, 11, 3, 5, D).rect(1, 15, 3, 1, L).rect(12, 15, 3, 1, L);
+      p.rect(side ? 6 : 5, 10, side ? 5 : 6, 1, L);
+      break;
+    }
+  }
+}
+
+/** The Norse hats (the head's top-left at hx, hy; HEADROOM rows above the frame are free for them). */
+function drawNorseHat(p: Px, style: string, C: string, dir: Dir, hx: number, hy: number): void {
+  const Cd = shade(C, 0.72);
+  const Cl = shade(C, 1.28);
+  const side = dir === 'right';
+  /** A round helmet over the top of the head down to the brow, lit on the left. */
+  const dome = (col: string, lit: string, dark: string) => {
+    p.rect(hx + 2, hy - 4, 4, 1, col).rect(hx, hy - 3, 8, 1, col).rect(hx - 1, hy - 2, 10, 4, col);
+    p.rect(hx - 1, hy - 2, 2, 4, lit).rect(hx, hy - 3, 2, 1, lit).rect(hx + 2, hy - 4, 1, 1, lit).rect(hx + 7, hy - 2, 2, 4, dark);
+  };
+  switch (style) {
+    case 'nasal': {
+      // Väktarhjälm: a steel helmet with a raised ridge, a brow band with rivets, a nose guard and a short blue crest;
+      // a mail curtain at the back of the neck
+      const B = '#4f8fe8';
+      p.rect(hx + 2, hy - 6, 4, 2, B).rect(hx + 3, hy - 7, 3, 1, B).px(hx + 3, hy - 6, '#9ac0ff').px(hx + 5, hy - 5, '#2a5ab0');
+      dome(C, Cl, Cd);
+      p.rect(hx + 3, hy - 4, 2, 6, Cl).px(hx + 4, hy - 3, '#ffffff');
+      p.rect(hx - 1, hy + 2, 10, 1, Cd);
+      const mail = (x0: number, w: number) => {
+        for (let y = hy + 3; y < hy + 7; y++) for (let x = x0; x < x0 + w; x++) p.px(x, y, (x + y) % 2 === 0 ? '#8e98a8' : '#5c6676');
+      };
+      if (dir === 'down') {
+        p.px(hx, hy + 2, Cl).px(hx + 7, hy + 2, Cl).px(hx + 2, hy + 2, Cl).px(hx + 5, hy + 2, Cl);
+        p.rect(hx + 3, hy + 3, 2, 3, C).px(hx + 3, hy + 3, Cl).px(hx + 4, hy + 5, Cd);
+      } else if (side) {
+        mail(hx - 1, 3);
+        p.rect(hx + 7, hy + 2, 2, 3, C).px(hx + 8, hy + 4, Cd).px(hx + 7, hy + 2, Cl);
+      } else mail(hx - 1, 10);
+      break;
+    }
+    case 'circlet': {
+      // Völvans krans: a band of gold with little runes cut into it and leaves twined round, a green stone at the front
+      const leaf = '#4fae5a';
+      const leafL = '#8ae08a';
+      p.rect(hx - 1, hy, 10, 2, C).rect(hx - 1, hy + 1, 10, 1, Cd).px(hx - 1, hy, Cl);
+      for (const x of [hx + 1, hx + 3, hx + 6]) p.px(x, hy + 1, shade(C, 0.5));
+      const leaves: [number, number][] = side ? [[hx, hy - 1], [hx + 3, hy - 1], [hx + 6, hy - 1]] : [[hx - 1, hy - 1], [hx + 2, hy - 1], [hx + 5, hy - 1], [hx + 8, hy - 1]];
+      for (const [x, y] of leaves) p.px(x, y, leaf).px(x + 1, y, leafL);
+      if (dir === 'down') p.rect(hx + 3, hy - 1, 2, 2, '#5fd38d').px(hx + 3, hy - 1, '#d8ffe4').px(hx + 4, hy, '#2e9a5a');
+      if (side) p.rect(hx + 7, hy - 1, 2, 2, '#5fd38d').px(hx + 7, hy - 1, '#d8ffe4');
+      break;
+    }
+    case 'runehat': {
+      // Runhatt: a tall pointed hat with a broad brim, its tip flopping over, runes glowing on it
+      const glow = '#ffe27a';
+      const glow2 = '#9ae8ff';
+      const lean = side ? -1 : 1;
+      // the cone, narrowing to the tip (each row: its left x and width)
+      const cone: [number, number, number][] = [
+        [hy - 1, hx, 8],
+        [hy - 2, hx + 1, 6],
+        [hy - 3, hx + 1, 6],
+        [hy - 4, hx + 2, 4],
+        [hy - 5, hx + 2, 4],
+        [hy - 6, hx + 3, 3],
+        [hy - 7, hx + 3 + lean, 2],
+        [hy - 8, hx + 4 + lean * 2, 2],
+        [hy - 9, hx + 5 + lean * 3, 1],
+      ];
+      for (const [y, x, w] of cone) p.rect(x, y, w, 1, C).px(x, y, Cl).px(x + w - 1, y, Cd);
+      p.px(hx + 5 + lean * 3 + (lean > 0 ? 1 : -1), hy - 9, glow);
+      // the band and its rune, the brim
+      p.rect(hx, hy - 1, 8, 1, Cd);
+      p.rect(side ? hx - 1 : hx - 3, hy, side ? 13 : 14, 2, C).rect(side ? hx - 1 : hx - 3, hy + 1, side ? 13 : 14, 1, Cd).px(side ? hx - 1 : hx - 3, hy, Cl);
+      if (dir !== 'up') p.px(hx + 3, hy - 1, glow).px(hx + 4, hy - 1, glow2);
+      p.px(hx + 3, hy - 4, glow).px(hx + 4, hy - 5, glow2).px(hx + 2, hy - 2, glow2).px(hx + 5, hy - 3, glow);
+      break;
+    }
+    case 'valkyrie': {
+      // Valkyriahjälm: a round silver helmet with a gold brow band and a white wing on each side
+      dome(C, Cl, Cd);
+      p.rect(hx - 1, hy + 1, 10, 1, '#d8a830').px(hx + 3, hy + 1, '#fff2b0');
+      const W = '#ffffff';
+      const Wd = '#c8d4e2';
+      const wing = (x: number, dx: number) => {
+        // feathers fanning up and out from the side of the helmet
+        for (let i = 0; i < 6; i++) {
+          const y = hy + 1 - i;
+          const w = i < 4 ? 2 : 1;
+          p.rect(x + dx * Math.floor(i / 2) - (dx < 0 ? w - 1 : 0), y, w, 1, i % 2 ? W : Wd);
+        }
+        p.px(x + dx * 3, hy - 5, W).px(x + dx * 2, hy - 6, Wd);
+      };
+      if (side) wing(hx + 1, -1);
+      else {
+        wing(hx - 2, -1);
+        wing(hx + 9, 1);
+      }
+      break;
+    }
+    case 'wanderer': {
+      // Odens hatt: a wanderer's hat with a wide floppy brim and a dented crown, a raven's feather in the band
+      p.rect(hx, hy - 4, 8, 4, C).rect(hx + 1, hy - 5, 2, 1, C).rect(hx + 5, hy - 5, 2, 1, C).px(hx + 3, hy - 4, Cd).px(hx + 4, hy - 4, Cd);
+      p.rect(hx, hy - 4, 2, 4, Cl).rect(hx + 6, hy - 4, 2, 4, Cd);
+      p.rect(hx, hy - 1, 8, 1, '#5a4030');
+      if (side) {
+        p.rect(hx - 2, hy, 15, 1, C).rect(hx - 2, hy + 1, 15, 1, Cd).px(hx + 12, hy + 2, Cd).px(hx - 2, hy + 2, Cd);
+        p.px(hx, hy - 3, '#14121a').px(hx - 1, hy - 4, '#14121a').px(hx - 1, hy - 5, '#3a3a52');
+      } else {
+        p.rect(hx - 4, hy, 16, 1, C).rect(hx - 3, hy + 1, 14, 1, Cd).px(hx - 4, hy + 1, Cd).px(hx + 11, hy + 1, Cd).px(hx - 4, hy, Cl);
+        p.px(hx + 7, hy - 3, '#14121a').px(hx + 8, hy - 4, '#14121a').px(hx + 8, hy - 5, '#3a3a52');
+      }
+      break;
+    }
+    case 'draugcrown': {
+      // Draugkrona: an old crown gone grey-green, its points uneven and one bent, a stone glowing ghostly green
+      const rust = '#7a6a50';
+      p.rect(hx - 1, hy - 1, 10, 3, C).rect(hx - 1, hy + 1, 10, 1, Cd).rect(hx - 1, hy - 1, 10, 1, Cl);
+      const points: [number, number][] = side ? [[hx, 3], [hx + 3, 2], [hx + 6, 3]] : [[hx - 1, 3], [hx + 2, 2], [hx + 5, 3], [hx + 8, 2]];
+      points.forEach(([x, h], i) => p.rect(x, hy - 1 - h, 1, h, i === 1 ? Cd : C).px(x, hy - 1 - h, Cl));
+      if (!side) p.px(hx + 3, hy - 3, Cd);
+      p.px(hx + 1, hy + 1, rust).px(hx + 6, hy, rust);
+      if (dir === 'down') p.rect(hx + 3, hy, 2, 1, '#9cff8a').px(hx + 3, hy, '#e8ffd8').px(hx, hy, '#3a5a3a').px(hx + 7, hy, '#3a5a3a');
+      if (side) p.rect(hx + 7, hy, 2, 1, '#9cff8a').px(hx + 8, hy, '#e8ffd8');
+      break;
+    }
+    default: {
+      // a hat style this drawing does not know: a plain cap, so it never shows as nothing
+      p.rect(hx - 1, hy - 2, 10, 3, C).rect(hx, hy - 3, 8, 1, C).rect(hx - 1, hy + 1, 10, 1, Cd);
+    }
+  }
 }
 
 /** Sprite sheet of 9 frames (3 dirs x 3 frames). */
