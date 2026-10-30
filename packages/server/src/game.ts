@@ -4,6 +4,15 @@ import {
   CHAT_HISTORY,
   DAY_LENGTH_MS,
   callPets,
+  castSpell,
+  chooseClass,
+  drinkPotion,
+  isSagaKey,
+  jumpTo,
+  rejoinSaga,
+  sagaChapter,
+  sagaQuestAct,
+  sagaSnapshot,
   cleanChat,
   setWeather,
   MAX_PLAYERS,
@@ -166,6 +175,8 @@ export class Game {
     }
     const msg: ServerMsg = { t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() };
     if (this.world.weather) msg.weather = this.world.weather;
+    const saga = sagaSnapshot(this.world, Date.now());
+    if (saga) msg.saga = saga;
     this.broadcast(msg);
   }
 
@@ -312,6 +323,9 @@ export class Game {
           d.players[p.id] = p;
           client.link.send({ t: 'changes', changes: [{ t: 'areaData', to: p.id, key: 'dungeon', world: d }] });
         } else this.pending.push(...leaveCave(this.world, p.id, false));
+      } else if (isSagaKey(p.area)) {
+        // back in a dungeon: up at its last rest stone (it may have started over meanwhile)
+        this.pending.push(...rejoinSaga(this.world, p.id));
       } else if (p.area !== 'farm') {
         const area = getArea(this.world, p.area);
         if (area) {
@@ -395,6 +409,20 @@ export class Game {
         break;
       case 'pets':
         changes = callPets(this.world, pid, msg.cmd, this.ctx());
+        break;
+      case 'cast':
+        changes = castSpell(this.world, pid, String(msg.spell ?? ''), typeof msg.target === 'number' || typeof msg.target === 'string' ? msg.target : undefined, this.ctx());
+        break;
+      case 'potion':
+        changes = drinkPotion(this.world, pid, this.ctx());
+        break;
+      case 'saga':
+        if (msg.a === 'class') changes = chooseClass(this.world, pid, String(msg.cls ?? ''));
+        else if (msg.a === 'chapter') changes = sagaChapter(this.world, pid);
+        else if (msg.a === 'quest') changes = sagaQuestAct(this.world, pid, String(msg.id ?? ''));
+        break;
+      case 'jump':
+        changes = jumpTo(this.world, pid, String(msg.to ?? ''));
         break;
       case 'chat': {
         const text = cleanChat(msg.text);

@@ -39,6 +39,7 @@ import { Menus } from '@v1/ui/menus.ts';
 import { Picker } from '@v1/ui/picker.ts';
 import { initRide } from '@v1/ui/ride.ts';
 import { initArcade } from '@v1/ui/arcade.ts';
+import { SagaUi } from '@v1/ui/saga.ts';
 import { initSound, isMuted, setMuted } from '@v1/sound.ts';
 import { Chat, SocialButtons, petCommand, weatherChip } from '@v1/ui/social.ts';
 import { forceQuality, on } from './features.ts';
@@ -77,13 +78,12 @@ const hud = new Hud(
   (kind) => menus.toggle(kind),
 );
 hud.root.style.display = 'none';
-menus.onChange = (open) => (view.uiOpen = open);
 // ---- minigames: while one is open, the farm waits behind it unseen and unheard ----
 let arcadeOpen = false;
 let glowWas = true;
 initArcade((open) => {
   arcadeOpen = open;
-  view.uiOpen = open || menus.isOpen();
+  syncUiOpen();
   view.hush(open);
   // keys held when the TV went on would otherwise stay held in the game
   inputClear();
@@ -104,7 +104,15 @@ chat.onToggle = (open) => {
   // keys pressed when the box opened would otherwise stay held in the game
   if (open) inputClear();
 };
-new SocialButtons(hud.root, chat);
+const social = new SocialButtons(hud.root, chat);
+// Sagan om Världsträdet: the dungeon HUD, Kämpastenen, Völvan, the journal, loot and the family list
+const saga = new SagaUi(ui, hud.root, menus, social.el);
+/** Any window (or a minigame) open: the world stops reading taps and keys. */
+function syncUiOpen(): void {
+  view.uiOpen = arcadeOpen || menus.isOpen() || saga.isOpen();
+}
+menus.onChange = syncUiOpen;
+saga.onChange = syncUiOpen;
 
 const status = h('div', { class: 'status', style: { display: 'none' } }, T.disconnected);
 ui.append(status);
@@ -117,6 +125,8 @@ bus.on('connection', (s) => {
 window.addEventListener('keydown', (e) => {
   if (!started) return;
   if (e.target instanceof HTMLInputElement) return;
+  // in a dungeon 1–5 are spells and a potion and Tab picks a monster; the saga's windows take their keys
+  if (saga.key(e)) return;
   if ((e.key === 'Enter' || e.key === 't' || e.key === 'T') && !menus.isOpen()) {
     e.preventDefault();
     chat.open();

@@ -62,6 +62,7 @@ import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
 import { SFX } from '../sound.ts';
 import { familyScores } from './arcade.ts';
+import { hasSagaQuests, sagaQuestRows } from './saga.ts';
 
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel' | 'prizes' | 'scores';
 
@@ -98,6 +99,7 @@ export class Menus {
       else if (c.ui === 'travel') this.open('travel', c.id);
       else if (c.ui === 'nameAnimal') this.open('nameAnimal', c.id);
       else if (c.ui === 'arcade') return; // the minigames open over everything (ui/arcade.ts)
+      else if (c.ui === 'saga' || c.ui === 'sagaClass') return; // the saga's own windows (ui/saga.ts)
       else if (c.ui === 'npc') {
         this.npcId = c.npc ?? null;
         this.open('npc');
@@ -110,6 +112,13 @@ export class Menus {
 
   isOpen(): boolean {
     return this.kind !== null;
+  }
+
+  /** Opens a villager's window straight into a conversation (Völvan's "Prata"). */
+  talkTo(npcId: string): void {
+    this.npcId = npcId;
+    this.open('npc');
+    this.say(npcId, 'start', '');
   }
 
   toggle(kind: MenuKind): void {
@@ -633,16 +642,19 @@ export class Menus {
       return;
     }
     const quests = openQuests(client.world!, me, npc.id);
+    const saga = hasSagaQuests(npc.id);
     if (this.talk) {
-      this.renderTalk(body, npc.id, quests.length > 0);
+      this.renderTalk(body, npc.id, quests.length > 0 || saga);
       return;
     }
     const greeting = npc.greeting[(client.day + npc.name.length) % npc.greeting.length]!;
-    const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length ? greeting : T.questAllDone));
+    const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length || saga ? greeting : T.questAllDone));
     body.append(talk);
     const chat = h('button', null, '💬 Prata!');
     onTap(chat, () => this.say(npc.id, 'start', ''));
     body.append(h('div', { class: 'npc-actions' }, chat));
+    // the saga's quests (ui/saga.ts)
+    if (saga) body.append(sagaQuestRows(npc.id));
     const rows = h('div', { class: 'rows' });
     for (const q of quests) {
       const have = countItem(me.inventory, q.want.item);

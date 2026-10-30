@@ -1278,7 +1278,7 @@ describe('byn', () => {
     expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
     expect(kinds).toContain('market');
     expect(kinds).toContain('sellstall');
-    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'pino', 'stina']);
+    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'pino', 'sigrun', 'stina']);
     expect(kinds).toContain('pizzeria');
     for (const n of npcsIn(v)) for (const w of [n, ...n.routine]) expect(objectAt(v, w.x, w.y)?.kind ?? 'free').toBe('free');
     const { world, p } = setup();

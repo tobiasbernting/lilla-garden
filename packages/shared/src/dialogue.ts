@@ -249,6 +249,35 @@ export const NPC_TALK: Record<string, NpcTalk> = {
     },
     weather: { snow: 'Snö! Då vill alla ha varm choklad och bullar. Bra för affärerna!', rain: 'Regniga dagar luktar det extra gott från bageriet, tycker jag.' },
   },
+  sigrun: {
+    hello: ['Välkommen, {name}. Runorna sa att du skulle komma.', 'Sätt dig en stund, lilla hjälte. Elden värmer.'],
+    bye: ['Må Odens korpar vaka över dig, {name}.', 'Gå i ljuset, och glöm inte att hjälpa varandra.'],
+    how: ['Gammal som en ek, men mina ögon ser långt. Längre än du tror.', 'Oroligt. Världsträdet darrar i mina drömmar.'],
+    likes: ['Runor, stjärnor och gamla sagor. Och kanelbullar från Bagar-Bo, faktiskt.'],
+    topics: [
+      ['Vad är Yggdrasil?', 'sigrun:tree'],
+      ['Vad är en völva?', 'sigrun:volva'],
+      ['Vem är Oden?', 'sigrun:oden'],
+    ],
+    nodes: {
+      'sigrun:tree': { say: 'Yggdrasil är Världsträdet, en ask så stor att alla nio världar hänger i dess grenar. Midgård, där vi bor, ligger mitt i.', opts: [['Nio världar?!', 'sigrun:worlds'], BACK] },
+      'sigrun:worlds': { say: 'Asgård där gudarna bor, Jötunheim där jättarna bor, Muspelheim som är full av eld… och sex till. Vi får ta dem en i taget.', opts: [BACK] },
+      'sigrun:volva': { say: 'En völva är en klok kvinna som ser det som ska hända. Jag läser runor och drömmar, och ibland svarar stjärnorna.', opts: [['Kan du se min framtid?', 'sigrun:future'], BACK] },
+      'sigrun:future': { say: 'Jag ser… en hjälte med glödande svärd. Och en liten korp. Mer säger jag inte, det vore att förstöra sagan!', opts: [BACK] },
+      'sigrun:oden': { say: 'Oden är den klokaste av gudarna. Han gav ett öga för att få dricka ur visdomens brunn, och hans två korpar Hugin och Munin flyger över världen varje dag.', opts: [['Vad gör korparna?', 'sigrun:ravens'], BACK] },
+      'sigrun:ravens': { say: 'De berättar för Oden allt de har sett. Hugin betyder tanke och Munin betyder minne. Kanske flyger de med dig en dag…', opts: [BACK] },
+    },
+    ask: {
+      q: 'Vilken väg lockar dig mest, {name}?',
+      answers: [
+        ['Väktare med sköld', 'En sköld som skyddar andra är det modigaste som finns.'],
+        ['Helare med runor', 'Utan en helare klarar sig ingen. Runorna lyder dig redan, ser jag.'],
+        ['Krigare med yxa', 'Bärsärkens mod! Men glöm inte att väktaren ska gå först.'],
+        ['Magiker med blixtar', 'Eld, is och åska… Håll dig bakom tanken, så blir det fint.'],
+      ],
+    },
+    weather: { rain: 'Regnet är Tors åska som har somnat. Det gör inget.', snow: 'Snö… Rimtursen drömmer om evig vinter. Men inte än.' },
+  },
   pino: {
     hello: ['Ciao {name}! Välkommen till min pizzeria!', 'Buongiorno! Mamma mia, vad roligt att se dig!'],
     bye: ['Ciao ciao! Arrivederci, {name}!', 'Buonanotte! Eller… hej då, på svenska!'],

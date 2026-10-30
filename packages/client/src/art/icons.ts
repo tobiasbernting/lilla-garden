@@ -2,7 +2,8 @@
 import { ITEMS, type ItemDef } from '@lilla-garden/shared';
 import { drawAnimal } from './animals.js';
 import { arcadeIcons } from './arcade.ts';
-import { drawCharacter } from './characters.js';
+import { sagaIcons } from './saga.ts';
+import { drawCharacter, HEADROOM } from './characters.js';
 import { Px, shade } from './px.js';
 import { OUTLINE, PAINT_COLORS, type ObjectArt } from './world.js';
 
@@ -448,17 +449,30 @@ const clothingIcon = (d: ItemDef): Px => {
   const D = shade(C, 0.75);
   switch (c.slot) {
     case 'shirt':
-      if (c.style.startsWith('dress') || c.style === 'gown') {
+      if (c.style.startsWith('dress') || c.style === 'gown' || c.style === 'robe') {
         // a-line dress on a hanger
-        const gown = c.style === 'gown';
+        const gown = c.style === 'gown' || c.style === 'robe';
         p.rect(5, 2, 6, 4, C).rect(2, 2, 3, 3, C).rect(11, 2, 3, 3, C);
         for (let y = 6; y < 14; y++) {
           const half = 3 + Math.round(((y - 6) / 7) * (gown ? 4 : 3));
           p.rect(8 - half, y, half * 2, 1, y === 13 ? D : C);
         }
+        if (c.style === 'robe') {
+          // wide sleeves, a rope belt, runes down the front and round the hem
+          p.rect(0, 3, 3, 5, D).rect(13, 3, 3, 5, D).rect(5, 6, 6, 1, '#ecdcae').rect(7, 7, 2, 6, shade(C, 1.35));
+          for (const [x, y] of [[7, 8], [8, 10], [7, 12], [3, 12], [12, 12]] as const) p.px(x, y, '#fff0a0');
+          break;
+        }
         if (c.style === 'dress_belt' || gown) p.rect(5, 6, 6, 1, '#ffffff');
         if (c.style === 'dress_flowers') p.px(6, 9, '#ffffff').px(10, 11, '#f5e04a').px(8, 12, '#ffffff').px(5, 12, '#f5e04a');
         if (gown) p.px(8, 8, shade(C, 1.3)).px(8, 10, shade(C, 1.3)).px(3, 12, '#ffffff').px(12, 12, '#ffffff');
+        break;
+      }
+      if (c.style === 'cloak') {
+        // a long cloak, a gold clasp at the neck, a raven on it
+        p.rect(3, 2, 10, 13, C).rect(2, 4, 12, 11, C).rect(2, 14, 12, 1, D).rect(13, 4, 1, 10, D).rect(3, 2, 10, 1, shade(C, 1.3));
+        p.rect(7, 2, 2, 2, '#f2c84a').px(7, 2, '#fff2b0');
+        p.tpl(5, 7, ['..##..', '.####.', '######', '#.##.#'], { '#': '#14121a' }).px(8, 8, '#ffffff');
         break;
       }
       p.rect(4, 3, 8, 10, C).rect(1, 3, 3, 5, C).rect(12, 3, 3, 5, C).rect(6, 2, 4, 1, D).rect(4, 12, 8, 1, D);
@@ -472,6 +486,21 @@ const clothingIcon = (d: ItemDef): Px => {
         p.rect(5, 2, 6, 1, '#a2a9b4').rect(1, 7, 3, 1, '#a2a9b4').rect(12, 7, 3, 1, '#a2a9b4').rect(4, 10, 8, 1, '#a2a9b4');
         p.tpl(5, 4, ['BYBB', 'YYYY', 'BYBB'], { B: '#2f6fc8', Y: '#f5d03a' }).rect(9, 7, 2, 2, '#737b88').px(9, 7, '#ff5a4a').px(10, 8, '#5ae05a');
       }
+      if (c.style === 'chainmail' || c.style === 'tabard') {
+        // rings all over (grey under a tabard), a ragged hem, a belt; the tabard with a shield on its chest
+        const m = c.style === 'chainmail' ? C : '#a4acb6';
+        for (let y = 3; y < 14; y++)
+          for (let x = 1; x < 15; x++) if ((x >= 4 && x < 12) || (y < 8 && (x < 4 || x >= 12))) p.px(x, y, (x + y) % 2 === 0 ? shade(m, 1.24) : m);
+        for (let x = 4; x < 12; x += 2) p.px(x, 13, shade(m, 0.7));
+        if (c.style === 'tabard') p.rect(5, 3, 6, 10, C).rect(6, 4, 4, 4, '#f2c84a').rect(7, 5, 2, 2, '#f4f0e6').rect(1, 3, 3, 2, '#c4ccd6').rect(12, 3, 3, 2, '#c4ccd6');
+        p.rect(4, 10, 8, 1, '#4a3020');
+      }
+      if (c.style === 'bearpelt') {
+        // a leather tunic under a shaggy pelt with its paws hanging down
+        p.rect(4, 3, 8, 10, '#6a4a30').rect(1, 3, 3, 5, '#5a3e28').rect(12, 3, 3, 5, '#5a3e28').rect(4, 12, 8, 1, '#4a3020');
+        for (let x = 0; x < 16; x++) p.rect(x, 2, 1, x % 2 ? 4 : 5, x % 3 === 0 ? shade(C, 1.2) : C);
+        p.rect(4, 7, 2, 3, C).rect(10, 7, 2, 3, C).px(4, 10, '#f4f0e6').px(5, 10, '#f4f0e6').px(10, 10, '#f4f0e6').px(11, 10, '#f4f0e6');
+      }
       break;
     case 'pants':
       if (c.style === 'skirt') p.rect(5, 2, 6, 3, C).rect(4, 5, 8, 3, C).rect(3, 8, 10, 5, C).rect(3, 12, 10, 1, D);
@@ -484,8 +513,12 @@ const clothingIcon = (d: ItemDef): Px => {
     case 'hat': {
       const look = { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'bald', shirt: { style: 'plain', color: '#888' }, pants: { style: 'plain', color: '#888' }, shoes: { style: 'plain', color: '#333' }, hat: { style: c.style, color: C } };
       const ch = drawCharacter(look, 'down', 0);
-      // crop the head area (rows -? .. 12) into 16x16
-      p.ctx.drawImage(ch.canvas, 0, 0, 16, 13, 0, 3, 16, 13);
+      // crop the head and the hat into 16x16: from 3 rows over the head's top, or higher for a tall hat
+      const alpha = ch.ctx.getImageData(0, 0, ch.w, ch.h).data;
+      let top = 0;
+      while (top < HEADROOM && !alpha.slice(top * ch.w * 4, (top + 1) * ch.w * 4).some((v, i) => i % 4 === 3 && v > 0)) top++;
+      const y0 = Math.min(HEADROOM - 3, top);
+      p.ctx.drawImage(ch.canvas, 0, y0, 16, 16, 0, 0, 16, 16);
       break;
     }
   }
@@ -562,5 +595,6 @@ export function drawIcons(objects: Record<string, ObjectArt>): Record<string, Px
   icons.floor_wood = floorTile('#b07a44', '#8a5c30');
   icons.floor_stone = floorTile('#b9b6ad', '#8e8b83');
   Object.assign(icons, arcadeIcons());
+  Object.assign(icons, sagaIcons());
   return icons;
 }

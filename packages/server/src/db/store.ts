@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 
 export interface Store {
@@ -96,14 +96,22 @@ export class PgStore implements Store {
         world.players[p.id]!.x = CAVE_EXIT_TILE.x * TILE + TILE / 2;
         world.players[p.id]!.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;
       }
+      // inside a dungeon when the server stopped: wait in front of its arch
+      const sagaId = dungeonOfKey(p.data.area ?? '');
+      if (sagaId) {
+        const front = portalFront(DUNGEONS[sagaId].portal);
+        world.players[p.id]!.area = DUNGEONS[sagaId].portal.area;
+        world.players[p.id]!.x = front.x * TILE + TILE / 2;
+        world.players[p.id]!.y = front.y * TILE + TILE / 2;
+      }
       delete world.players[p.id]!.emote;
       delete world.players[p.id]!.fishing;
     }
     rebuildOccupancy(world);
     world.areas = {};
     for (const row of await this.db.select().from(s.areas)) {
-      // Spelhallen is rebuilt from its plan each time, so it always has the latest machines
-      if (isHallKey(row.key)) continue;
+      // Spelhallen is rebuilt from its plan each time, so it always has the latest machines; dungeons start over
+      if (isHallKey(row.key) || isSagaKey(row.key)) continue;
       const a = row.data;
       a.players = {};
       a.area = row.key;
@@ -148,6 +156,10 @@ export class PgStore implements Store {
       if (ensureArcadeHall(a)) {
         this.dirtyAreas.add(k);
         console.log(`added Spelhallen to ${k}`);
+      }
+      if (ensureSagaPlaces(k, a)) {
+        this.dirtyAreas.add(k);
+        console.log(`added a dungeon's arch or Kämpastenen to ${k}`);
       }
     }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers
@@ -246,7 +258,7 @@ export class PgStore implements Store {
       players: [...this.gone.players],
     };
     const worldDirty = this.worldDirty;
-    const areasToSave = [...this.dirtyAreas];
+    const areasToSave = [...this.dirtyAreas].filter((k) => !isSagaKey(k));
     this.dirtyAreas.clear();
     this.objects.clear();
     this.crops.clear();
