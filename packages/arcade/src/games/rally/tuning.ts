@@ -18,9 +18,13 @@ export interface Tune {
   charges: number;
 }
 
-/** The handling a car gets: its body always counts; `sameCars` levels the parts (and gives everyone one nitro). */
+/**
+ * The handling a car gets from its body and parts. `sameCars` levels everything but the looks: every
+ * body drives like the plain hatchback with no parts (only the size stays) and gets one nitro.
+ */
 export function tuneFor(car: GarageCar, sameCars: boolean, nitro: boolean): Tune {
-  const b = CAR_BODY_DEFS[car.body] ?? CAR_BODY_DEFS.hatch;
+  const body = CAR_BODY_DEFS[car.body] ?? CAR_BODY_DEFS.hatch;
+  const b = sameCars ? CAR_BODY_DEFS.hatch : body;
   const parts = sameCars ? emptyParts() : car.parts;
   const lvl = (k: keyof typeof parts): number => clamp(Math.round(parts[k] ?? 0), 0, 3);
   return {
@@ -29,7 +33,7 @@ export function tuneFor(car: GarageCar, sameCars: boolean, nitro: boolean): Tune
     assist: lvl('suspension') * PART_EFFECTS.suspensionAssist,
     brakeMul: 1 + lvl('brakes') * PART_EFFECTS.brakesForce,
     dmgMul: Math.max(0.2, 1 - lvl('armour') * PART_EFFECTS.armourShield) / b.tough,
-    size: 1 + (b.size - 1) * 0.6,
+    size: 1 + (body.size - 1) * 0.6,
     charges: nitro ? (sameCars ? 1 : lvl('turbo') * PART_EFFECTS.turboCharges) : 0,
   };
 }

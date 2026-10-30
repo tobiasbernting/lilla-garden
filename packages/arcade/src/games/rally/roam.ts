@@ -185,19 +185,22 @@ export class RoamWorld {
       this.group.add(mesh);
     }
 
-    // ---- coins: most along the roads, the rest out in the country, a few on the ramps' far side ----
+    // ---- coins: most along the roads, the rest out in the country, two past each ramp (16 and 24 m on,
+    // high where a jump at a fair speed flies through them) ----
+    const firstAir = Math.ceil(ROAM_COIN_COUNT * 0.55);
+    const endAir = firstAir + this.ramps.length * 2;
     for (let k = 0; k < ROAM_COIN_COUNT; k++) {
       let x = 0;
       let z = 0;
-      if (k < ROAM_COIN_COUNT * 0.55) {
-        const s = ((k + r() * 0.6) / (ROAM_COIN_COUNT * 0.55)) * t.length;
+      if (k < firstAir) {
+        const s = ((k + r() * 0.6) / firstAir) * t.length;
         const hw = t.at(t.hw, s);
         const p = t.point(s, (r() - 0.5) * (hw - 1.5) * 2);
         x = p.x;
         z = p.z;
-      } else if (k < ROAM_COIN_COUNT * 0.55 + this.ramps.length * 2) {
-        const ramp = this.ramps[(k - Math.ceil(ROAM_COIN_COUNT * 0.55)) % this.ramps.length]!;
-        const f = 16 + ((k % 2) * 8);
+      } else if (k < endAir) {
+        const ramp = this.ramps[(k - firstAir) % this.ramps.length]!;
+        const f = 16 + Math.floor((k - firstAir) / this.ramps.length) * 8;
         x = ramp.x + Math.sin(ramp.rot) * f;
         z = ramp.z + Math.cos(ramp.rot) * f;
       } else {
@@ -209,7 +212,7 @@ export class RoamWorld {
       const onRoad = Math.abs(p.d) < t.at(t.hw, p.s) + 0.3;
       const gy = onRoad ? t.roadY(p) : Math.max(terrain.height(x, z), layout.waterY);
       // the ones past a ramp hang in the air where you fly
-      const air = k >= ROAM_COIN_COUNT * 0.55 && k < ROAM_COIN_COUNT * 0.55 + this.ramps.length * 2 ? 3.2 : 0;
+      const air = k >= firstAir && k < endAir ? 3.2 : 0;
       this.coins.push({ x, y: gy + 1.3 + air, z, taken: false });
     }
     const coinGeo = keep(new THREE.CylinderGeometry(0.75, 0.75, 0.16, 18));

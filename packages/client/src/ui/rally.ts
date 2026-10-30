@@ -116,7 +116,6 @@ const S = {
   nothing: 'Tryck på en färg eller sak för att prova',
   undo: '↩ Ångra',
   save: '💾 Spara',
-  saved: 'Bilen är målad! 🎨',
   tooPoor: 'Du har inte råd',
   groups: { paint: '🎨 Färg', stickers: '⭐ Dekaler', wheels: '🛞 Hjul', extras: '✨ Extra', driver: '🐮 Förare' } as Record<StyleGroup, string>,
   paint: 'Lack',
@@ -680,7 +679,12 @@ export class RallyUi {
       },
       onSnaps: (cb) => add(this.l.snaps, cb),
       onFinish: (cb) => add(this.l.finish, cb),
-      sendFinish: (time, damage) => {
+      sendFinish: (time, damage, id, name) => {
+        // the host's computer cars over the line: only for the server's result
+        if (id !== undefined) {
+          this.send({ t: 'race', a: 'finish', time, damage, id, name });
+          return;
+        }
         if (this.run) {
           this.run.finished = true;
           this.run.damage = damage;
@@ -724,6 +728,7 @@ export class RallyUi {
       host: room ? room.host === client.me : undefined,
       net: this.rallyNet(),
       best: g.best[raceKey(rules)],
+      roamCoinsLeft: Math.max(0, ROAM_COINS_PER_DAY - (g.roamDay === client.day ? g.roamCoins : 0)),
       onDone: (r) => {
         if (run.reported) return;
         run.reported = true;
@@ -1098,8 +1103,8 @@ export class RallyUi {
       }, 'alt', !n),
       this.btn(n && kr ? `${S.save} · ${kr} kr` : S.save, () => {
         this.send({ t: 'garage', a: 'style', car: car.id, style: changes });
+        // the server's toast says what it cost (or that it could not be afforded)
         this.draft = {};
-        bus.emit('toast', S.saved);
         SFX.sparkle();
         this.render();
       }, 'rl-savebtn', !n || poor, poor ? S.tooPoor : undefined),

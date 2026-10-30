@@ -146,7 +146,8 @@ There is still no text chat: players can only use emotes.
   Hur du kopplar ihop en Xbox-, PS5- eller Switch-kontroll med en Android-surfplatta, Mac eller PC står i hjälpen under 🕹️ Handkontroll.
 - Rallyt: `↑`/`W` gasar, `↓`/`S` bromsar och backar, `←`/`→` styr, mellanslag handbroms (sladda länge för turbo), `L` nitro,
   `C`/Enter byter kamera, `R` tillbaka på vägen. Handkontroll: RT gas, LT broms, A handbroms, X nitro, B tillbaka på vägen.
-  Surfplatta: bilen gasar själv, `◀ ▶` styr, `▼` bromsar, 🌀 handbroms, 🔥 nitro. I Åk fritt: Enter/🏠 hem till garaget.
+  Surfplatta: bilen gasar själv, `◀ ▶` styr, `▼` bromsar, 🌀 handbroms, 🔥 nitro (🎥 kamera när bilen inte har någon nitro).
+  I Åk fritt: Enter/🏠 hem till garaget.
 - `?` i hörnet öppnar hjälpen (visas automatiskt första gången på en enhet).
 
 ## Art

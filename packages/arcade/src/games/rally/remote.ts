@@ -12,6 +12,8 @@ import { clamp, damp, lerp, wrapAngle } from './util.ts';
 const DELAY = 100;
 /** How far past the newest snapshot we dare guess (ms). */
 const MAX_EXTRAP = 300;
+/** A car with no snapshot for this long (s) is gone quiet: not drawn, not bumped into, not ranked. */
+const QUIET_S = 2;
 
 export class RemoteCar {
   /** A stand-in Car so the AI sees it, it can be bumped into, and the race can rank it. */
@@ -46,6 +48,16 @@ export class RemoteCar {
 
   get ready(): boolean {
     return this.snaps.length > 0;
+  }
+
+  /** Had snapshots, but none for a while (its sender left, or the host who drove it). */
+  get stale(): boolean {
+    return this.snaps.length > 0 && this.quiet > QUIET_S;
+  }
+
+  /** On the track to be drawn and bumped into. */
+  get shown(): boolean {
+    return this.snaps.length > 0 && this.quiet <= QUIET_S;
   }
 
   push(s: CarSnap, localMs: number): void {

@@ -19,8 +19,11 @@ export interface RallyNet {
   onSnaps(cb: (from: string, snaps: CarSnap[]) => void): () => void;
   /** Someone else crossed the line (race time ms). */
   onFinish(cb: (from: string, time: number) => void): () => void;
-  /** I crossed the line: race time (ms) and my car's damage 0..100. */
-  sendFinish(time: number, damage: number): void;
+  /**
+   * I crossed the line: race time (ms) and my car's damage 0..100. The host also reports each of its
+   * computer cars crossing the line, with its `ai:<n>` id and name.
+   */
+  sendFinish(time: number, damage: number, id?: string, name?: string): void;
   /** The server's result for the room (places, prizes, medals). */
   onResult(cb: (results: RaceResultLine[]) => void): () => void;
   /** Someone left the room mid-race. */
@@ -38,7 +41,7 @@ export type RallyMode = 'race' | 'roam' | 'timetrial';
 export interface RallyOptions {
   mode: RallyMode;
   rules: RaceRules;
-  /** The local player's car (its style and parts; `rules.sameCars` levels the parts). */
+  /** The local player's car (its style and parts; `rules.sameCars` levels the body stats and the parts). */
   car: GarageCar;
   /** Multiplayer: the room (members, host, startAt, seed). Undefined when racing alone against the computer. */
   room?: RoomInfo;
@@ -49,6 +52,8 @@ export interface RallyOptions {
   net?: RallyNet;
   /** The player's best time (ms) on this course over `rules.laps` laps, for the medal and the ghost line. */
   best?: number;
+  /** Free roam: how many more coins pay today (the daily limit); undefined for no limit. */
+  roamCoinsLeft?: number;
   /**
    * Called once when a solo race or a drive is over, before `ctx.end`, so the garage can tell the server
    * (solo prizes, free-roam coins, the car's damage). Multiplayer races report through `net` instead.

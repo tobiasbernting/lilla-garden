@@ -178,6 +178,8 @@ export class Hud {
   private styleChip: HTMLElement;
   private tagsEl: HTMLElement;
   private tagEls = new Map<string, HTMLElement>();
+  /** The tags shown this frame (reused). */
+  private tagSeen = new Set<string>();
   private speedEl: HTMLElement;
   private resultEl: HTMLElement;
   private roamEl: HTMLElement;
@@ -346,7 +348,8 @@ export class Hud {
 
   /** Name tags at screen positions (CSS pixels); the ones not listed are hidden. */
   tags(list: { id: string; name: string; color: string; x: number; y: number; alpha: number }[]): void {
-    const seen = new Set<string>();
+    const seen = this.tagSeen;
+    seen.clear();
     for (const t of list) {
       seen.add(t.id);
       let e = this.tagEls.get(t.id);

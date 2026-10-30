@@ -79,7 +79,8 @@ export interface GameMeta {
   dims: '2D' | '3D';
   /** How to play: a few short Swedish lines for keyboard (and gamepad) players and for touch screens. */
   howTo: { keys: string[]; touch: string[] };
-  touch: TouchLayout;
+  /** The touch controls, or a function of `ctx.options` when they depend on what is played (the rally's nitro). */
+  touch: TouchLayout | ((options: unknown) => TouchLayout);
 }
 
 export interface GameInfo extends GameMeta {

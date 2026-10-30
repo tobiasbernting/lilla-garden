@@ -190,7 +190,8 @@ function echoNet(twin: GarageCar, laps: number): RallyNet {
     },
     onSnaps: (cb) => ((snapCb = cb), () => (snapCb = null)),
     onFinish: (cb) => ((finishCb = cb), () => (finishCb = null)),
-    sendFinish: (time) => {
+    sendFinish: (time, _damage, id) => {
+      if (id) return;
       later(1600, () => finishCb?.('echo', time + 1600));
       const rules = { ...defaultRules(), laps };
       later(2600, () =>
@@ -239,10 +240,14 @@ const rally = (ctx: GameContext): GameInstance => {
   const damageK = roam ? 0.4 : rules?.damage ? 1 : 0;
   const myCar: GarageCar = opts?.car ?? arcadeCar(ctx.player.color);
   const myTune = tuneFor(myCar, !!rules?.sameCars, !!rules?.nitro && !roam);
+  /** Free roam: coins that still pay today (the counter and the end card show no more than these). */
+  const coinsLeft = Math.max(0, opts?.roamCoinsLeft ?? Infinity);
   const nAi = roam || trial ? 0 : rules ? Math.min(rules.ai, 8 - (room?.members.length ?? 1)) : ROSTER.length;
 
   const track = new Track(course, rainGrip);
   const hud = new Hud(ctx.root, track, ctx.dpr, ctx.touch);
+  // on touch screens the third round button is the camera when there is no nitro (info.ts): no second 🎥 then
+  hud.camBtn.classList.toggle('show', ctx.touch && myTune.charges > 0);
   const audio = new RallyAudio(ctx.audio, ctx.out);
   const skyPreset = rain ? rainy(course.theme.sky[timeOfDay]) : course.theme.sky[timeOfDay];
 
@@ -290,6 +295,8 @@ const rally = (ctx: GameContext): GameInstance => {
   const timeU = { value: 0 };
   const entrants: Entrant[] = [];
   const remotes = new Map<string, RemoteCar>();
+  /** Every car on the track this frame (refilled each frame). */
+  const carsBuf: Car[] = [];
   const disposers: (() => void)[] = [];
   const ground = { height: (x: number, z: number): number => terrain.height(x, z) + (world ? world.rampHeight(x, z) : 0) };
   let meE: Entrant | null = null;
@@ -624,7 +631,11 @@ const rally = (ctx: GameContext): GameInstance => {
           resultT = 0;
           showResults(lines);
         }),
-        n.onLeft((id) => removeRemote(id)),
+        n.onLeft((id) => {
+          removeRemote(id);
+          // the host drove the computer cars: they leave with it
+          if (id === room?.host) for (const k of [...remotes.keys()]) if (k.startsWith('ai:')) removeRemote(k);
+        }),
       );
     }
     if (roam) {
@@ -719,15 +730,45 @@ const rally = (ctx: GameContext): GameInstance => {
   const colCoin = new THREE.Color('#ffd23f');
   const TIER_COL = [colSpark, new THREE.Color('#4fb3ff'), new THREE.Color('#ff9a2a'), new THREE.Color('#c070ff')];
 
-  /** Everyone on the track: my car, the computer cars I drive, and the others' cars. */
-  function runners(): Runner[] {
-    const list: Runner[] = entrants.map((e) => ({ id: e.id, name: e.name, color: e.color, car: e.car, u: e.u, finished: e.finished, finishTime: e.finishTime, me: e === meE }));
-    for (const rc of remotes.values()) if (rc.ready || !roam) list.push({ id: rc.id, name: rc.name, color: rc.color, car: rc.car, u: rc.u, finished: rc.finished, finishTime: rc.finishTime, me: false });
-    return list;
+  /** One Runner per car, kept and refreshed (runners() is called several times a frame). */
+  const runnerOf = new WeakMap<Car, Runner>();
+  const runnerList: Runner[] = [];
+  const rankList: Runner[] = [];
+  function runnerSlot(car: Car, id: string, name: string, color: string): Runner {
+    let r = runnerOf.get(car);
+    if (!r) runnerOf.set(car, (r = { id, name, color, car, u: 0, finished: false, finishTime: 0, me: false }));
+    runnerList.push(r);
+    return r;
   }
 
+  /**
+   * Everyone on the track: my car, the computer cars I drive, and the others' cars (not the ones gone
+   * quiet, unless they already finished). The same list each call: copy it to keep it.
+   */
+  function runners(): Runner[] {
+    runnerList.length = 0;
+    for (const e of entrants) {
+      const r = runnerSlot(e.car, e.id, e.name, e.color);
+      r.u = e.u;
+      r.finished = e.finished;
+      r.finishTime = e.finishTime;
+      r.me = e === meE;
+    }
+    for (const rc of remotes.values()) {
+      if ((!rc.ready && roam) || (rc.stale && !rc.finished)) continue;
+      const r = runnerSlot(rc.car, rc.id, rc.name, rc.color);
+      r.u = rc.u;
+      r.finished = rc.finished;
+      r.finishTime = rc.finishTime;
+    }
+    return runnerList;
+  }
+
+  /** The standings (its own list, kept until the next call). */
   function ranking(): Runner[] {
-    return runners().sort((a, b) => {
+    rankList.length = 0;
+    rankList.push(...runners());
+    return rankList.sort((a, b) => {
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
       if (a.finished !== b.finished) return a.finished ? -1 : 1;
       return b.u - a.u;
@@ -1108,21 +1149,24 @@ const rally = (ctx: GameContext): GameInstance => {
         rc.finishTime = raceT;
       }
     }
-    const allCars = (): Car[] => [...entrants.map((x) => x.car), ...[...remotes.values()].filter((r) => r.ready).map((r) => r.car)];
+    // everyone to steer round and bump into (my entrants first: collideCars' indexes rely on it)
+    carsBuf.length = 0;
+    for (const x of entrants) carsBuf.push(x.car);
+    for (const r of remotes.values()) if (r.shown) carsBuf.push(r.car);
 
     // ---- controls ----
     const humanU = (): { lo: number; hi: number } => {
       let lo = me.u;
       let hi = me.u;
       for (const rc of remotes.values())
-        if (!rc.id.startsWith('ai:')) {
+        if (!rc.id.startsWith('ai:') && !rc.stale) {
           lo = Math.min(lo, rc.u);
           hi = Math.max(hi, rc.u);
         }
       return { lo, hi };
     };
     const hu = humanU();
-    const cars = allCars();
+    const cars = carsBuf;
     for (const e of entrants) {
       if (e === me && !me.finished && phase !== 'over' && !AUTO) playerControls(dt, e);
       else if (e.ai || e === me) {
@@ -1189,6 +1233,8 @@ const rally = (ctx: GameContext): GameInstance => {
           e.finished = true;
           e.finishTime = raceT;
           if (e === me) onPlayerFinish();
+          // the host's computer cars take their places in the server's result too
+          else if (online && host && e.id.startsWith('ai:')) net!.sendFinish(Math.round(raceT * 1000), 0, e.id, e.name);
         }
       }
       // stuck or lost: back onto the road
@@ -1336,7 +1382,7 @@ const rally = (ctx: GameContext): GameInstance => {
     // ---- effects ----
     entrants.forEach((e, i) => carEffects(e.car, i, e === me, dt));
     let ri = entrants.length;
-    for (const rc of remotes.values()) if (rc.ready) carEffects(rc.car, ri++, false, dt);
+    for (const rc of remotes.values()) if (rc.shown) carEffects(rc.car, ri++, false, dt);
     particles.update(dt);
     skids.flush();
     confetti.update(dt, timeU.value);
@@ -1371,7 +1417,7 @@ const rally = (ctx: GameContext): GameInstance => {
       hud.setTimes(me.finished ? finishTime : raceT, me.finished ? 0 : raceT - lapStart, bestLap);
       if (hudBoard) hud.setBoard(order.map((r) => toRacer(r)));
     }
-    if (roam && world) hud.setRoam(world.taken, world.coins.length, stunt);
+    if (roam && world) hud.setRoam(world.taken, Math.min(world.coins.length, coinsLeft), stunt);
     if (damageK > 0) hud.setDamage(me.damage);
 
     // camera input: C (the key), Start, the 🎥 button; the C button is the camera too when there is no nitro
@@ -1555,7 +1601,9 @@ const rally = (ctx: GameContext): GameInstance => {
 
   function showResults(lines: RaceResultLine[]): void {
     const meId = opts?.me ?? 'me';
-    const rows: ResultRow[] = [...lines].sort((a, b) => (a.place || 99) - (b.place || 99)).map((l) => ({ name: l.name, me: l.id === meId, time: l.time, place: l.place, prize: l.prize, medal: l.medal }));
+    // the computer cars too (the one in slot k is ROSTER[k] on every screen)
+    const nameOf = (l: RaceResultLine): string => (l.id.startsWith('ai:') ? ROSTER[Number(l.id.slice(3))]?.name : undefined) ?? l.name;
+    const rows: ResultRow[] = [...lines].sort((a, b) => (a.place || 99) - (b.place || 99)).map((l) => ({ name: nameOf(l), me: l.id === meId, time: l.time, place: l.place, prize: l.prize, medal: l.medal }));
     hud.subtitle('');
     hud.results('🏁 Resultat', rows);
   }
@@ -1590,7 +1638,9 @@ const rally = (ctx: GameContext): GameInstance => {
     const me = player();
     const coins = world?.taken ?? 0;
     opts?.onDone?.({ place: 0, n: 0, time: Math.round(raceT * 1000), damage: Math.round(me.damage), coins });
-    finishEnd(Math.min(99999, coins * 100 + stunt), `🪙 ${coins} mynt · ${coins * ROAM_COIN_KR} kr`);
+    // only the coins left of today's limit turn into kr (the server says the same)
+    const kr = Math.min(coins, coinsLeft) * ROAM_COIN_KR;
+    finishEnd(Math.min(99999, coins * 100 + stunt), `🪙 ${coins} mynt · ${kr} kr${coinsLeft <= 0 ? ' · Dagens mynt är slut' : ''}`);
   }
 
   function finishEnd(sc: number, detail: string): void {
@@ -1635,7 +1685,7 @@ const rally = (ctx: GameContext): GameInstance => {
   function syncModels(time: number): void {
     for (const e of entrants) syncModel(e.car, e.model, time);
     for (const rc of remotes.values()) {
-      const vis = rc.ready;
+      const vis = rc.shown;
       rc.model.root.visible = vis;
       rc.model.shadow.visible = vis;
       if (!vis) continue;

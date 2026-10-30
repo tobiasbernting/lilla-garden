@@ -111,7 +111,7 @@ class Arcade {
       (e) => {
         if (e.pointerType !== 'touch' || this.touch || opts.touch === false) return;
         this.touch = true;
-        if (this.state === 'playing' && this.game) this.buildTouch(GAMES[this.game].touch);
+        if (this.state === 'playing' && this.game) this.buildTouch(this.touchLayout(this.game));
       },
       true,
     );
@@ -358,7 +358,7 @@ class Arcade {
     this.card.style.display = 'none';
     this.focusables = [];
     this.set('playing');
-    this.buildTouch(GAMES[game].touch);
+    this.buildTouch(this.touchLayout(game));
     let ended = false;
     const dprCap = this.quality === 'low' ? 1.5 : 2;
     const ctx: GameContext = {
@@ -511,6 +511,12 @@ class Arcade {
     node.addEventListener('pointerup', up);
     node.addEventListener('pointercancel', up);
     node.addEventListener('lostpointercapture', up);
+  }
+
+  /** The game's touch controls for what is being played. */
+  private touchLayout(game: ArcadeGame): TouchLayout {
+    const t = GAMES[game].touch;
+    return typeof t === 'function' ? t(this.opts.options) : t;
   }
 
   private buildTouch(layout: TouchLayout): void {
