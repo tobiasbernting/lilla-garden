@@ -857,7 +857,8 @@ export class SagaView {
       const s = this.find(id);
       if (!s) continue;
       const shine = 0.5 + 0.5 * Math.sin(this.t * 2.5);
-      q.push(s.y + 4.6, white, s.x, s.y - 8, 22, 28, 0, rgba(0.65, 0.88, 1, 0.42));
+      // tall enough for a helmet in the frame's headroom too
+      q.push(s.y + 4.6, white, s.x, s.y - 10, 22, 32, 0, rgba(0.65, 0.88, 1, 0.42));
       q.push(s.y + 4.61, white, s.x - 6, s.y - 12, 2.5, 18, 0.25, rgba(1, 1, 1, 0.35 + 0.3 * shine));
       q.push(s.y + 4.61, white, s.x + 7, s.y - 2, 1.5, 9, 0.25, rgba(1, 1, 1, 0.3));
     }

@@ -1594,7 +1594,8 @@ export class View implements HudTarget {
     if (pose === 'down') {
       // fallen in a dungeon: lying on the ground, grey, until a healer (or the rest stone) gets them up
       const s = this.characterFrame(a, 'down', false);
-      if (s) this.queue.push(a.y + 2, s, a.x, a.y + 4 - s.w / 2, s.w, s.h, Math.PI / 2, rgba(0.62, 0.62, 0.72, 1));
+      // (the frame's empty headroom over the head turns to one side: the body itself lies centred)
+      if (s) this.queue.push(a.y + 2, s, a.x + HEADROOM / 2, a.y + 4 - s.w / 2, s.w, s.h, Math.PI / 2, rgba(0.62, 0.62, 0.72, 1));
       return;
     }
     const ride = this.rideInfo(p);
