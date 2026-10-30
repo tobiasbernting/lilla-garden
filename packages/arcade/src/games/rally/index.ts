@@ -10,7 +10,7 @@ import { Car, collideCars, Ground_, type Controls } from './car.ts';
 import { Confetti, Particles, Skids } from './fx.ts';
 import { blobTex } from './geo.ts';
 import { Hud, type Racer } from './hud.ts';
-import { carModel, WHEELS, WHEEL_R, type CarModel, type Driver as Face } from './models.ts';
+import { carModelFromColor, WHEELS, WHEEL_R, type CarModel, type Driver as Face } from './models.ts';
 import { buildRoad, type Road } from './road.ts';
 import { buildScenery, type Scenery } from './scenery.ts';
 import { buildSky, type Sky } from './sky.ts';
@@ -181,7 +181,7 @@ const rally = (ctx: GameContext): GameInstance => {
       const me = slot === playerSlot;
       const r = me ? null : ROSTER[ai]!;
       const color = me ? ctx.player.color : colors[ai] ?? PALETTE[ai]!;
-      const model = carModel(color, me ? 'human' : r!.face, me ? 1 : ai + 2, shadowTex, sky.env);
+      const model = carModelFromColor(color, me ? 'human' : r!.face, me ? 1 : ai + 2, shadowTex, sky.env);
       scene.add(model.root, model.shadow);
       disposers.push(() => model.dispose());
       const car = new Car(track);

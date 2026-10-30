@@ -37,6 +37,11 @@ export interface GameContext {
   end(score: number, detail?: string): void;
   /** Ask the shell to pause (shows the pause card), e.g. when the mouse lock was lost. */
   requestPause(): void;
+  /**
+   * Game-specific options from whoever opened the arcade (Rallyvärlden passes a RallyOptions: course, rules,
+   * cars, network hooks). Undefined on the TV and in Spelhallen: the game plays its arcade default.
+   */
+  options?: unknown;
 }
 
 export interface GameInstance {

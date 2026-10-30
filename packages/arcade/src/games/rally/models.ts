@@ -1,6 +1,7 @@
 // Low-poly models for the countryside round the circuit: red cottages, the barn, the windmill, trees,
 // animals, spectators, fences and the cars. Every model is one vertex-coloured geometry (or a few).
 import * as THREE from 'three';
+import { CAR_BODY_DEFS, defaultStyle, type CarBody, type CarDriver, type CarStyle } from '@lilla-garden/shared';
 import { Geo, mat } from './geo.ts';
 import { rng } from './util.ts';
 
@@ -536,7 +537,43 @@ export interface CarModel {
   brakeMat: THREE.MeshBasicMaterial;
   paint: THREE.MeshStandardMaterial;
   shadow: THREE.Mesh;
+  /** Show the car's damage 0..100: dents, dirt, a cracked window, a loose bumper; smoke is the game's job. */
+  setDamage(d: number): void;
+  /** Night: headlights, tail lights and the underglow on. */
+  setNight(on: boolean): void;
+  /** Nitro burning (0 off .. 1 full): exhaust flames glow. */
+  setNitro(k: number): void;
+  /** Where the headlights are, in the car's frame (the game adds its own lights there). */
+  headlights: THREE.Vector3[];
   dispose(): void;
+}
+
+/** Everything that decides how a car looks. */
+export interface CarModelOpts {
+  body: CarBody;
+  style: CarStyle;
+  /** The computer cars' animal faces override the style's driver. */
+  driver?: CarDriver;
+  shadowTex: THREE.Texture;
+  envMap: THREE.Texture | null;
+  /** 'low' leaves out the small bits. */
+  quality?: 'high' | 'low';
+}
+
+/** A car for a body and a style, front along +z. The arcade default is the red hatchback. */
+export function carModel(opts: CarModelOpts): CarModel {
+  const style = opts.style ?? defaultStyle();
+  const who = opts.driver ?? style.driver;
+  const face: Driver = who === 'dog' || who === 'cat' ? 'human' : who;
+  const m = carModelLegacy(style.paint, face, style.number, opts.shadowTex, opts.envMap);
+  const sz = CAR_BODY_DEFS[opts.body]?.size ?? 1;
+  if (sz !== 1) m.root.scale.setScalar(sz);
+  return m;
+}
+
+/** The old look: a colour, a driver and a number. Kept for the quick arcade race; carModel is the real one. */
+export function carModelFromColor(color: string, driver: Driver, num: number, shadowTex: THREE.Texture, envMap: THREE.Texture | null): CarModel {
+  return carModel({ body: 'hatch', style: { ...defaultStyle(color), number: num }, driver: driver as CarDriver, shadowTex, envMap });
 }
 
 /** Wheel positions (x, z) in the car's frame: front axle at +1.15, rear at −1.35. */
@@ -549,7 +586,7 @@ export const WHEELS: [number, number][] = [
 export const WHEEL_R = 0.34;
 
 /** A little rally hatchback in `color`, front along +z, with a driver and a number on the doors. */
-export function carModel(color: string, driver: Driver, num: number, shadowTex: THREE.Texture, envMap: THREE.Texture | null): CarModel {
+function carModelLegacy(color: string, driver: Driver, num: number, shadowTex: THREE.Texture, envMap: THREE.Texture | null): CarModel {
   const disposables: { dispose(): void }[] = [];
   const root = new THREE.Group();
   const body = new THREE.Group();
@@ -704,6 +741,10 @@ export function carModel(color: string, driver: Driver, num: number, shadowTex: 
     brakeMat,
     paint,
     shadow,
+    setDamage: () => {},
+    setNight: () => {},
+    setNitro: () => {},
+    headlights: [new THREE.Vector3(0.6, 0.62, 2.05), new THREE.Vector3(-0.6, 0.62, 2.05)],
     dispose: () => {
       for (const d of disposables) d.dispose();
     },

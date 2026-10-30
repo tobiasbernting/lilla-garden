@@ -15,8 +15,8 @@ export interface ScoreLine {
 }
 
 export interface ArcadeOptions {
-  /** 'tv' lists the games at home; 'hall' is a machine in Spelhallen (one game, wins tickets). */
-  where: 'tv' | 'hall';
+  /** 'tv' lists the games at home; 'hall' is a machine in Spelhallen (one game, wins tickets); 'rally' is Rallyvärlden's garage starting a race or a drive (one game, straight in, no tickets). */
+  where: 'tv' | 'hall' | 'rally';
   /** Games that can be played. */
   games: ArcadeGame[];
   /** TV: games the family has not found yet (shown locked). */
@@ -41,6 +41,8 @@ export interface ArcadeOptions {
   autostart?: boolean;
   /** Force the touch controls on (or off). */
   touch?: boolean;
+  /** Passed to the game as `ctx.options` (Rallyvärlden's RallyOptions). */
+  options?: unknown;
 }
 
 export interface ArcadeHandle {
@@ -361,6 +363,7 @@ class Arcade {
       touch: this.touch,
       quality: this.quality,
       dpr: Math.min(window.devicePixelRatio || 1, dprCap),
+      options: this.opts.options,
       end: (score, detail) => {
         if (ended || run !== this.run) return;
         ended = true;

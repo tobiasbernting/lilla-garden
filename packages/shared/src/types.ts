@@ -1,5 +1,6 @@
 // Core shared types. Identifiers are English; all player-facing text lives in sv.ts.
 
+import type { GarageState } from './rally.ts';
 import type { SagaInstance, SagaProgress } from './saga.ts';
 
 export const TILE = 16;
@@ -148,7 +149,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores' | 'saga' | 'sagaclass' | 'rest' | 'sagachest';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores' | 'saga' | 'sagaclass' | 'rest' | 'sagachest' | 'garage';
   /** A loot table (LOOT in data.ts) rolled when it is broken, dug up or opened. */
   loot?: string;
   /** Gives light at night (client). */
@@ -275,6 +276,8 @@ export interface PlayerState {
   arcade?: ArcadeState;
   /** Dungeons: class, Völvan's story, cleared dungeons, quests, titles. */
   saga?: SagaProgress;
+  /** Rallyvärlden: the player's cars, the one they drive, best times and today's free-roam coins. */
+  garage?: GarageState;
 }
 
 export interface ArcadeState {
