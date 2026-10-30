@@ -543,8 +543,9 @@ input[type='text'] {
   gap: var(--u);
 }
 .portrait {
+  /* a character is 16×32 virtual pixels: the figure and room over it for a tall hat */
   width: calc(32 * var(--u));
-  height: calc(48 * var(--u));
+  height: calc(64 * var(--u));
   image-rendering: pixelated;
 }
 

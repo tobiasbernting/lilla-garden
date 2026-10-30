@@ -51,7 +51,7 @@ import {
   type WorldState,
 } from '@lilla-garden/shared';
 import { ANIMAL_SIZE, ANIMAL_VARIANTS } from '@v1/art/animals.ts';
-import { dirOf, frameIndex } from '@v1/art/characters.ts';
+import { CHAR_H, dirOf, frameIndex, HEADROOM } from '@v1/art/characters.ts';
 import { HD, NEW_ART } from '@v1/art/style.ts';
 import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
@@ -1527,7 +1527,7 @@ export class View implements HudTarget {
     const w = s.w * (1 + sq) * turnScale(a.flip);
     const h = s.h * (1 - sq);
     const footY = a.y + 4 - lift + bob + (swimming ? 7 : 0);
-    const part = swimming ? 15 / 24 : cropLegs ? 16 / 24 : 1;
+    const part = swimming ? (HEADROOM + 15) / CHAR_H : cropLegs ? (HEADROOM + 16) / CHAR_H : 1;
     this.queue.push(a.y + 4 + (lift > 0 ? 2 : 0), s, a.x, footY - h / 2, w, h, 0, WHITE, 0, part);
   }
 
