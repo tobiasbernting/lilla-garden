@@ -431,8 +431,19 @@ export interface RaceResultLine {
   medal: 'gold' | 'silver' | 'bronze' | null;
 }
 
-/** A race ends for everyone this long after the first finisher (ms). */
+/** A race ends for everyone this long after the first finisher (ms); long races wait longer (see races.ts). */
 export const RACE_FINISH_GRACE_MS = 45_000;
+/** Shortest race time the server believes (ms); and the longest. */
+export const RACE_MIN_MS = 10_000;
+export const RACE_MAX_MS = 15 * 60_000;
+
+/**
+ * The shortest time a race over these rules can take (ms): 60 % of the gold lap time per lap, never under
+ * RACE_MIN_MS. A finish sooner than this is not believed, and a solo race under it is booked as not finished.
+ */
+export function minRaceMs(rules: RaceRules): number {
+  return Math.max(RACE_MIN_MS, RALLY_COURSE_DEFS[rules.course].gold * rules.laps * 600);
+}
 /** How long the room's start countdown is (ms) after the host presses start. */
 export const RACE_COUNTDOWN_MS = 5000;
 /** Rooms nobody touches for this long are closed. */

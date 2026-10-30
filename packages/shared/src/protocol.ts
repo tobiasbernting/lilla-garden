@@ -113,7 +113,8 @@ export type ClientMsg =
   | { t: 'race'; a: 'rules'; rules: RaceRules }
   | { t: 'race'; a: 'start' }
   | { t: 'race'; a: 'snap'; snaps: CarSnap[] }
-  | { t: 'race'; a: 'finish'; time: number; damage: number }
+  /** My finish; the host also reports each of its computer cars crossing the line (`id` `ai:<n>` and its name). */
+  | { t: 'race'; a: 'finish'; time: number; damage: number; id?: string; name?: string }
   | { t: 'race'; a: 'solo'; rules: RaceRules; place: number; n: number; time: number; damage: number }
   | { t: 'race'; a: 'done'; damage: number }
   /** Rallyvärlden, free roam: who is out driving (positions relayed), and the coins found when you come back. */

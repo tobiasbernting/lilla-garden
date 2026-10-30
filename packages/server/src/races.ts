@@ -2,13 +2,17 @@
 // collecting finish times and paying the prizes (with the shared formulas), and free roam.
 // Nothing here is saved: rooms live as long as the server runs.
 import {
+  MAX_CARS_ON_TRACK,
   MAX_RACERS,
   RACE_COUNTDOWN_MS,
   RACE_FINISH_GRACE_MS,
+  RALLY_COURSE_DEFS,
   ROOM_IDLE_MS,
   T,
   activeCar,
+  cleanCarName,
   cleanRules,
+  minRaceMs,
   raceOnlineResult,
   raceSolo,
   roamDone,
@@ -48,6 +52,14 @@ export const ROOMS_WATCH_MS = 2 * 60_000;
 export const ROOM_DONE_MS = 30_000;
 /** A race nobody finishes ends anyway this long after the start (ms). */
 const RACE_TIMEOUT_MS = RACE_MAX_MS + RACE_COUNTDOWN_MS + 30_000;
+/** A finish time may be this much before the server's own race clock (ms: latency, a paused game)… */
+export const FINISH_EARLY_MS = 5000;
+/** …and this much after it. */
+export const FINISH_LATE_MS = 1000;
+
+/** How long the others get after the first finisher: longer on long races (ms). */
+export const finishGraceMs = (rules: RaceRules): number => Math.max(RACE_FINISH_GRACE_MS, 0.5 * RALLY_COURSE_DEFS[rules.course].gold * rules.laps * 1000);
+const isAiId = (id: unknown): id is string => typeof id === 'string' && /^ai:\d{1,2}$/.test(id);
 
 interface Room extends RoomInfo {
   touched: number;
@@ -57,6 +69,11 @@ interface Room extends RoomInfo {
   damage: Map<string, number>;
   /** Racers who left mid-race: they still get the prize for taking part. */
   gone: RaceLineIn[];
+  /** The host's computer cars over the line (time ms and name), and how many there are on the grid. */
+  aiFinish: Map<string, { time: number; name: string }>;
+  aiCount: number;
+  /** Damage from racers who closed the result card before the result came (saved when it is booked). */
+  doneEarly: Map<string, number>;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -97,8 +114,8 @@ export class Races {
   private roamers = new Map<string, { name: string; car: GarageCar }>();
   /** Snapshot rate limit: messages this second. */
   private rate = new Map<string, { sec: number; n: number }>();
-  /** Last online race per player, for the damage saved when the result card closes. */
-  private lastRace = new Map<string, { damage: boolean; car: number }>();
+  /** Last online race per player, for the damage saved when the result card closes (until the room closes). */
+  private lastRace = new Map<string, { damage: boolean; car: number; room: string }>();
   /** When each player's last race was booked: a race cannot end sooner after the last one than it lasted. */
   private lastBooked = new Map<string, number>();
 
@@ -150,7 +167,8 @@ export class Races {
         this.snap(pid, msg.snaps, now);
         return;
       case 'finish':
-        this.finish(pid, msg.time, msg.damage, now);
+        if (msg.id !== undefined) this.aiFinish(pid, msg.id, msg.time, msg.name, now);
+        else this.finish(pid, msg.time, msg.damage, now);
         return;
       case 'done':
         this.done(pid, msg.damage);
@@ -158,14 +176,23 @@ export class Races {
     }
   }
 
-  /** A race alone against the computer ended (prizes from the shared formula, at most one race per race time). */
+  /**
+   * A race alone against the computer ended (prizes from the shared formula). At most one race per race
+   * time: a finish needs as long since the last booked race as it took; not finishing (time 0) needs the
+   * shortest possible race. A refused one is told, never dropped silently.
+   */
   solo(pid: string, msg: Extract<ClientMsg, { t: 'race'; a: 'solo' }>): void {
     const now = Date.now();
-    const t = clamp(Math.round(fin(msg.time) || RACE_MAX_MS), RACE_MIN_MS, RACE_MAX_MS);
+    const time = Math.round(fin(msg.time));
+    const min = minRaceMs(cleanRules(msg.rules));
+    const wait = time >= min ? Math.min(time, RACE_MAX_MS) : min;
     const last = this.lastBooked.get(pid);
-    if (last !== undefined && now - last < t - 2000) return;
+    if (last !== undefined && now - last < wait - 2000) {
+      this.host.apply([toast(pid, T.rallyTooSoon)]);
+      return;
+    }
     this.lastBooked.set(pid, now);
-    this.host.apply(raceSolo(this.host.world(), pid, msg.rules, msg.place, msg.n, t, msg.damage, this.host.ctx()));
+    this.host.apply(raceSolo(this.host.world(), pid, msg.rules, msg.place, time, msg.damage, this.host.ctx()));
   }
 
   roam(pid: string, msg: Extract<ClientMsg, { t: 'roam' }>): void {
@@ -208,7 +235,7 @@ export class Races {
     for (const r of [...this.rooms.values()]) {
       if (r.phase === 'countdown' && r.startAt !== undefined && now >= r.startAt) r.phase = 'racing';
       if (r.phase === 'racing') {
-        const late = (r.firstFinish !== undefined && now - r.firstFinish >= RACE_FINISH_GRACE_MS) || (r.startAt !== undefined && now - r.startAt >= RACE_TIMEOUT_MS);
+        const late = (r.firstFinish !== undefined && now - r.firstFinish >= finishGraceMs(r.rules)) || (r.startAt !== undefined && now - r.startAt >= RACE_TIMEOUT_MS);
         if (late) this.endRace(r, now);
       }
       if (r.phase === 'done' && r.doneAt !== undefined && now - r.doneAt >= ROOM_DONE_MS) this.close(r);
@@ -238,7 +265,7 @@ export class Races {
     const m = this.member(pid);
     if (!m) return;
     this.leave(pid, now, false);
-    const r: Room = { id: this.newId(), host: pid, hostName: m.name, rules: cleanRules(rules), phase: 'lobby', members: [m], seed: 0, touched: now, damage: new Map(), gone: [] };
+    const r: Room = { id: this.newId(), host: pid, hostName: m.name, rules: cleanRules(rules), phase: 'lobby', members: [m], seed: 0, touched: now, damage: new Map(), gone: [], aiFinish: new Map(), aiCount: 0, doneEarly: new Map() };
     this.rooms.set(r.id, r);
     this.roomOf.set(pid, r.id);
     this.pushRoom(r);
@@ -270,7 +297,11 @@ export class Races {
     this.pushLobby();
   }
 
-  /** Out of the room (a mid-race leaver still gets the small prize when the race ends). */
+  /**
+   * Out of the room. A finisher who leaves keeps the time; one who leaves on the way is booked as not
+   * finished (the small prize when the race ends), but only once the race has gone on for the shortest
+   * possible race time: leaving during the countdown or right after the start books nothing.
+   */
   private leave(pid: string, now: number, tell = true): void {
     const id = this.roomOf.get(pid);
     if (!id) return;
@@ -281,12 +312,15 @@ export class Races {
     const m = r.members.find((x) => x.id === pid);
     r.members = r.members.filter((x) => x.id !== pid);
     r.touched = now;
-    // a finisher who leaves keeps the time; one who leaves on the way is booked as not finished
-    if (m && (r.phase === 'countdown' || r.phase === 'racing')) r.gone.push({ id: pid, time: m.finish ?? null, damage: r.damage.get(pid) ?? m.car.damage, car: m.car.id });
+    r.doneEarly.delete(pid);
+    const racing = r.phase === 'countdown' || r.phase === 'racing';
+    const tookPart = m && (m.finish !== undefined || (r.startAt !== undefined && now - r.startAt >= minRaceMs(r.rules)));
+    if (m && racing && tookPart) r.gone.push({ id: pid, time: m.finish ?? null, damage: r.damage.get(pid) ?? m.car.damage, car: m.car.id });
     if (r.members.length === 0) {
       // nobody left to wait for: settle the race for the ones who took part, then close
-      if (r.phase === 'countdown' || r.phase === 'racing') this.endRace(r, now);
+      if (racing) this.endRace(r, now);
       this.rooms.delete(r.id);
+      this.forgetRoom(r.id);
       this.pushLobby();
       return;
     }
@@ -322,7 +356,7 @@ export class Races {
 
   private start(pid: string, now: number): void {
     const r = this.roomFor(pid);
-    if (!r || r.host !== pid || r.phase !== 'lobby' || r.members.length < 1) return;
+    if (!r || r.host !== pid || r.phase !== 'lobby' || r.members.length < 1 || !r.members.every((m) => m.ready)) return;
     for (const m of r.members) {
       const fresh = this.member(m.id);
       if (fresh) m.car = fresh.car;
@@ -334,6 +368,10 @@ export class Races {
     r.touched = now;
     r.damage.clear();
     r.gone = [];
+    r.aiFinish.clear();
+    r.doneEarly.clear();
+    // the game fills the grid up to eight cars with the host's computer cars
+    r.aiCount = Math.max(0, Math.min(r.rules.ai, MAX_CARS_ON_TRACK - r.members.length));
     delete r.firstFinish;
     const info = this.info(r);
     for (const m of r.members) this.host.send(m.id, { t: 'race', ev: 'go', room: info });
@@ -357,7 +395,8 @@ export class Races {
     const r = this.roomFor(pid);
     if (!r || !Array.isArray(snaps)) return;
     if (r.phase === 'countdown' && r.startAt !== undefined && now >= r.startAt - 500) r.phase = 'racing';
-    if (r.phase !== 'racing' || !this.allowSnap(pid, now)) return;
+    // on the grid during the countdown too, so the cars are there when the lights go green
+    if ((r.phase !== 'racing' && r.phase !== 'countdown') || !this.allowSnap(pid, now)) return;
     const isHost = r.host === pid;
     const clean: CarSnap[] = [];
     for (const s of snaps.slice(0, MAX_SNAPS_PER_MSG)) {
@@ -372,20 +411,43 @@ export class Races {
     for (const m of r.members) if (m.id !== pid) this.host.send(m.id, { t: 'race', ev: 'snap', from: pid, snaps: clean });
   }
 
+  /**
+   * The race time of a finish reported now, or null when it is too soon to be believed. The server's own
+   * clock decides: the client's time is kept only as close to it as latency (or a paused game) explains.
+   */
+  private finishTime(r: Room, time: unknown, now: number): number | null {
+    if (r.phase === 'countdown' && r.startAt !== undefined && now >= r.startAt - 500) r.phase = 'racing';
+    if (r.phase !== 'racing' || r.startAt === undefined) return null;
+    const elapsed = now - r.startAt;
+    if (elapsed < minRaceMs(r.rules)) return null;
+    const t = typeof time === 'number' && Number.isFinite(time) && time > 0 ? clamp(time, elapsed - FINISH_EARLY_MS, elapsed + FINISH_LATE_MS) : elapsed;
+    return clamp(Math.round(t), RACE_MIN_MS, RACE_MAX_MS);
+  }
+
   private finish(pid: string, time: unknown, damage: unknown, now: number): void {
     const r = this.roomFor(pid);
     if (!r) return;
-    if (r.phase === 'countdown' && r.startAt !== undefined && now >= r.startAt - 500) r.phase = 'racing';
-    if (r.phase !== 'racing') return;
     const m = r.members.find((x) => x.id === pid);
     if (!m || m.finish !== undefined) return;
-    const t = clamp(Math.round(fin(time) || RACE_MAX_MS), RACE_MIN_MS, RACE_MAX_MS);
+    const t = this.finishTime(r, time, now);
+    if (t === null) return;
     m.finish = t;
     r.damage.set(pid, clamp(Math.round(fin(damage)), 0, 100));
     r.touched = now;
     if (r.firstFinish === undefined) r.firstFinish = now;
     for (const o of r.members) if (o.id !== pid) this.host.send(o.id, { t: 'race', ev: 'finish', from: pid, time: t });
     this.maybeEnd(r, now);
+  }
+
+  /** The host's computer car crossed the line: it takes its place (and is never paid). Does not end the race. */
+  private aiFinish(pid: string, id: unknown, time: unknown, name: unknown, now: number): void {
+    const r = this.roomFor(pid);
+    if (!r || r.host !== pid || !isAiId(id) || Number(id.slice(3)) >= r.aiCount || r.aiFinish.has(id)) return;
+    const t = this.finishTime(r, time, now);
+    if (t === null) return;
+    r.aiFinish.set(id, { time: t, name: cleanCarName(name) || T.rallyAiName });
+    r.touched = now;
+    for (const o of r.members) if (o.id !== pid) this.host.send(o.id, { t: 'race', ev: 'finish', from: id, time: t });
   }
 
   private maybeEnd(r: Room, now: number): void {
@@ -398,14 +460,20 @@ export class Races {
     if (r.phase === 'done' || r.phase === 'lobby') return;
     const lines: RaceLineIn[] = r.members.map((m) => ({ id: m.id, time: m.finish ?? null, damage: r.damage.get(m.id) ?? m.car.damage, car: m.car.id }));
     for (const g of r.gone) if (!lines.some((l) => l.id === g.id)) lines.push(g);
-    const { changes, results } = raceOnlineResult(this.host.world(), r.rules, lines, this.host.ctx());
+    const humans = lines.length;
+    for (const [id, a] of r.aiFinish) lines.push({ id, time: a.time, damage: 0, ai: true, name: a.name });
+    const { changes, results } = raceOnlineResult(this.host.world(), r.rules, lines, this.host.ctx(), r.aiCount);
     r.phase = 'done';
     r.doneAt = now;
     r.touched = now;
-    for (const l of lines) {
-      this.lastRace.set(l.id, { damage: r.rules.damage, car: l.car ?? -1 });
+    for (const l of lines.slice(0, humans)) {
       this.lastBooked.set(l.id, now);
+      // closed the result card before the result came: those dents are saved now
+      const early = r.doneEarly.get(l.id);
+      if (early === undefined) this.lastRace.set(l.id, { damage: r.rules.damage, car: l.car ?? -1, room: r.id });
+      else if (r.rules.damage) changes.push(...saveCarDamage(this.host.world(), l.id, early, l.car));
     }
+    r.doneEarly.clear();
     for (const m of r.members) this.host.send(m.id, { t: 'race', ev: 'result', room: r.id, results });
     this.host.apply(changes);
   }
@@ -413,14 +481,25 @@ export class Races {
   /** The result card was closed: keep the dents the car got after the finish line too. */
   private done(pid: string, damage: unknown): void {
     const last = this.lastRace.get(pid);
-    if (!last) return;
+    if (!last) {
+      // still waiting for the others: remember the dents for when the result is booked
+      const r = this.roomFor(pid);
+      if (r && (r.phase === 'racing' || r.phase === 'countdown') && r.members.some((m) => m.id === pid)) r.doneEarly.set(pid, clamp(Math.round(fin(damage)), 0, 100));
+      return;
+    }
     this.lastRace.delete(pid);
     if (!last.damage) return;
     this.host.apply(saveCarDamage(this.host.world(), pid, damage, last.car));
   }
 
+  /** A room is gone: its results can no longer be followed by a `done`. */
+  private forgetRoom(id: string): void {
+    for (const [pid, l] of this.lastRace) if (l.room === id) this.lastRace.delete(pid);
+  }
+
   private close(r: Room): void {
     this.rooms.delete(r.id);
+    this.forgetRoom(r.id);
     for (const m of r.members) {
       if (this.roomOf.get(m.id) === r.id) this.roomOf.delete(m.id);
       this.host.send(m.id, { t: 'race', ev: 'room', room: null });

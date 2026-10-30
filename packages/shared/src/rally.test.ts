@@ -26,6 +26,7 @@ import {
   garageOf,
   generateWorld,
   healCars,
+  minRaceMs,
   newDay,
   objectAt,
   objectDef,
@@ -37,6 +38,7 @@ import {
   reachableFrom,
   repairCost,
   roamDone,
+  saveCarDamage,
   sellPrice,
   setOnline,
   type Change,
@@ -206,7 +208,7 @@ describe('races', () => {
     const { world, p } = setup(0);
     const rules = { ...defaultRules(), course: 'forest' as const, laps: 1, damage: false };
     const t1 = 82_000;
-    const ch = raceSolo(world, p.id, rules, 1, 4, t1, 55, ctx);
+    const ch = raceSolo(world, p.id, rules, 1, t1, 55, ctx);
     const prize = racePrize(cleanRules(rules), 1, 4);
     expect(p.coins).toBe(prize);
     const car = activeCar(p);
@@ -219,31 +221,54 @@ describe('races', () => {
     expect(p.achievements).toContain('rally_1');
 
     // slower: the best stays; with damage on, the dents stay too
-    raceSolo(world, p.id, { ...rules, damage: true }, 3, 4, 90_000, 55, ctx);
+    raceSolo(world, p.id, { ...rules, damage: true }, 3, 90_000, 55, ctx);
     expect(garageOf(p).best['forest:1']).toBe(t1);
     expect(car.damage).toBe(55);
     expect(car.wins).toBe(1);
+    // a report of fewer dents does not mend the car: that is the garage's job
+    raceSolo(world, p.id, { ...rules, damage: true }, 3, 90_000, 20, ctx);
+    expect(car.damage).toBe(55);
     // faster: a new record
-    const ch3 = raceSolo(world, p.id, rules, 2, 4, 70_000, 0, ctx);
+    const ch3 = raceSolo(world, p.id, rules, 2, 70_000, 0, ctx);
     expect(garageOf(p).best['forest:1']).toBe(70_000);
     expect(toasts(ch3).some((t) => t.includes(fmtRaceTime(70_000)))).toBe(true);
     expect(fmtRaceTime(62_345)).toBe('1:02.3');
   });
 
-  it('clamps whatever a client reports, and a time under the minimum means not finished', () => {
+  it('clamps whatever a client reports, and a time under the shortest possible race means not finished', () => {
     const { world, p } = setup(0);
-    raceSolo(world, p.id, { junk: true }, 0, 99, 5, 500, ctx);
+    raceSolo(world, p.id, { junk: true }, 0, 5, 500, ctx);
     // the game sends 0 (or anything tiny) when the player never crossed the line: the small prize, no best time
     expect(p.coins).toBe(RACE_DNF_PRIZE);
     expect(activeCar(p).damage).toBe(0);
     expect(garageOf(p).best['farm:3']).toBeUndefined();
-    // place 1 of 8 (n capped), default rules (no damage)
-    raceSolo(world, p.id, { junk: true }, 0, 99, 12_000, 500, ctx);
-    expect(p.coins).toBe(RACE_DNF_PRIZE + racePrize(defaultRules(), 1, 8));
-    expect(garageOf(p).best['farm:3']).toBe(12_000);
-    raceSolo(world, p.id, { ...defaultRules(), damage: true }, 'x', 'y', Number.NaN, 500, ctx);
+    expect(activeCar(p).races).toBe(1);
+    // under 60 % of the gold time is not believed either: not finished
+    const min = minRaceMs(defaultRules());
+    expect(min).toBe(62 * 3 * 600);
+    raceSolo(world, p.id, defaultRules(), 1, min - 1, 0, ctx);
+    expect(p.coins).toBe(2 * RACE_DNF_PRIZE);
+    expect(garageOf(p).best['farm:3']).toBeUndefined();
+    // place 0 → 1, of the cars the rules put on the track (you and three computer cars), default rules (no damage)
+    raceSolo(world, p.id, { junk: true }, 0, 120_000, 500, ctx);
+    expect(p.coins).toBe(2 * RACE_DNF_PRIZE + racePrize(defaultRules(), 1, 4));
+    expect(garageOf(p).best['farm:3']).toBe(120_000);
+    // a place behind the last car is the last place
+    const coins = p.coins;
+    raceSolo(world, p.id, defaultRules(), 9, 130_000, 0, ctx);
+    expect(p.coins).toBe(coins + racePrize(defaultRules(), 4, 4));
+    raceSolo(world, p.id, { ...defaultRules(), damage: true }, 'x', Number.NaN, 500, ctx);
     expect(activeCar(p).damage).toBe(100);
-    expect(garageOf(p).best['farm:3']).toBe(12_000);
+    expect(garageOf(p).best['farm:3']).toBe(120_000);
+  });
+
+  it('pays a time trial like a practice run, whatever place it claims', () => {
+    const { world, p } = setup(0);
+    const rules = { ...defaultRules(), ai: 0, laps: 1 };
+    raceSolo(world, p.id, rules, 3, 70_000, 0, ctx);
+    expect(p.coins).toBe(racePrize(rules, 1, 1));
+    expect(activeCar(p).wins).toBe(0);
+    expect(minRaceMs({ ...defaultRules(), course: 'city', laps: 1 })).toBe(55 * 600);
   });
 
   it('orders an online race by time, the ones who did not finish last with the small prize', () => {
@@ -259,9 +284,11 @@ describe('races', () => {
       { id: r.id, time: 140_000, damage: 5 },
       { id: 'ghost', time: 1, damage: 0 },
     ], ctx);
-    expect(results.map((x) => [x.name, x.place])).toEqual([['Cia', 1], ['Elsa', 2], ['Bo', 3]]);
-    expect(results[2]!.time).toBeNull();
-    expect(results[2]!.prize).toBe(RACE_DNF_PRIZE);
+    // the computer car that never got there is behind the finishers and before the one who gave up
+    expect(results.map((x) => [x.name, x.place])).toEqual([['Cia', 1], ['Elsa', 2], [T.rallyAiName, 3], ['Bo', 4]]);
+    expect(results[2]).toMatchObject({ id: 'ai:0', time: null, prize: 0, medal: null });
+    expect(results[3]!.time).toBeNull();
+    expect(results[3]!.prize).toBe(RACE_DNF_PRIZE);
     expect(results[0]!.prize).toBe(racePrize(rules, 1, 4));
     expect(r.coins).toBe(results[0]!.prize);
     expect(q.coins).toBe(RACE_DNF_PRIZE);
@@ -273,6 +300,50 @@ describe('races', () => {
     expect(everyone).toHaveLength(1);
     expect((everyone[0] as { text: string }).text).toContain('Cia');
   });
+
+  it('ranks the computer cars among the humans but never pays them', () => {
+    const { world, p } = setup(0);
+    const q = createPlayer(world, 'Bo', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    q.coins = 0;
+    const rules = { ...defaultRules(), laps: 1, ai: 3 };
+    const { changes, results } = raceOnlineResult(world, rules, [
+      { id: p.id, time: 80_000, damage: 0 },
+      { id: 'ai:1', time: 70_000, damage: 0, ai: true, name: '  Hästen Blixt med ett mycket långt namn ' },
+      { id: q.id, time: null, damage: 0 },
+      { id: 'ai:0', time: 75_000, damage: 0, ai: true, name: 'Kossan Mu' },
+      // junk: a second line for the same car, a car the grid never had, a player id dressed up as a computer car
+      { id: 'ai:0', time: 1, damage: 0, ai: true, name: 'Fusk' },
+      { id: 'ai:7', time: 1, damage: 0, ai: true, name: 'Fusk' },
+      { id: q.id, time: 1, damage: 0, ai: true, name: 'Fusk' },
+    ], ctx);
+    expect(results.map((x) => [x.id, x.place, x.time])).toEqual([
+      ['ai:1', 1, 70_000],
+      ['ai:0', 2, 75_000],
+      [p.id, 3, 80_000],
+      ['ai:2', 4, null],
+      [q.id, 5, null],
+    ]);
+    expect(results[0]!.name).toBe('Hästen Blixt med');
+    expect(results[1]).toMatchObject({ name: 'Kossan Mu', prize: 0, medal: null });
+    // my real place among everyone: third of five cars (two humans, three computer cars)
+    expect(p.coins).toBe(racePrize(cleanRules(rules), 3, 5));
+    expect(results[2]!.prize).toBe(racePrize(cleanRules(rules), 3, 5));
+    expect(activeCar(p).wins).toBe(0);
+    expect(q.coins).toBe(RACE_DNF_PRIZE);
+    // a computer car won: that is the news
+    const everyone = changes.filter((c) => c.t === 'toast' && c.to === null);
+    expect((everyone[0] as { text: string }).text).toContain('Hästen Blixt');
+  });
+
+  it('saves only more dents when the result card closes', () => {
+    const { world, p } = setup(0);
+    const car = activeCar(p);
+    car.damage = 30;
+    expect(saveCarDamage(world, p.id, 10)).toEqual([]);
+    expect(car.damage).toBe(30);
+    saveCarDamage(world, p.id, 45);
+    expect(car.damage).toBe(45);
+  });
 });
 
 describe('free roam', () => {
@@ -283,6 +354,8 @@ describe('free roam', () => {
     expect(activeCar(p).damage).toBe(12);
     roamDone(world, p.id, 30, 0, ctx);
     expect(p.coins).toBe(ROAM_COINS_PER_DAY * ROAM_COIN_KR);
+    // coming home shiny does not mend the dents
+    expect(activeCar(p).damage).toBe(12);
     const t = toasts(roamDone(world, p.id, 30, 0, ctx));
     expect(t).toEqual([T.rallyRoamCapped]);
     expect(p.coins).toBe(ROAM_COINS_PER_DAY * ROAM_COIN_KR);

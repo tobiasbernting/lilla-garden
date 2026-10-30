@@ -554,6 +554,8 @@ export const T = {
   rallyRoamCoins: '🪙 Du hittade {n} mynt och fick {kr} kr!',
   rallyRoamCapped: '🪙 Du har hittat alla dagens mynt. Nya mynt kommer i morgon!',
   rallyRoamNone: 'Välkommen tillbaka från turen!',
+  rallyTooSoon: '⏱️ Det loppet räknades inte – det gick för kort tid sedan förra loppet.',
+  rallyAiName: 'Datorbil',
   // Sagan om Världsträdet
   sagaNeedClass: 'Du behöver välja en väg först. Prata med Völvan Sigrun på torget i staden!',
   sagaLocked: '{name} är förseglad. Besegra först {boss} i {prev}.',

@@ -85,6 +85,8 @@ export interface GameOptions {
 
 /** How long an offline player may stay in the cave before being carried out. */
 const DUNGEON_GRACE_MS = 90_000;
+/** How long an offline player keeps their place in a race room or out in free roam (a Wi-Fi blip). */
+export const RACE_GRACE_MS = 10_000;
 
 export class Game {
   world!: WorldState;
@@ -92,6 +94,8 @@ export class Game {
   private pending: Change[] = [];
   private rnd = mulberry32(Date.now() & 0xffffffff);
   private timers: NodeJS.Timeout[] = [];
+  /** Players gone offline, taken out of the races when the grace runs out unless they come back. */
+  private raceDrops = new Map<string, NodeJS.Timeout>();
   private lastTick = Date.now();
   private flushCounter = 0;
   /** Recent chat lines for players who come online (not saved). */
@@ -129,6 +133,8 @@ export class Game {
   async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+    for (const t of this.raceDrops.values()) clearTimeout(t);
+    this.raceDrops.clear();
     for (const c of this.clients) c.link.close();
     this.store.markAllDirty(this.world);
     await this.store.flush(this.world);
@@ -291,7 +297,7 @@ export class Game {
       this.clients.delete(c);
       if (c.playerId && ![...this.clients].some((o) => o.playerId === c.playerId)) {
         const p = this.world.players[c.playerId];
-        this.races.drop(c.playerId);
+        this.dropFromRacesLater(c.playerId);
         this.pending.push(...setOnline(this.world, c.playerId, false));
         this.dispatchPending();
         // A flaky tablet connection must not throw you out of the cave: wait a while before carrying you out
@@ -306,6 +312,19 @@ export class Game {
         }
       }
     }
+  }
+
+  /** Out of the race room and free roam, unless the player is back within RACE_GRACE_MS. */
+  private dropFromRacesLater(id: string): void {
+    clearTimeout(this.raceDrops.get(id));
+    this.raceDrops.set(
+      id,
+      setTimeout(() => {
+        this.raceDrops.delete(id);
+        if (this.world.players[id]?.online) return;
+        this.races.drop(id);
+      }, RACE_GRACE_MS),
+    );
   }
 
   private handle(client: Client, msg: ClientMsg): void {
@@ -328,6 +347,9 @@ export class Game {
         }
       }
       client.playerId = msg.playerId;
+      // back in time: still in the race room or out driving
+      clearTimeout(this.raceDrops.get(msg.playerId));
+      this.raceDrops.delete(msg.playerId);
       const biomes: Record<string, string> = {};
       for (const [k, a] of Object.entries(this.world.areas ?? {})) if (k.startsWith('a:') && a.biome) biomes[k] = a.biome;
       client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount, biomes });

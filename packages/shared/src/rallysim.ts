@@ -2,7 +2,8 @@
 // solo and online races, the free-roam coins, damage that mends overnight and the garage on the farm.
 // Pure functions over WorldState like sim.ts; the server keeps the rooms and relays the snapshots.
 //
-// Trust: races run on the clients, so reported places, times, damage and coins are only range-clamped.
+// Trust: races run on the clients, so reported places, times, damage and coins are range-clamped (the server
+// also checks online times against its own clock, see races.ts), and a reported damage only ever adds dents.
 // Money always comes from the formulas in rally.ts.
 
 import { cleanChat } from './chat.ts';
@@ -30,6 +31,8 @@ import {
   PART_PRICES,
   PLATE_MAX,
   RACE_DNF_PRIZE,
+  RACE_MAX_MS,
+  RACE_MIN_MS,
   ROAM_COIN_COUNT,
   ROAM_COIN_KR,
   ROAM_COINS_PER_DAY,
@@ -37,6 +40,7 @@ import {
   cleanRules,
   isCarBody,
   isCarPart,
+  minRaceMs,
   newCar,
   raceMedal,
   racePrize,
@@ -53,10 +57,6 @@ import { bump, farmOf, playerChange, toast, type SimCtx } from './sim.ts';
 import { CAR_DEFAULT_NAMES, RALLY_COURSE_NAMES, CAR_PART_NAMES, T, fmt } from './sv.ts';
 import { MAP_H, MAP_W, WALL_TERRAIN, key, type PlayerState, type WorldState } from './types.ts';
 import { inEdgeGap, reachableFrom, walkableTile } from './worldgen.ts';
-
-/** Shortest race time the server believes (ms); and the longest. */
-export const RACE_MIN_MS = 10_000;
-export const RACE_MAX_MS = 15 * 60_000;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 /** A number from a client, or `def` when it is not a finite number. */
@@ -309,7 +309,8 @@ function bookRace(p: PlayerState, car: GarageCar, rules: RaceRules, place: numbe
   const g = garageOf(p);
   const prize = time === null ? RACE_DNF_PRIZE : racePrize(rules, place, n);
   p.coins += prize;
-  if (rules.damage) car.damage = damage;
+  // a client's report only ever adds dents: mending is for the garage (and the mornings)
+  if (rules.damage) car.damage = Math.max(car.damage, damage);
   car.races++;
   const won = time !== null && place === 1 && n > 1;
   if (won) car.wins++;
@@ -332,69 +333,98 @@ function bookRace(p: PlayerState, car: GarageCar, rules: RaceRules, place: numbe
   return { prize, medal, text: parts.join(' ') };
 }
 
-/** A race alone against the computer cars ended: pay the prize and keep the time and the damage. */
-export function raceSolo(world: WorldState, pid: string, rules: unknown, place: unknown, n: unknown, time: unknown, damage: unknown, ctx: SimCtx): Change[] {
+/**
+ * A race alone against the computer cars ended: pay the prize and keep the time and the damage. The
+ * number of cars comes from the rules (just you in a time trial); only the place is the client's.
+ */
+export function raceSolo(world: WorldState, pid: string, rules: unknown, place: unknown, time: unknown, damage: unknown, ctx: SimCtx): Change[] {
   void ctx;
   const farm = farmOf(world);
   const p = farm.players[pid];
   if (!p) return [];
   const r = cleanRules(rules);
-  const cars = clamp(Math.round(num(n, 1)), 1, MAX_CARS_ON_TRACK);
+  const cars = clamp(1 + r.ai, 1, MAX_CARS_ON_TRACK);
   const pl = clamp(Math.round(num(place, cars)), 1, cars);
   const out: Change[] = [];
-  // a time under the minimum (the game sends 0) means the player never crossed the line
-  const ms = num(time, 0) < RACE_MIN_MS ? null : clampTime(time);
+  // a time under the shortest possible race (the game sends 0) means the player never crossed the line
+  const ms = num(time, 0) < minRaceMs(r) ? null : clampTime(time);
   const res = bookRace(p, activeCar(p), r, pl, cars, ms, clampDamage(damage), out);
   out.push(toast(p.id, res.text), playerChange(p));
   return out;
 }
 
-/** One racer's line in an online race as the server collected it (time null: did not finish). */
+/**
+ * One racer's line in an online race as the server collected it (time null: did not finish). The host's
+ * computer cars come as `ai` lines (`ai:<n>` and the name the host gave them): they take places but are
+ * never paid.
+ */
 export interface RaceLineIn {
   id: string;
   time: number | null;
   damage: number;
   /** The car raced with (the member's snapshot); the active car when missing or gone. */
   car?: number;
+  ai?: boolean;
+  name?: string;
 }
 
+const isAiId = (id: string): boolean => /^ai:\d{1,2}$/.test(id);
+
 /**
- * An online race ended: places by time (the ones who did not finish last), prizes for everyone,
- * damage, best times and counters, and one toast for the whole family with the winner.
+ * An online race ended: places by time among everyone on the track (humans and the computer cars), then
+ * the computer cars that never got there, then the humans who did not finish. Prizes, damage, best times
+ * and counters for the humans, and one toast for the whole family with the winner. `aiCars`: how many
+ * computer cars were on the grid (by default as many as the rules and the humans leave room for).
  */
-export function raceOnlineResult(world: WorldState, roomRules: unknown, lines: RaceLineIn[], ctx: SimCtx): { changes: Change[]; results: RaceResultLine[] } {
+export function raceOnlineResult(world: WorldState, roomRules: unknown, lines: RaceLineIn[], ctx: SimCtx, aiCars?: number): { changes: Change[]; results: RaceResultLine[] } {
   void ctx;
   const farm = farmOf(world);
   const rules = cleanRules(roomRules);
   const changes: Change[] = [];
   const results: RaceResultLine[] = [];
-  const known = lines.filter((l) => farm.players[l.id]);
-  const finished = known.filter((l) => l.time !== null && Number.isFinite(l.time)).map((l) => ({ ...l, time: clampTime(l.time) }));
+  const timed = (l: RaceLineIn): boolean => l.time !== null && Number.isFinite(l.time);
+  const known = lines.filter((l) => !l.ai && farm.players[l.id]);
+  // as many computer cars as the game put on the grid
+  const nAi = clamp(Math.round(num(aiCars, Math.min(rules.ai, MAX_CARS_ON_TRACK - known.length))), 0, MAX_CARS_ON_TRACK - Math.min(known.length, MAX_CARS_ON_TRACK));
+  const aiSeen = new Set<string>();
+  const ai = lines.filter((l) => {
+    if (!l.ai || !isAiId(l.id) || Number(l.id.slice(3)) >= nAi || aiSeen.has(l.id) || !timed(l)) return false;
+    aiSeen.add(l.id);
+    return true;
+  });
+  const finished = [...known.filter(timed), ...ai].map((l) => ({ ...l, time: clampTime(l.time) }));
   finished.sort((a, b) => a.time - b.time);
-  const dnf = known.filter((l) => !(l.time !== null && Number.isFinite(l.time)));
-  const n = clamp(known.length + rules.ai, 1, MAX_CARS_ON_TRACK);
-  const ordered: { line: RaceLineIn; time: number | null }[] = [...finished.map((l) => ({ line: l as RaceLineIn, time: l.time })), ...dnf.map((l) => ({ line: l, time: null }))];
+  const n = clamp(known.length + nAi, 1, MAX_CARS_ON_TRACK);
+  type Ordered = { line: RaceLineIn; time: number | null };
+  const ordered: Ordered[] = finished.map((l) => ({ line: l as RaceLineIn, time: l.time }));
+  // the computer cars still on their way rank behind the finishers, before the ones who gave up
+  for (let k = 0; k < nAi; k++) if (!aiSeen.has(`ai:${k}`)) ordered.push({ line: { id: `ai:${k}`, time: null, damage: 0, ai: true }, time: null });
+  for (const l of known) if (!timed(l)) ordered.push({ line: l, time: null });
   ordered.forEach(({ line, time }, i) => {
+    const place = i + 1;
+    if (line.ai) {
+      results.push({ id: line.id, name: cleanCarName(line.name) || T.rallyAiName, time, place, prize: 0, medal: null });
+      return;
+    }
     const p = farm.players[line.id]!;
     const g = garageOf(p);
     const car = g.cars.find((c) => c.id === line.car) ?? activeCar(p);
-    const place = i + 1;
     const res = bookRace(p, car, rules, place, n, time, clampDamage(line.damage), changes);
     changes.push(toast(p.id, res.text), playerChange(p));
     results.push({ id: p.id, name: p.name, time, place, prize: res.prize, medal: res.medal });
   });
   const winner = results.find((r) => r.time !== null);
-  if (winner && results.length > 1) changes.push(toast(null, fmt(T.rallyWinner, { name: winner.name, course: RALLY_COURSE_NAMES[rules.course] ?? rules.course })));
+  if (winner && known.length > 1) changes.push(toast(null, fmt(T.rallyWinner, { name: winner.name, course: RALLY_COURSE_NAMES[rules.course] ?? rules.course })));
   return { changes, results };
 }
 
-/** Saves the damage of the car after a race (when the result card is closed). Only with damage on. */
+/** Saves the damage of the car after a race (when the result card is closed). Only with damage on, and only more dents. */
 export function saveCarDamage(world: WorldState, pid: string, damage: unknown, carId?: number): Change[] {
   const p = farmOf(world).players[pid];
   if (!p) return [];
   const g = garageOf(p);
   const car = g.cars.find((c) => c.id === carId) ?? activeCar(p);
-  const d = clampDamage(damage);
+  const d = Math.max(car.damage, clampDamage(damage));
   if (car.damage === d) return [];
   car.damage = d;
   return [playerChange(p)];
@@ -418,7 +448,8 @@ export function roamDone(world: WorldState, pid: string, coins: unknown, damage:
   const found = clamp(Math.round(num(coins, 0)), 0, ROAM_COIN_COUNT);
   const take = Math.min(found, Math.max(0, ROAM_COINS_PER_DAY - g.roamCoins));
   const out: Change[] = [];
-  activeCar(p).damage = clampDamage(damage);
+  const car = activeCar(p);
+  car.damage = Math.max(car.damage, clampDamage(damage));
   if (take > 0) {
     const kr = take * ROAM_COIN_KR;
     g.roamCoins += take;
