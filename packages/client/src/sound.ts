@@ -10,7 +10,8 @@ let muted = (() => {
   }
 })();
 
-const ensure = (): AudioContext | null => {
+/** The audio context (null while muted or before the first tap). */
+export const ensure = (): AudioContext | null => {
   if (muted) return null;
   try {
     if (!ctx) ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -21,7 +22,7 @@ const ensure = (): AudioContext | null => {
   }
 };
 
-function tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 0.08, slide = 0): void {
+export function tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 0.08, slide = 0): void {
   const c = ensure();
   if (!c) return;
   const o = c.createOscillator();
@@ -36,7 +37,7 @@ function tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 
   o.stop(c.currentTime + dur);
 }
 
-const noise = (dur: number, vol = 0.06): void => {
+export const noise = (dur: number, vol = 0.06): void => {
   const c = ensure();
   if (!c) return;
   const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);

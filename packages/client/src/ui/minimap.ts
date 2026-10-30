@@ -145,7 +145,8 @@ export class Minimap {
     for (const a of client.snaps.animals.values()) {
       if ((a.area ?? 'farm') !== area) continue;
       const rec = world.animals[a.id];
-      const mob = rec && ANIMALS[rec.species]?.mob;
+      // the cave's trolls and the dungeons' monsters in red
+      const mob = rec && (ANIMALS[rec.species]?.mob || ANIMALS[rec.species]?.saga);
       dot(a.x, a.y, mob ? '#ff4a4a' : '#f4ead8', mob ? 3 : 2);
     }
     for (const p of client.snaps.players.values()) {
