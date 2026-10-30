@@ -69,8 +69,8 @@ function pickColors(player: string, n: number): string[] {
 
 const nextFrame = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-/** Test hooks, only with rally… in the address: an autopilot, a fast-forward and a readout. */
-const Q = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+/** Test hooks, only in the lab (dev build) with rally… in the address: an autopilot, a fast-forward and a readout. */
+const Q = new URLSearchParams(import.meta.env.DEV && typeof location !== 'undefined' ? location.search : '');
 const DEBUG = Q.has('rallydebug');
 const AUTO = Q.has('rallyauto') ? Number(Q.get('rallyauto')) || 0.9 : 0;
 const TURBO = Math.max(1, Math.min(30, Number(Q.get('rallyturbo')) || 1));
