@@ -1,4 +1,6 @@
-// Placeholder until the real game is built.
-import { placeholder } from '../placeholder.ts';
+// Minigolfen: nine holes of crazy golf on little floating farm islands (see game.ts).
+import type { GameFactory } from '../../types.ts';
+import { startGolf } from './game.ts';
 
-export default placeholder('golf');
+const factory: GameFactory = (ctx) => startGolf(ctx);
+export default factory;
