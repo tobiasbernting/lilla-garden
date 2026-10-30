@@ -1,5 +1,7 @@
 // The race HUD in plain HTML over the 3D view: position, lap and times, the standings, a minimap with
-// dots, a speedometer with revs and gear, the start lights and big friendly messages.
+// dots, a speedometer with revs and gear, the start lights and big friendly messages. Rallyvärlden adds
+// the damage bar, nitro charges, the drift meter and style points, name tags over the other cars, the
+// result table, the free-roam counters and two little touch buttons (camera, home).
 import type { Track } from './track.ts';
 import { clamp, fmtTime } from './util.ts';
 
@@ -67,7 +69,62 @@ const CSS = `
 @keyframes rl-drive { from { transform: translateX(-30px) rotate(-3deg); } to { transform: translateX(30px) rotate(2deg); } }
 .rl-loading .bar { width: min(60vw, 320px); height: 12px; border-radius: 6px; background: rgba(0,0,0,0.25); overflow: hidden; }
 .rl-loading .bar i { display: block; height: 100%; width: 0; background: #ffd23f; transition: width 0.2s; }
+.rl-br { position: absolute; right: max(calc(16px * var(--s)), env(safe-area-inset-right)); bottom: calc(146px * var(--s));
+  display: flex; flex-direction: column; align-items: flex-end; gap: calc(6px * var(--s)); }
+.rl-hud.touch .rl-br { right: auto; left: 50%; transform: translateX(-50%); bottom: calc(132px * var(--s)); align-items: center; }
+.rl-chip { display: none; align-items: center; gap: calc(6px * var(--s)); font-weight: 900; font-size: calc(17px * var(--s)); }
+.rl-chip.show { display: flex; }
+.rl-meter { width: calc(110px * var(--s)); height: calc(12px * var(--s)); border-radius: 999px; background: rgba(255,255,255,0.18); overflow: hidden; }
+.rl-meter i { display: block; height: 100%; width: 0; border-radius: 999px; background: #5fdc6a; }
+.rl-nitro span { filter: grayscale(1) opacity(0.35); }
+.rl-nitro span.on { filter: none; }
+.rl-nitro span.burn { filter: drop-shadow(0 0 6px #ffb040); animation: rl-blink 0.3s steps(2) infinite; }
+.rl-style b { color: #ffd23f; font-variant-numeric: tabular-nums; }
+.rl-drift .rl-meter i { transition: background 0.2s; }
+.rl-pop { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: calc(30px * var(--s)); font-weight: 900; white-space: nowrap;
+  color: #ffd23f; text-shadow: 0 3px 0 rgba(0,0,0,0.45); animation: rl-rise 1.4s ease-out both; }
+.rl-pop.coin { color: #ffe27a; }
+.rl-pop.blue { color: #7fd6ff; }
+@keyframes rl-rise { from { opacity: 0; transform: translate(-50%, 10px) scale(0.6); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  to { opacity: 0; transform: translate(-50%, -70px) scale(1); } }
+.rl-tags { position: absolute; inset: 0; overflow: hidden; }
+.rl-tag { position: absolute; left: 0; top: 0; padding: calc(2px * var(--s)) calc(8px * var(--s)); border-radius: 999px; white-space: nowrap;
+  background: rgba(16, 20, 34, 0.6); font-size: calc(13px * var(--s)); font-weight: 800; transform: translate(-50%, -100%); display: none; }
+.rl-tag i { display: inline-block; width: calc(8px * var(--s)); height: calc(8px * var(--s)); border-radius: 50%; margin-right: calc(4px * var(--s)); }
+.rl-speed { position: absolute; inset: 0; opacity: 0; transition: opacity 0.25s;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.0) 0deg 7deg, rgba(255,255,255,0.22) 7.4deg 8deg);
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 38%, #000 75%); mask: radial-gradient(circle at 50% 50%, transparent 38%, #000 75%); }
+.rl-result { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: min(92%, calc(420px * var(--s)));
+  background: rgba(16, 20, 34, 0.82); border-radius: calc(18px * var(--s)); padding: calc(14px * var(--s)) calc(18px * var(--s)); display: none; }
+.rl-result.show { display: block; animation: rl-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.rl-result h3 { margin: 0 0 calc(8px * var(--s)); text-align: center; font-size: calc(24px * var(--s)); color: #ffd23f; }
+.rl-result table { width: 100%; border-collapse: collapse; font-size: calc(16px * var(--s)); font-variant-numeric: tabular-nums; }
+.rl-result td { padding: calc(3px * var(--s)) calc(6px * var(--s)); white-space: nowrap; }
+.rl-result tr.me td { color: #ffe27a; font-weight: 900; }
+.rl-result td.r { text-align: right; }
+.rl-roam { display: none; font-size: calc(20px * var(--s)); font-weight: 900; line-height: 1.35; }
+.rl-roam.show { display: block; }
+.rl-btns { position: absolute; right: max(calc(12px * var(--s)), env(safe-area-inset-right)); top: calc(226px * var(--s)); display: flex; flex-direction: column; align-items: flex-end; gap: calc(8px * var(--s)); }
+.rl-btn { pointer-events: auto; border: 2px solid rgba(255,255,255,0.5); background: rgba(16, 20, 34, 0.6); color: #fff; border-radius: 999px;
+  font: 900 calc(16px * var(--s)) 'Nunito', system-ui, sans-serif; padding: calc(6px * var(--s)) calc(12px * var(--s)); display: none; cursor: pointer; }
+.rl-btn.show { display: block; }
+.rl-hint { position: absolute; left: 50%; bottom: max(calc(14px * var(--s)), env(safe-area-inset-bottom)); transform: translateX(-50%); font-size: calc(14px * var(--s));
+  font-weight: 800; opacity: 0.8; text-shadow: 0 1px 0 rgba(0,0,0,0.5); display: none; }
+.rl-hint.show { display: block; }
+.rl-hud.touch .rl-hint { display: none; }
 `;
+
+/** One line of the result table. */
+export interface ResultRow {
+  name: string;
+  me: boolean;
+  time: number | null;
+  place: number;
+  prize?: number;
+  medal?: 'gold' | 'silver' | 'bronze' | null;
+}
+
+const MEDAL: Record<string, string> = { gold: '🥇', silver: '🥈', bronze: '🥉' };
 
 export interface Racer {
   name: string;
@@ -111,6 +168,27 @@ export class Hud {
   private mapScale = 1;
   private mapOx = 0;
   private mapOz = 0;
+  private br: HTMLElement;
+  private dmgChip: HTMLElement;
+  private dmgBar: HTMLElement;
+  private nitroChip: HTMLElement;
+  private nitroKey = '';
+  private driftChip: HTMLElement;
+  private driftBar: HTMLElement;
+  private styleChip: HTMLElement;
+  private tagsEl: HTMLElement;
+  private tagEls = new Map<string, HTMLElement>();
+  private speedEl: HTMLElement;
+  private resultEl: HTMLElement;
+  private roamEl: HTMLElement;
+  private hintEl: HTMLElement;
+  private btns: HTMLElement;
+  /** Touch buttons of the HUD's own: the camera and (free roam) home. */
+  readonly camBtn: HTMLButtonElement;
+  readonly homeBtn: HTMLButtonElement;
+  private roamMode = false;
+  /** The last values shown, so a frame with no change touches no DOM. */
+  private last: Record<string, string> = {};
 
   constructor(
     parent: HTMLElement,
@@ -138,6 +216,27 @@ export class Hud {
     this.msgEl = el('div', 'rl-msg', this.root);
     this.sub = el('div', 'rl-sub', this.root);
     this.toastEl = el('div', 'rl-toast', this.root);
+    this.speedEl = el('div', 'rl-speed', this.root);
+    this.tagsEl = el('div', 'rl-tags', this.root);
+    this.roamEl = el('div', 'rl-panel rl-roam', tl);
+    this.br = el('div', 'rl-br', this.root);
+    this.styleChip = el('div', 'rl-panel rl-chip rl-style', this.br);
+    this.driftChip = el('div', 'rl-panel rl-chip rl-drift', this.br);
+    el('span', '', this.driftChip).textContent = '🌀';
+    this.driftBar = el('i', '', el('div', 'rl-meter', this.driftChip));
+    this.nitroChip = el('div', 'rl-panel rl-chip rl-nitro', this.br);
+    this.dmgChip = el('div', 'rl-panel rl-chip', this.br);
+    el('span', '', this.dmgChip).textContent = '🔧';
+    this.dmgBar = el('i', '', el('div', 'rl-meter', this.dmgChip));
+    this.resultEl = el('div', 'rl-result', this.root);
+    this.hintEl = el('div', 'rl-hint', this.root);
+    this.btns = el('div', 'rl-btns', this.root);
+    this.camBtn = el('button', 'rl-btn', this.btns) as HTMLButtonElement;
+    this.camBtn.textContent = '🎥';
+    this.homeBtn = el('button', 'rl-btn', this.btns) as HTMLButtonElement;
+    this.homeBtn.textContent = '🏠 Hem till garaget';
+    if (touch) this.camBtn.classList.add('show');
+    for (const b of [this.camBtn, this.homeBtn]) b.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.loading = el('div', 'rl-loading', this.root);
     el('div', 'car', this.loading).textContent = '🏎️';
     el('div', '', this.loading).textContent = 'Bygger banan…';
@@ -176,7 +275,100 @@ export class Hud {
   }
 
   hideRace(hide: boolean): void {
-    for (const e of [this.pos.parentElement!, this.times, this.board, this.map, this.speedo]) e.style.visibility = hide ? 'hidden' : 'visible';
+    for (const e of [this.pos.parentElement!, this.times, this.board, this.map, this.speedo, this.br]) e.style.visibility = hide ? 'hidden' : 'visible';
+    if (this.roamMode) for (const e of [this.pos.parentElement!, this.times, this.board]) e.style.display = 'none';
+  }
+
+  /** Free roam: the coin counter instead of the position, laps and standings. */
+  roam(on: boolean, touch: boolean): void {
+    this.roamMode = on;
+    this.roamEl.classList.toggle('show', on);
+    this.homeBtn.classList.toggle('show', on && touch);
+    this.hint(on && !touch ? 'Enter: hem till garaget · R: tillbaka på vägen' : '');
+  }
+
+  setRoam(coins: number, total: number, stunt: number): void {
+    const html = `🪙 <b>${coins}</b> / ${total}<br>⭐ <b>${stunt}</b>`;
+    if (this.roamEl.innerHTML !== html) this.roamEl.innerHTML = html;
+  }
+
+  hint(text: string): void {
+    this.hintEl.textContent = text;
+    this.hintEl.classList.toggle('show', !!text);
+  }
+
+  /** The damage bar (null hides it). */
+  setDamage(d: number | null): void {
+    if (this.same('dmg', d === null ? '-' : Math.round(d))) return;
+    this.dmgChip.classList.toggle('show', d !== null);
+    if (d === null) return;
+    this.dmgBar.style.width = `${Math.round(clamp(d, 0, 100))}%`;
+    this.dmgBar.style.background = d < 35 ? '#5fdc6a' : d < 70 ? '#ffd23f' : '#ff5a3a';
+  }
+
+  /** Nitro charges left and whether one is burning (total 0 hides it). */
+  setNitro(left: number, total: number, burning: boolean): void {
+    const key = `${left}/${total}/${burning}`;
+    if (key === this.nitroKey) return;
+    this.nitroKey = key;
+    this.nitroChip.classList.toggle('show', total > 0);
+    let html = '';
+    for (let k = 0; k < total; k++) html += `<span class="${k < left ? 'on' : burning && k === left ? 'burn' : ''}">🔥</span>`;
+    this.nitroChip.innerHTML = html;
+  }
+
+  /** The drift meter: 0..1 charge and the tier colour (0 hides it). */
+  setDrift(k: number, tier: number): void {
+    if (this.same('drift', `${Math.round(k * 50)}/${tier}`)) return;
+    this.driftChip.classList.toggle('show', k > 0);
+    this.driftBar.style.width = `${Math.round(clamp(k, 0, 1) * 100)}%`;
+    this.driftBar.style.background = ['#9aa0b0', '#4fb3ff', '#ff9a2a', '#c070ff'][tier] ?? '#9aa0b0';
+  }
+
+  setStyle(points: number): void {
+    this.styleChip.classList.toggle('show', points > 0);
+    const html = `✨ <b>${points}</b>`;
+    if (this.styleChip.innerHTML !== html) this.styleChip.innerHTML = html;
+  }
+
+  /** A floating "+120" that rises and fades. */
+  popup(text: string, cls = ''): void {
+    const e = el('div', `rl-pop ${cls}`, this.root);
+    e.textContent = text;
+    setTimeout(() => e.remove(), 1500);
+  }
+
+  /** Speed lines round the edge (nitro): 0..1. */
+  speedLines(k: number): void {
+    if (this.same('speed', k.toFixed(2))) return;
+    this.speedEl.style.opacity = k.toFixed(2);
+  }
+
+  /** Name tags at screen positions (CSS pixels); the ones not listed are hidden. */
+  tags(list: { id: string; name: string; color: string; x: number; y: number; alpha: number }[]): void {
+    const seen = new Set<string>();
+    for (const t of list) {
+      seen.add(t.id);
+      let e = this.tagEls.get(t.id);
+      if (!e) {
+        e = el('div', 'rl-tag', this.tagsEl);
+        e.innerHTML = `<i style="background:${t.color}"></i>${escape(t.name)}`;
+        this.tagEls.set(t.id, e);
+      }
+      e.style.display = 'block';
+      e.style.transform = `translate(${t.x.toFixed(1)}px, ${t.y.toFixed(1)}px) translate(-50%, -100%)`;
+      e.style.opacity = t.alpha.toFixed(2);
+    }
+    for (const [id, e] of this.tagEls) if (!seen.has(id)) e.style.display = 'none';
+  }
+
+  /** The final placings (null hides the table). */
+  results(title: string, rows: ResultRow[] | null): void {
+    this.resultEl.classList.toggle('show', !!rows);
+    if (!rows) return;
+    const line = (r: ResultRow): string =>
+      `<tr class="${r.me ? 'me' : ''}"><td>${r.place > 0 ? r.place + '.' : '–'}</td><td>${escape(r.name)}</td><td class="r">${r.time !== null ? fmtTime(r.time / 1000) : 'Ej i mål'}</td><td class="r">${r.prize !== undefined ? `+${r.prize} kr` : ''}</td><td>${r.medal ? MEDAL[r.medal] : ''}</td></tr>`;
+    this.resultEl.innerHTML = `<h3>${escape(title)}</h3><table>${rows.map(line).join('')}</table>`;
   }
 
   setPosition(place: number, of: number, lap: number, laps: number): void {
@@ -263,16 +455,19 @@ export class Hud {
     g.strokeStyle = '#e9e6dd';
     g.lineWidth = W * 0.035;
     g.stroke();
-    // the gravel stretch
-    let a = -1;
-    for (let i = 0; i <= t.n; i++) {
-      const on = t.surf[i % t.n] === 1;
-      if (on && a < 0) a = i;
-      if ((!on || i === t.n) && a >= 0) {
-        path(a, i);
-        g.strokeStyle = '#d8b878';
-        g.stroke();
-        a = -1;
+    // gravel, snow, sand and ice stretches in their own colours
+    const SURF_COL = ['', '#d8b878', '#ffffff', '#f2d98a', '#9ad6f5'];
+    for (let surf = 1; surf < SURF_COL.length; surf++) {
+      let a = -1;
+      for (let i = 0; i <= t.n; i++) {
+        const on = t.surf[i % t.n] === surf;
+        if (on && a < 0) a = i;
+        if ((!on || i === t.n) && a >= 0) {
+          path(a, i);
+          g.strokeStyle = SURF_COL[surf]!;
+          g.stroke();
+          a = -1;
+        }
       }
     }
     // the start line
@@ -390,6 +585,18 @@ export class Hud {
     this.toastEl.textContent = text;
     this.toastEl.classList.add('show');
     this.toastTimer = setTimeout(() => this.toastEl.classList.remove('show'), 1300);
+  }
+
+  private same(key: string, v: string | number): boolean {
+    const t = String(v);
+    if (this.last[key] === t) return true;
+    this.last[key] = t;
+    return false;
+  }
+
+  /** Where the minimap is drawn (for a racer list that changes size). */
+  resetBoard(): void {
+    this.boardKey = '';
   }
 
   destroy(): void {

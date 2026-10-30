@@ -7,28 +7,52 @@ import { clamp, smooth } from './util.ts';
 export const Fence = { None: 0, Pole: 1, Bales: 2, Rail: 3, Stone: 4 } as const;
 export type Fence = (typeof Fence)[keyof typeof Fence];
 
-interface Ctrl {
+/** Fence kinds 5.. belong to the other courses (props.ts draws them): snow banks, tyre stacks, rope and posts, log piles, concrete barriers. */
+export const FenceX = { Snow: 5, Tyres: 6, Rope: 7, Logs: 8, Barrier: 9 } as const;
+
+export type SurfaceName = 'asphalt' | 'gravel' | 'snow' | 'sand' | 'ice';
+
+/** A control point of a course's centre line. */
+export interface Ctrl {
   x: number;
   z: number;
   y: number;
   /** Half the road width from here. */
   hw?: number;
-  /** The road from this point to the next is gravel. */
+  /** The road from this point to the next is gravel (the farm's way of saying surface: 'gravel'). */
   gravel?: boolean;
+  /** The road from this point to the next (the course's own surface when left out). */
+  surface?: SurfaceName;
   /** A crest (+) or a dip (−) of this many metres centred on this point, `bw` metres each way. */
   bump?: number;
   bw?: number;
   /** Run-off (grass from the road edge to the fence) left and right. */
   runL?: number;
   runR?: number;
-  fenceL?: Fence;
-  fenceR?: Fence;
+  fenceL?: number;
+  fenceR?: number;
   /** The road crosses the stream here (a bridge). */
   bridge?: boolean;
+  /** The road from this point to the next runs through a tunnel. */
+  tunnel?: boolean;
+  /** The road from this point to the next is a wooden boardwalk (drives like asphalt). */
+  deck?: boolean;
+}
+
+/** What a Track needs from a course (courses.ts has the five). */
+export interface TrackDef {
+  ctrl: Ctrl[];
+  /** The surface where a control point does not say. */
+  surface: SurfaceName;
+  /** The fence where a control point does not say, and the default half width and run-off. */
+  fence: number;
+  hw: number;
+  run: number;
 }
 
 // x east, z south, y up. Driven in this order; s = 0 is the start/finish line at the first point.
-const CTRL: Ctrl[] = [
+/** The farm course (Rallyt as it always was). */
+export const FARM_CTRL: Ctrl[] = [
   { x: 0, z: 150, y: 2, hw: 8.5 },
   { x: 90, z: 150, y: 2, hw: 8.5 },
   { x: 165, z: 146, y: 2.2, hw: 8 },
@@ -70,8 +94,13 @@ const CTRL: Ctrl[] = [
   { x: -100, z: 152, y: 2, hw: 8.5 },
 ];
 
-export const Surf = { Asphalt: 0, Gravel: 1 } as const;
+
+export const Surf = { Asphalt: 0, Gravel: 1, Snow: 2, Sand: 3, Ice: 4 } as const;
 export type Surf = (typeof Surf)[keyof typeof Surf];
+const SURF_OF: Record<SurfaceName, Surf> = { asphalt: Surf.Asphalt, gravel: Surf.Gravel, snow: Surf.Snow, sand: Surf.Sand, ice: Surf.Ice };
+/** Grip the racing line plans with, and how hard one can brake, per surface (the car's own grip is in car.ts). */
+const LINE_MU = [1.2, 0.82, 0.53, 0.78, 0.4];
+const LINE_DEC = [8, 5.5, 3.6, 5.0, 2.8];
 
 export interface Proj {
   /** The sample before the point and how far towards the next one (0..1). */
@@ -100,6 +129,8 @@ export class Track {
   readonly hw: Float32Array;
   readonly surf: Uint8Array;
   readonly bridge: Uint8Array;
+  readonly tunnel: Uint8Array;
+  readonly deck: Uint8Array;
   /** Distance from the centre line to the fence, left and right. */
   readonly wallL: Float32Array;
   readonly wallR: Float32Array;
@@ -119,7 +150,9 @@ export class Track {
   readonly minZ: number;
   readonly maxZ: number;
 
-  constructor() {
+  /** `grip` scales the speeds the racing line plans for (rain). */
+  constructor(def: TrackDef, grip = 1) {
+    const CTRL = def.ctrl;
     // ---- dense Catmull-Rom (centripetal) through the control points ----
     const m = CTRL.length;
     const P = (k: number): Ctrl => CTRL[((k % m) + m) % m]!;
@@ -175,6 +208,8 @@ export class Track {
     this.hw = new Float32Array(n);
     this.surf = new Uint8Array(n);
     this.bridge = new Uint8Array(n);
+    this.tunnel = new Uint8Array(n);
+    this.deck = new Uint8Array(n);
     this.wallL = new Float32Array(n);
     this.wallR = new Float32Array(n);
     this.fenceL = new Uint8Array(n);
@@ -201,12 +236,14 @@ export class Track {
       const c0 = P(a.seg);
       const c1 = P(a.seg + 1);
       const tt = smooth(0, 1, a.t + (b.t - a.t || 1 / SUB) * f);
-      this.hw[i] = (c0.hw ?? 7.5) + ((c1.hw ?? 7.5) - (c0.hw ?? 7.5)) * tt;
-      this.surf[i] = c0.gravel ? Surf.Gravel : Surf.Asphalt;
-      runL[i] = c0.runL ?? 12;
-      runR[i] = c0.runR ?? 12;
-      this.fenceL[i] = c0.fenceL ?? Fence.Pole;
-      this.fenceR[i] = c0.fenceR ?? Fence.Pole;
+      this.hw[i] = (c0.hw ?? def.hw) + ((c1.hw ?? def.hw) - (c0.hw ?? def.hw)) * tt;
+      this.surf[i] = c0.gravel ? Surf.Gravel : SURF_OF[c0.surface ?? def.surface];
+      this.tunnel[i] = c0.tunnel ? 1 : 0;
+      this.deck[i] = c0.deck ? 1 : 0;
+      runL[i] = c0.runL ?? def.run;
+      runR[i] = c0.runR ?? def.run;
+      this.fenceL[i] = c0.fenceL ?? def.fence;
+      this.fenceR[i] = c0.fenceR ?? def.fence;
     }
     // bumps (crests and dips) and the bridge
     for (let k = 0; k < m; k++) {
@@ -259,14 +296,14 @@ export class Track {
     // kerbs where it bends: inside from a gentle radius, both sides when tight
     for (let i = 0; i < n; i++) {
       const k = this.curv[i]!;
-      if (this.surf[i] === Surf.Gravel || this.bridge[i]) continue;
+      if (this.surf[i] !== Surf.Asphalt || this.bridge[i]) continue;
       if (k > 1 / 130) this.kerbL[i] = 1;
       if (k < -1 / 130) this.kerbR[i] = 1;
       if (Math.abs(k) > 1 / 40) this.kerbL[i] = this.kerbR[i] = 1;
     }
     for (const kerb of [this.kerbL, this.kerbR]) {
       const src = kerb.slice();
-      for (let i = 0; i < n; i++) if (src[i]) for (let j = -4; j <= 4; j++) kerb[(i + j + n) % n] = this.surf[(i + j + n) % n] === Surf.Gravel || this.bridge[(i + j + n) % n] ? 0 : 1;
+      for (let i = 0; i < n; i++) if (src[i]) for (let j = -4; j <= 4; j++) kerb[(i + j + n) % n] = this.surf[(i + j + n) % n] !== Surf.Asphalt || this.bridge[(i + j + n) % n] ? 0 : 1;
     }
 
     // ---- fences: the run-off, kept inside tight bends and between legs that pass close ----
@@ -363,13 +400,13 @@ export class Track {
     const G = 9.81;
     const TOP = 52;
     for (let i = 0; i < n; i++) {
-      const mu = this.surf[i] === Surf.Gravel ? 0.82 : 1.2;
+      const mu = LINE_MU[this.surf[i]!]! * grip;
       this.vmax[i] = Math.min(TOP, Math.sqrt((mu * G) / Math.max(1e-4, lks[i]!)));
     }
     for (let pass = 0; pass < 3; pass++)
       for (let i = n - 1; i >= 0; i--) {
         const nx = (i + 1) % n;
-        const dec = this.surf[i] === Surf.Gravel ? 5.5 : 8;
+        const dec = LINE_DEC[this.surf[i]!]! * grip;
         this.vmax[i] = Math.min(this.vmax[i]!, Math.sqrt(this.vmax[nx]! ** 2 + 2 * dec * this.ds));
       }
     // a lap at those speeds, accelerating as a real car would

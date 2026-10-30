@@ -2,7 +2,8 @@
 // stream; crop fields draped over it, and water.
 import * as THREE from 'three';
 import { canvasTex } from './geo.ts';
-import { FIELDS, LAKE, STREAM, WATER_Y, forest, lakeDist, streamDist, streamLevel, type Field } from './layout.ts';
+import type { CourseDef } from './courses.ts';
+import { forest, lakeDist, streamDist, streamLevel, type Field, type Layout } from './layout.ts';
 import { Surf, type Track } from './track.ts';
 import { clamp, fbm, lerp, noise2, rng, smooth } from './util.ts';
 
@@ -61,11 +62,15 @@ export class Terrain {
   private readonly cz: number;
   private readonly ex: number;
   private readonly ez: number;
+  readonly layout: Layout;
 
   constructor(
     private track: Track,
     quality: 'high' | 'low',
+    course: CourseDef,
   ) {
+    const L = (this.layout = course.layout);
+    const WATER_Y = L.waterY;
     const cell = quality === 'high' ? 5.2 : 7;
     const m = 130;
     this.cx = (track.minX + track.maxX) / 2;
@@ -143,16 +148,24 @@ export class Terrain {
           h = lerp(yr, h, smooth(hw + 5, hw + 62, d));
           low = 0.14 * (1 - smooth(hw + 0.5, hw + 4, d));
         }
-        // the lake: a bowl with a gentle shore
-        const ld = lakeDist(x, z);
-        if (ld < 1.5) {
+        // the lake: a bowl with a gentle shore (a flat sheet when frozen; the sea's shore is measured in metres)
+        const ld = lakeDist(x, z, L);
+        if (L.lakeKind === 'sea') {
+          const dm = (ld - 1) * L.lake!.rz;
+          if (dm < 40) {
+            const bed = WATER_Y - 0.5 - 2.8 * smooth(0, 60, -dm);
+            h = Math.min(h, lerp(bed, Math.max(h, WATER_Y + 0.35), smooth(-6, 34, dm)));
+          }
+        } else if (L.lakeKind === 'ice') {
+          if (ld < 1.3) h = Math.min(h, lerp(WATER_Y - 0.04, Math.max(h, WATER_Y + 0.3), smooth(0.97, 1.3, ld)));
+        } else if (ld < 1.5) {
           const bed = WATER_Y - 0.5 - 2.8 * clamp(1 - ld * ld, 0, 1);
           h = Math.min(h, lerp(bed, Math.max(h, WATER_Y + 0.35), smooth(0.86, 1.45, ld)));
         }
         // the stream bed
-        const sd = streamDist(x, z);
+        const sd = streamDist(x, z, L);
         if (sd.d < 14) {
-          const lvl = streamLevel(sd.t);
+          const lvl = streamLevel(sd.t, L);
           const bed = lvl - 1.1;
           h = Math.min(h, lerp(bed, Math.max(h, lvl + 0.3), smooth(2.6, 11, sd.d)));
         }
@@ -165,17 +178,19 @@ export class Terrain {
     const pos = new Float32Array(N * 3);
     const colors = new Float32Array(N * 3);
     const c = new THREE.Color();
-    const grassA = col('#5b9a3b');
-    const grassB = col('#7cb04b');
-    const grassDark = col('#457a30');
-    const dry = col('#a6ab58');
-    const floor = col('#3c6a2b');
-    const sand = col('#c9b98a');
-    const mud = col('#6c6445');
-    const verge = col('#9c8b60');
-    const mowA = col('#83b952');
-    const mowB = col('#6da545');
-    const farTint = col('#5f8a58');
+    const G = course.theme.ground;
+    const grassA = col(G.grassA);
+    const grassB = col(G.grassB);
+    const grassDark = col(G.grassDark);
+    const dry = col(G.dry);
+    const floor = col(G.floor);
+    const sand = col(G.sand);
+    const mud = col(G.mud);
+    const verge = col(G.verge);
+    const mowA = col(G.mowA);
+    const mowB = col(G.mowB);
+    const farTint = col(G.farTint);
+    const iceCol = col('#cfe2f0');
     for (let jj = 0; jj < nz; jj++) {
       const z = this.zs[jj]!;
       for (let ii = 0; ii < nx; ii++) {
@@ -188,7 +203,7 @@ export class Terrain {
         const n2 = fbm(x / 160 + 2, z / 160 - 3, 3);
         c.lerp(dry, smooth(0.12, 0.45, n2) * 0.55);
         c.lerp(grassDark, smooth(0.0, -0.35, n2) * 0.6);
-        const fo = forest(x, z).d;
+        const fo = forest(x, z, L).d;
         c.lerp(floor, Math.min(1, fo * 1.1));
         const d = this.dRoad[k]!;
         const i = iNear[k]!;
@@ -196,13 +211,21 @@ export class Terrain {
           const wall = side[k]! > 0 ? t.wallL[i]! : t.wallR[i]!;
           const inRun = 1 - smooth(wall - 0.5, wall + 1.5, d);
           if (inRun > 0) c.lerp(Math.floor(sNear[k]! / 7) % 2 ? mowA : mowB, inRun * 0.85);
-          if (t.surf[i] === Surf.Gravel) c.lerp(verge, 1 - smooth(t.hw[i]! + 0.5, t.hw[i]! + 4, d));
+          if (t.surf[i] !== Surf.Asphalt) c.lerp(verge, 1 - smooth(t.hw[i]! + 0.5, t.hw[i]! + 4, d));
           else c.lerp(verge, (1 - smooth(t.hw[i]! + 0.2, t.hw[i]! + 1.6, d)) * 0.7);
         }
-        const ld = lakeDist(x, z);
-        if (ld < 1.16) c.lerp(sand, smooth(0.86, 0.98, ld) * (1 - smooth(1.06, 1.16, ld)));
-        if (ld < 0.95) c.lerp(mud, 0.8);
-        const sd = streamDist(x, z).d;
+        const ld = lakeDist(x, z, L);
+        if (L.lakeKind === 'sea') {
+          const dm = (ld - 1) * L.lake!.rz;
+          c.lerp(sand, 1 - smooth(30, 70, dm));
+          if (dm < 0) c.lerp(mud, 0.5);
+        } else if (L.lakeKind === 'ice') {
+          if (ld < 1.08) c.lerp(iceCol, 1 - smooth(0.98, 1.08, ld));
+        } else {
+          if (ld < 1.16) c.lerp(sand, smooth(0.86, 0.98, ld) * (1 - smooth(1.06, 1.16, ld)));
+          if (ld < 0.95) c.lerp(mud, 0.8);
+        }
+        const sd = streamDist(x, z, L).d;
         if (sd < 9) c.lerp(mud, 1 - smooth(3, 9, sd));
         const r = Math.hypot(x - this.cx, z - this.cz);
         c.lerp(farTint, smooth(500, 1600, r) * 0.6);
@@ -237,15 +260,14 @@ export class Terrain {
     this.mesh.receiveShadow = quality === 'high';
   }
 
-  /** The lie of the land without the road: gentle swells near the farm, big hills far off. */
+  /** The lie of the land without the road (the course's layout decides). */
   natural(x: number, z: number): number {
-    let h = 2.0 + 3.0 * fbm(x / 190 + 3.1, z / 190 - 1.7, 4) + 1.1 * fbm(x / 55, z / 55, 2);
-    h += 15 * Math.exp(-(((x - 300) / 150) ** 2) - ((z + 130) / 170) ** 2);
-    h += 6 * Math.exp(-(((x + 330) / 55) ** 2) - ((z - 214) / 55) ** 2);
-    const r = Math.hypot((x - this.cx) / (this.ex + 150), (z - this.cz) / (this.ez + 150));
-    h += smooth(1.0, 3.4, r) * (26 + 44 * (fbm(x / 520 + 9, z / 520 - 4, 3) + 0.5));
-    h += smooth(2.6, 7, r) * 70 * (fbm(x / 1100 - 3, z / 1100 + 6, 3) + 0.6);
-    return h;
+    return this.layout.natural(x, z, this.cx, this.cz, this.ex, this.ez);
+  }
+
+  /** How far out (0 at the middle, 1 at the edge of the drivable country) a point is, for free roam. */
+  edge(x: number, z: number): number {
+    return Math.hypot((x - this.cx) / (this.ex + 140), (z - this.cz) / (this.ez + 140));
   }
 
   private bilinear(a: Float32Array, x: number, z: number): number {
@@ -320,7 +342,7 @@ const CROP_H: Record<Field['kind'], number> = { raps: 0.95, vete: 0.75, gron: 0.
 /** All the fields as one mesh per crop. */
 export function buildFields(terrain: Terrain, quality: 'high' | 'low'): THREE.Mesh[] {
   const byKind = new Map<Field['kind'], { pos: number[]; uv: number[]; col: number[]; idx: number[] }>();
-  for (const f of FIELDS) {
+  for (const f of terrain.layout.fields) {
     const far = Math.hypot(f.x, f.z) > 520;
     const sp = far ? (quality === 'high' ? 10 : 16) : quality === 'high' ? 3.5 : 5;
     const nu = Math.max(2, Math.ceil(f.w / sp));
@@ -425,28 +447,38 @@ export interface Water {
   dispose(): void;
 }
 
-export function buildWater(envMap: THREE.Texture | null): Water {
+export function buildWater(envMap: THREE.Texture | null, L: Layout): Water {
+  const WATER_Y = L.waterY;
+  const LAKE = L.lake ?? { cx: 0, cz: -99999, rx: 1, rz: 1, rot: 0 };
+  const STREAM = L.stream;
   const normals = waterNormals();
   normals.repeat.set(10, 10);
+  const frozen = L.lakeKind === 'ice';
+  const sea = L.lakeKind === 'sea';
+  if (sea) normals.repeat.set(160, 60);
   const mat = new THREE.MeshStandardMaterial({
-    color: '#3f7a93',
+    color: frozen ? '#d4e6f2' : sea ? '#2f8db0' : '#3f7a93',
     roughness: 0.12,
     metalness: 0.0,
     normalMap: normals,
-    normalScale: new THREE.Vector2(0.35, 0.35),
+    normalScale: frozen ? new THREE.Vector2(0.06, 0.06) : new THREE.Vector2(0.35, 0.35),
     envMap,
-    envMapIntensity: 1.1,
-    transparent: true,
-    opacity: 0.9,
+    envMapIntensity: frozen ? 0.8 : 1.1,
+    transparent: !frozen,
+    opacity: frozen ? 1 : 0.9,
   });
-  const lakeGeo = new THREE.CircleGeometry(1, 56);
+  const lakeGeo = new THREE.CircleGeometry(1, sea ? 96 : 56);
   lakeGeo.rotateX(-Math.PI / 2);
   const lake = new THREE.Mesh(lakeGeo, mat);
-  lake.scale.set(LAKE.rx * 1.22, 1, LAKE.rz * 1.22);
+  lake.scale.set(LAKE.rx * (sea ? 1.02 : frozen ? 1.03 : 1.22), 1, LAKE.rz * (sea ? 1.02 : frozen ? 1.03 : 1.22));
   lake.rotation.y = -LAKE.rot;
-  lake.position.set(LAKE.cx, WATER_Y, LAKE.cz);
+  lake.position.set(LAKE.cx, WATER_Y - (frozen ? 0.03 : 0), LAKE.cz);
+  lake.visible = !!L.lake;
   // the stream: a ribbon along its course, stepping down to the lake
-  const pts: THREE.Vector3[] = STREAM.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  const pts: THREE.Vector3[] = (STREAM ?? [
+    [0, -99999],
+    [1, -99999],
+  ]).map(([x, z]) => new THREE.Vector3(x, 0, z));
   const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   const N = 120;
   const pos: number[] = [];
@@ -459,7 +491,7 @@ export function buildWater(envMap: THREE.Texture | null): Water {
     const lx = tan.z;
     const lz = -tan.x;
     const w = 3.6;
-    const y = streamLevel(streamDist(p.x, p.z).t);
+    const y = streamLevel(streamDist(p.x, p.z, L).t, L);
     pos.push(p.x + lx * w, y, p.z + lz * w, p.x - lx * w, y, p.z - lz * w);
     uv.push(0, tt * 60, 1, tt * 60);
     if (i < N) {
@@ -481,7 +513,8 @@ export function buildWater(envMap: THREE.Texture | null): Water {
   const streamMat = mat.clone();
   streamMat.normalMap = normals;
   const stream = new THREE.Mesh(sg, streamMat);
-  lake.renderOrder = 2;
+  stream.visible = !!STREAM;
+  lake.renderOrder = frozen ? 0 : 2;
   stream.renderOrder = 2;
   return {
     meshes: [lake, stream],
