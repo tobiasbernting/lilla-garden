@@ -1,0 +1,44 @@
+/* The 3D saga page: everything is a DOM layer over the canvas. Big touch targets, Swedish labels. */
+.saga3d-hud { position: absolute; inset: 0; pointer-events: none; font-family: system-ui, sans-serif; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); --pad: max(12px, env(safe-area-inset-left)); }
+.saga3d-hud * { box-sizing: border-box; }
+
+.saga3d-name { position: absolute; top: max(10px, env(safe-area-inset-top)); left: var(--pad); font-size: 20px; font-weight: 700; letter-spacing: 0.02em; background: rgba(20, 22, 40, 0.45); padding: 6px 12px; border-radius: 12px; }
+.saga3d-fps { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); font: 600 14px/1.35 ui-monospace, monospace; text-align: right; background: rgba(20, 22, 40, 0.45); padding: 6px 10px; border-radius: 12px; white-space: pre; }
+
+.saga3d-bar { position: relative; height: 22px; border-radius: 11px; background: rgba(20, 22, 40, 0.7); border: 2px solid rgba(255, 255, 255, 0.75); overflow: hidden; }
+.saga3d-bar > i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 9px; transition: width 0.15s; background: linear-gradient(#7be08e, #3ea85a); }
+.saga3d-bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+
+.saga3d-player { position: absolute; left: var(--pad); bottom: max(14px, env(safe-area-inset-bottom)); width: min(260px, 38vw); }
+.saga3d-player .saga3d-label { font-size: 15px; font-weight: 700; margin: 0 0 4px 6px; }
+.saga3d-player .saga3d-bar { height: 26px; border-radius: 13px; }
+
+.saga3d-target { position: absolute; top: 74px; left: 50%; transform: translateX(-50%); width: min(300px, 44vw); text-align: center; display: none; }
+.saga3d-target .saga3d-label { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+.saga3d-target .saga3d-bar > i { background: linear-gradient(#ff8a7a, #d8483a); }
+.saga3d-boss { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(520px, 50vw); text-align: center; display: none; }
+.saga3d-boss .saga3d-label { font-size: 18px; font-weight: 800; margin-bottom: 3px; }
+.saga3d-boss .saga3d-bar { height: 26px; border-radius: 13px; }
+.saga3d-boss .saga3d-bar > i { background: linear-gradient(#ff9a5a, #d6381f); }
+
+.saga3d-say { position: absolute; top: 26%; left: 50%; transform: translateX(-50%); max-width: 70vw; font-size: 26px; font-weight: 800; text-align: center; opacity: 0; transition: opacity 0.4s; text-shadow: 0 2px 6px #000; }
+.saga3d-say.saga3d-on { opacity: 1; }
+
+.saga3d-spells { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); display: flex; gap: 14px; align-items: flex-end; pointer-events: none; padding-bottom: 14px; }
+.saga3d-btn { position: relative; width: 76px; height: 76px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.85); background: radial-gradient(circle at 35% 30%, rgba(120, 130, 190, 0.85), rgba(36, 40, 78, 0.85)); display: flex; align-items: center; justify-content: center; font-size: 36px; pointer-events: auto; touch-action: none; cursor: pointer; -webkit-tap-highlight-color: transparent; text-shadow: none; }
+.saga3d-btn:active, .saga3d-btn.saga3d-press { transform: scale(0.93); border-color: #ffe27a; }
+.saga3d-btn.saga3d-potion { width: 64px; height: 64px; font-size: 30px; background: radial-gradient(circle at 35% 30%, rgba(255, 140, 150, 0.9), rgba(150, 40, 70, 0.9)); }
+.saga3d-btn .saga3d-cd { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(rgba(0, 0, 0, 0.62) calc(var(--cd, 0) * 360deg), transparent 0); pointer-events: none; }
+.saga3d-btn .saga3d-key { position: absolute; top: 3px; left: 8px; font-size: 13px; font-weight: 800; opacity: 0.9; text-shadow: 0 1px 2px #000; }
+.saga3d-btn .saga3d-spellname { position: absolute; top: 100%; left: -10px; right: -10px; margin-top: 3px; text-align: center; font-size: 11px; font-weight: 700; text-shadow: 0 1px 3px #000; line-height: 1; white-space: nowrap; }
+.saga3d-btn.saga3d-shake { animation: saga3d-shake 0.3s; }
+@keyframes saga3d-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+/* the walking stick: the zone is the whole bottom-left of the screen; the base appears where the thumb lands */
+.saga3d-zone { position: absolute; left: 0; bottom: 0; width: 50%; height: 72%; pointer-events: auto; touch-action: none; display: none; }
+.saga3d-touch .saga3d-zone { display: block; }
+.saga3d-base { position: absolute; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); border: 3px solid rgba(255, 255, 255, 0.45); display: none; pointer-events: none; }
+.saga3d-touch .saga3d-base { display: block; }
+.saga3d-base.saga3d-idle { opacity: 0.55; }
+.saga3d-knob { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); border: 3px solid rgba(255, 255, 255, 0.85); }
+.saga3d-touch .saga3d-player { bottom: max(14px, env(safe-area-inset-bottom)); }
