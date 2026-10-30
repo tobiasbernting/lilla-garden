@@ -15,7 +15,7 @@
 //    the 'spawn' event. When a boss goes home or dies its adds are marked dead.
 //  - `SimMob.atkAt` is the sim time of the monster's last attack (for the swing animation); `SimPlayer.attackAt` is the
 //    last cast. Melee attacks of monsters have no event: the 'damage' event on the player is the hit.
-//  - `SimPlayer.hp` is fractional while it regenerates: round it for display.
+//  - `SimPlayer.hp` is fractional while it regenerates: show it rounded UP (Math.ceil), so a living player never reads 0.
 //  - A zone is `SimZone`: a circle or a cone on the floor. `at` is when it lands (fill the telegraph from `born` to
 //    `at`). Zones that do not linger vanish when they land. Lingering ones (pools) have `until` and hurt once a second
 //    after they landed. For a cone `dir` is radians, `arc` is its full width in DEGREES (like saga.ts), `r` its length.
@@ -72,6 +72,7 @@ import {
   type SpellKind,
   type WorldState,
 } from '@lilla-garden/shared';
+import { wrapAngle } from './util.ts';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -133,7 +134,7 @@ export interface SimMob {
   atkAt: number;
   moving: boolean;
   phase: number;
-  cast: { move: BossMove; name: string; at: number; started: number; zones: string[] } | null;
+  cast: { move: BossMove; name: string; at: number; zones: string[] } | null;
   /** 1 normal, 1.6 mid-boss, 2.2 boss, 0.8 small (rat, imp). */
   size: number;
 }
@@ -190,7 +191,8 @@ const RAGE_SPEED = 1.3;
 const BOLT_SPEED = 12;
 const MOB_BOLT_SPEED = 9;
 const POTION_HEAL = 0.4;
-const POTION_CD = 15;
+/** Seconds between two potions (the HUD sweeps the potion button over the same time). */
+export const POTION_CD = 15;
 const REGEN = 0.02;
 const REST_REGEN = 0.15;
 const DOWN_S = 3;
@@ -216,8 +218,8 @@ const SMALL = new Set(['gravrotta', 'eldimp']);
 
 /**
  * Walkable ground from a generated dungeon: the terrain that is not rock and every tile that no solid object
- * (wall, decor, rest stone, chest) stands on. The gate blocks until `world.saga.gateOpen` is set. Reused by the
- * renderer as a fallback for its own collision.
+ * (wall, decor, rest stone, chest) stands on. The gate blocks until `world.saga.gateOpen` is set. This is the one set
+ * of collision rules: the renderer's `isWalkable` (world.ts) is this function, and the tests use it too.
  */
 export function walkableFromWorld(world: WorldState): (x: number, z: number) => boolean {
   const blocked = new Uint8Array(MAP_W * MAP_H);
@@ -288,12 +290,9 @@ interface Pending {
 
 const dist = (a: P2, b: P2): number => Math.hypot(a.x - b.x, a.z - b.z);
 const vary = (): number => 0.9 + Math.random() * 0.2;
-const angleDiff = (a: number, b: number): number => {
-  let d = (a - b) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
-  return Math.abs(d);
-};
+const angleDiff = (a: number, b: number): number => Math.abs(wrapAngle(a - b));
+/** The four neighbours of a tile (and the four ways a monster may step round a corner). */
+const DIRS4: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 export class Sim {
   readonly player: SimPlayer;
@@ -323,8 +322,12 @@ export class Sim {
   private restIn = -1;
   private hotPer = 0;
   private hotTimer = 0;
+  /** Health the healing ring has given since its last number. */
+  private hotGain = 0;
   private pending: Pending[] = [];
   private fields = new Map<number, Int16Array>();
+  /** Scratch list for pushApart(), which runs sixty times a second. */
+  private fighters: SimMob[] = [];
 
   constructor(world: WorldState, opts: SimOptions) {
     const inst = world.saga;
@@ -429,7 +432,8 @@ export class Sim {
 
   setTarget(id: number | null): void {
     const m = id === null ? undefined : this.mobs.get(id);
-    this.player.target = m && !m.dead ? m.id : null;
+    // a monster that is walking home cannot be hit, so it is no target either
+    this.player.target = m && !m.dead && m.state !== 'home' ? m.id : null;
   }
 
   /** Tab: the nearest living monster within 12 units that is not the current one, else the nearest of all. */
@@ -440,7 +444,7 @@ export class Sim {
     let any: SimMob | null = null;
     let anyD = Infinity;
     for (const m of this.mobs.values()) {
-      if (m.dead) continue;
+      if (m.dead || m.state === 'home') continue;
       const d = dist(m, p);
       if (d < anyD) {
         anyD = d;
@@ -557,6 +561,7 @@ export class Sim {
         p.hotUntil = this.time + s;
         this.hotPer = sp.power / s;
         this.hotTimer = 0;
+        this.hotGain = 0;
         return true;
       }
       case 'wall':
@@ -787,6 +792,7 @@ export class Sim {
     a.state = 'dead';
     a.diedAt = this.time;
     a.moving = false;
+    if (this.player.target === a.id) this.player.target = null;
     this.emit({ type: 'mobDied', id: a.id });
   }
 
@@ -802,6 +808,8 @@ export class Sim {
       return;
     }
     m.state = 'home';
+    // it cannot be hit on the way home, so a spell on it would only say "too far away"
+    if (this.player.target === m.id) this.player.target = null;
     m.threat = 0;
     m.hp = m.max;
     m.stunUntil = 0;
@@ -952,7 +960,7 @@ export class Sim {
       const cz = Math.floor(m.z);
       let best = cx >= 0 && cz >= 0 && cx < MAP_W && cz < MAP_H ? f[cz * MAP_W + cx]! : -1;
       if (best >= 0) {
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        for (const [dx, dz] of DIRS4) {
           const nx = cx + dx;
           const nz = cz + dz;
           if (nx < 0 || nz < 0 || nx >= MAP_W || nz >= MAP_H) continue;
@@ -970,10 +978,11 @@ export class Sim {
     const d = Math.hypot(dx, dz);
     if (d < 0.05) return false;
     const s = Math.min(speed * STEP, d);
-    const before = { x: m.x, z: m.z };
+    const bx = m.x;
+    const bz = m.z;
     this.slide(m, (dx / d) * s, (dz / d) * s);
     m.facing = Math.atan2(dz, dx);
-    return m.x !== before.x || m.z !== before.z;
+    return m.x !== bx || m.z !== bz;
   }
 
   // -------------------------------------------------------------------------
@@ -1012,26 +1021,30 @@ export class Sim {
     const len = Math.hypot(this.inX, this.inZ);
     p.moving = false;
     if (len > 0.01) {
-      const before = { x: p.x, z: p.z };
+      const bx = p.x;
+      const bz = p.z;
       const s = p.speed * Math.min(1, len) * STEP;
       this.slide(p, (this.inX / len) * s, (this.inZ / len) * s);
       p.facing = Math.atan2(this.inZ, this.inX);
-      p.moving = Math.abs(p.x - before.x) + Math.abs(p.z - before.z) > 1e-6;
+      p.moving = Math.abs(p.x - bx) + Math.abs(p.z - bz) > 1e-6;
     }
     // the healing ring
     if (this.time < p.hotUntil) {
+      const hp = p.hp;
       p.hp = Math.min(p.max, p.hp + this.hotPer * STEP);
+      // the number shows what the ring really gave this second: nothing at full health
+      this.hotGain += p.hp - hp;
       this.hotTimer += STEP;
       if (this.hotTimer >= 1 - EPS) {
         this.hotTimer = 0;
-        this.emit({ type: 'heal', target: 'player', amount: Math.round(this.hotPer), at: { x: p.x, z: p.z } });
+        const gained = Math.round(this.hotGain);
+        this.hotGain = 0;
+        if (gained > 0) this.emit({ type: 'heal', target: 'player', amount: gained, at: { x: p.x, z: p.z } });
       }
     }
     // rest stones: they set the checkpoint and heal fast
     let near = -1;
-    this.rests.forEach((r, i) => {
-      if (dist(r, p) <= REST_RADIUS) near = i;
-    });
+    for (let i = 0; i < this.rests.length; i++) if (dist(this.rests[i]!, p) <= REST_RADIUS) near = i;
     if (near >= 0 && near !== this.restIn) {
       const r = this.rests[near]!;
       this.emit({ type: 'rest', x: r.x, z: r.z });
@@ -1067,10 +1080,11 @@ export class Sim {
         continue;
       }
       if (m.state === 'home') {
-        const before = { x: m.x, z: m.z };
+        const bx = m.x;
+        const bz = m.z;
         const moved = this.steer(m, m.home, def.speed * HOME_SPEED);
         m.moving = moved;
-        rt.stuck = moved && Math.abs(m.x - before.x) + Math.abs(m.z - before.z) > 1e-4 ? 0 : rt.stuck + STEP;
+        rt.stuck = moved && Math.abs(m.x - bx) + Math.abs(m.z - bz) > 1e-4 ? 0 : rt.stuck + STEP;
         if (dist(m, m.home) < 0.15 || rt.stuck > 1) {
           m.x = m.home.x;
           m.z = m.home.z;
@@ -1114,12 +1128,13 @@ export class Sim {
         continue;
       }
       const slow = this.time < m.slowUntil ? 0.5 : 1;
-      const before = { x: m.x, z: m.z };
+      const bx = m.x;
+      const bz = m.z;
       m.moving = this.steer(m, p, def.speed * slow);
-      if (boss && dist(m, m.home) > BOSS_HALL && dist(m, m.home) > dist(before, m.home)) {
+      if (boss && dist(m, m.home) > BOSS_HALL && dist(m, m.home) > Math.hypot(bx - m.home.x, bz - m.home.z)) {
         // a boss stops at the edge of its hall
-        m.x = before.x;
-        m.z = before.z;
+        m.x = bx;
+        m.z = bz;
         m.moving = false;
       }
     }
@@ -1145,7 +1160,8 @@ export class Sim {
 
   /** Monsters in a fight do not stand inside each other. */
   private pushApart(): void {
-    const fighters: SimMob[] = [];
+    const fighters = this.fighters;
+    fighters.length = 0;
     for (const m of this.mobs.values()) if (m.state === 'fight') fighters.push(m);
     for (let i = 0; i < fighters.length; i++) {
       for (let j = i + 1; j < fighters.length; j++) {
@@ -1248,7 +1264,7 @@ export class Sim {
       case 'summon':
         break;
     }
-    m.cast = { move: mv.move, name: mv.name, at, started: this.time, zones: ids };
+    m.cast = { move: mv.move, name: mv.name, at, zones: ids };
     rt.castIdx = i;
     m.facing = Math.atan2(p.z - m.z, p.x - m.x);
     m.moving = false;

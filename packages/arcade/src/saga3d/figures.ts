@@ -1,8 +1,8 @@
 // Chibi figures: a big round head, a stubby body, arms and legs that swing. Geometry and materials are
 // shared between every figure, so a whole crowd costs only a few extra draw calls. Figures face +z.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ClassDef } from '@lilla-garden/shared';
+import { Baker } from './bake.ts';
 
 export interface FigureState {
   /** Seconds, any steady clock (the walk cycle and the idle breathing run on it). */
@@ -25,6 +25,8 @@ export interface Figure {
   animate(s: FigureState): void;
   /** A fallen monster has sunk into the floor and is hidden: the integrator should stop drawing it. */
   readonly gone: boolean;
+  /** Diameter of the blob shadow under its feet (the integrator draws it through `Shadows`). */
+  readonly shadow: number;
   dispose(): void;
 }
 
@@ -36,6 +38,8 @@ const geo = (key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometr
   return g;
 };
 const sphere = (): THREE.BufferGeometry => geo('sphere', () => new THREE.SphereGeometry(1, 16, 12));
+/** For everything small (eyes, hands, feet, buds): at that size nobody sees the difference, and there are many of them. */
+const bead = (): THREE.BufferGeometry => geo('bead', () => new THREE.SphereGeometry(1, 8, 6));
 const box = (): THREE.BufferGeometry => geo('box', () => new THREE.BoxGeometry(1, 1, 1));
 const cyl = (): THREE.BufferGeometry => geo('cyl', () => new THREE.CylinderGeometry(1, 1, 1, 12, 1));
 const cone = (): THREE.BufferGeometry => geo('cone', () => new THREE.ConeGeometry(1, 1, 12, 1));
@@ -57,11 +61,9 @@ const glowMat = (color: number): THREE.MeshBasicMaterial => {
   return m as THREE.MeshBasicMaterial;
 };
 
-let shadowTex: THREE.CanvasTexture | null = null;
 let shadowMat: THREE.MeshBasicMaterial | null = null;
-const shadowGeo = (): THREE.BufferGeometry => geo('shadow', () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2));
-/** A soft dark circle, drawn once and shared by every figure. */
-function blobShadow(size: number): THREE.Mesh {
+/** A soft dark circle, drawn once and shared by every shadow. */
+function shadowMaterial(): THREE.MeshBasicMaterial {
   if (!shadowMat) {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -72,14 +74,44 @@ function blobShadow(size: number): THREE.Mesh {
     grad.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
-    shadowTex = new THREE.CanvasTexture(c);
-    shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    shadowMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   }
-  const m = new THREE.Mesh(shadowGeo(), shadowMat);
-  m.scale.set(size, 1, size);
-  m.position.y = 0.025;
-  m.renderOrder = 1;
-  return m;
+  return shadowMat;
+}
+
+/**
+ * The blob shadows of every figure in ONE instanced draw call: call begin(), then add() for each figure that is drawn
+ * this frame, then end().
+ */
+export class Shadows {
+  readonly mesh: THREE.InstancedMesh;
+  private n = 0;
+  constructor(private max = 96) {
+    this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), shadowMaterial(), max);
+    this.mesh.count = 0;
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 1;
+  }
+  begin(): void {
+    this.n = 0;
+  }
+  /** A shadow `size` wide centred under (x, z). */
+  add(x: number, z: number, size: number): void {
+    if (this.n >= this.max) return;
+    // a flat square: scale in x and z, lifted a hair off the floor (the matrix is written by hand, it is column major)
+    const e = this.mesh.instanceMatrix.array;
+    e.set([size, 0, 0, 0, 0, 1, 0, 0, 0, 0, size, 0, x, 0.025, z, 1], this.n * 16);
+    this.n++;
+  }
+  end(): void {
+    this.mesh.count = this.n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    this.mesh.dispose();
+    this.mesh.removeFromParent();
+  }
 }
 
 type V3 = [number, number, number];
@@ -109,10 +141,10 @@ const smooth = (x: number): number => x * x * (3 - 2 * x);
 function face(rig: THREE.Object3D, y: number, r: number): void {
   const eye = lambert(DARK);
   for (const s of [-1, 1]) {
-    part(rig, sphere(), eye, [0.032, 0.04, 0.026], [s * r * 0.36, y + 0.01, r * 0.93]);
+    part(rig, bead(), eye, [0.032, 0.04, 0.026], [s * r * 0.36, y + 0.01, r * 0.93]);
     // a tiny white sparkle in each eye
-    part(rig, sphere(), glowMat(0xffffff), 0.009, [s * r * 0.36 + 0.01, y + 0.025, r * 0.93 + 0.022]);
-    part(rig, sphere(), lambert(0xff9db0), [0.045, 0.028, 0.012], [s * r * 0.66, y - 0.05, r * 0.78], [0, s * 0.5, 0]);
+    part(rig, bead(), glowMat(0xffffff), 0.009, [s * r * 0.36 + 0.01, y + 0.025, r * 0.93 + 0.022]);
+    part(rig, bead(), lambert(0xff9db0), [0.045, 0.028, 0.012], [s * r * 0.66, y - 0.05, r * 0.78], [0, s * 0.5, 0]);
   }
   part(rig, smile(), eye, [0.04, 0.04, 0.04], [0, y - 0.07, r * 0.95], [0, 0, Math.PI]);
 }
@@ -120,6 +152,7 @@ function face(rig: THREE.Object3D, y: number, r: number): void {
 /** What the arms and the held thing do, so animate() can find them. */
 interface Rig {
   rig: THREE.Group;
+  /** The torso (belt included): after baking, the one mesh that breathes. */
   body: THREE.Mesh;
   head: THREE.Group;
   armL: THREE.Group;
@@ -136,7 +169,7 @@ function baseBody(shirt: number, pants: number): Rig {
   const legR = joint(rig, [0.07, 0.2, 0]);
   for (const l of [legL, legR]) {
     part(l, capsule(), lambert(pants), [0.052, 0.07, 0.052], [0, -0.09, 0]);
-    part(l, sphere(), lambert(0x4a3a30), [0.06, 0.04, 0.08], [0, -0.17, 0.02]);
+    part(l, bead(), lambert(0x4a3a30), [0.06, 0.04, 0.08], [0, -0.17, 0.02]);
   }
   const body = part(rig, capsule(), lambert(shirt), [0.14, 0.07, 0.12], [0, 0.33, 0]);
   part(rig, cyl(), lambert(0x6b4a30), [0.145, 0.025, 0.125], [0, 0.28, 0]);
@@ -144,7 +177,7 @@ function baseBody(shirt: number, pants: number): Rig {
   const armR = joint(rig, [0.185, 0.41, 0]);
   for (const a of [armL, armR]) {
     part(a, capsule(), lambert(shirt), [0.045, 0.07, 0.045], [0, -0.07, 0]);
-    part(a, sphere(), lambert(SKIN), 0.05, [0, -0.17, 0]);
+    part(a, bead(), lambert(SKIN), 0.05, [0, -0.17, 0]);
   }
   const head = joint(rig, [0, 0.68, 0]);
   part(head, sphere(), lambert(SKIN), [0.21, 0.2, 0.2], [0, 0, 0]);
@@ -165,7 +198,7 @@ function dressUp(r: Rig, cls: ClassDef): void {
       part(head, box(), lambert(0xa9bcd8), [0.03, 0.06, 0.03], [0, 0.0, 0.21]);
       part(head, box(), lambert(0xe0453a), [0.02, 0.07, 0.2], [0, 0.22, 0]);
       part(r.armL, cyl(), lambert(0x4f8fe8), [0.17, 0.02, 0.17], [-0.05, -0.15, 0.06], [0, 0, Math.PI / 2]);
-      part(r.armL, sphere(), lambert(0xffd24a), [0.05, 0.05, 0.03], [-0.075, -0.15, 0.06]);
+      part(r.armL, bead(), lambert(0xffd24a), [0.05, 0.05, 0.03], [-0.075, -0.15, 0.06]);
       const sword = joint(r.armR, [0, -0.17, 0.02]);
       part(sword, box(), lambert(0xe9eef7), [0.04, 0.34, 0.012], [0, 0.2, 0.07], [0.15, 0, 0]);
       part(sword, box(), lambert(0xffd24a), [0.12, 0.025, 0.03], [0, 0.04, 0.07]);
@@ -177,14 +210,14 @@ function dressUp(r: Rig, cls: ClassDef): void {
       hair(head, 0xf2d27a);
       for (let i = 0; i < 7; i++) {
         const a = (i / 7) * Math.PI * 2;
-        part(head, sphere(), lambert(i % 2 ? 0x5fd38d : 0x3fb870), [0.03, 0.07, 0.015], [Math.sin(a) * 0.19, 0.12, Math.cos(a) * 0.19], [Math.cos(a) * 0.5, a, -Math.sin(a) * 0.5]);
+        part(head, bead(), lambert(i % 2 ? 0x5fd38d : 0x3fb870), [0.03, 0.07, 0.015], [Math.sin(a) * 0.19, 0.12, Math.cos(a) * 0.19], [Math.cos(a) * 0.5, a, -Math.sin(a) * 0.5]);
       }
-      part(head, sphere(), lambert(0xff9ed0), 0.03, [0.0, 0.2, 0.12]);
+      part(head, bead(), lambert(0xff9ed0), 0.03, [0.0, 0.2, 0.12]);
       const staff = joint(r.armR, [0, -0.17, 0.02]);
       part(staff, cyl(), lambert(0x9a6a46), [0.015, 0.7, 0.015], [0, 0.18, 0.06]);
-      part(staff, sphere(), lambert(0x5fd38d), [0.05, 0.07, 0.03], [-0.03, 0.55, 0.06], [0, 0, 0.5]);
-      part(staff, sphere(), lambert(0x3fb870), [0.05, 0.07, 0.03], [0.03, 0.55, 0.06], [0, 0, -0.5]);
-      r.tip = part(staff, sphere(), glowMat(0xb8ffd0), 0.03, [0, 0.62, 0.06]);
+      part(staff, bead(), lambert(0x5fd38d), [0.05, 0.07, 0.03], [-0.03, 0.55, 0.06], [0, 0, 0.5]);
+      part(staff, bead(), lambert(0x3fb870), [0.05, 0.07, 0.03], [0.03, 0.55, 0.06], [0, 0, -0.5]);
+      r.tip = part(staff, bead(), glowMat(0xb8ffd0), 0.03, [0, 0.62, 0.06]);
       break;
     }
     case 'krigare': {
@@ -193,7 +226,7 @@ function dressUp(r: Rig, cls: ClassDef): void {
       part(head, box(), lambert(0xb0a58f), [0.03, 0.06, 0.03], [0, 0.0, 0.21]);
       for (const s of [-1, 1]) {
         part(head, cone(), lambert(0xfff1d0), [0.04, 0.17, 0.04], [s * 0.22, 0.14, 0], [0, 0, -s * 0.9]);
-        part(head, sphere(), lambert(0xfff1d0), 0.035, [s * 0.19, 0.06, 0]);
+        part(head, bead(), lambert(0xfff1d0), 0.035, [s * 0.19, 0.06, 0]);
       }
       const axe = joint(r.armR, [0, -0.17, 0.02]);
       part(axe, cyl(), lambert(0x9a6a46), [0.017, 0.5, 0.017], [0, 0.12, 0.07]);
@@ -207,11 +240,11 @@ function dressUp(r: Rig, cls: ClassDef): void {
       part(head, cyl(), lambert(0x8a52d8), [0.3, 0.02, 0.3], [0, 0.13, 0]);
       part(head, cone(), lambert(0x9a62e8), [0.19, 0.42, 0.19], [0, 0.34, 0], [0.12, 0, 0.04]);
       part(head, cyl(), lambert(0xffd24a), [0.195, 0.03, 0.195], [0, 0.18, 0]);
-      part(head, sphere(), glowMat(0xffe27a), 0.028, [0, 0.26, 0.19]);
+      part(head, bead(), glowMat(0xffe27a), 0.028, [0, 0.26, 0.19]);
       const staff = joint(r.armR, [0, -0.17, 0.02]);
       part(staff, cyl(), lambert(0x6b4a30), [0.015, 0.75, 0.015], [0, 0.2, 0.06]);
-      r.tip = part(staff, sphere(), glowMat(0xffe27a), 0.055, [0, 0.62, 0.06]);
-      part(staff, sphere(), lambert(0xb08cf0), [0.04, 0.03, 0.04], [0, 0.56, 0.06]);
+      r.tip = part(staff, bead(), glowMat(0xffe27a), 0.055, [0, 0.62, 0.06]);
+      part(staff, bead(), lambert(0xb08cf0), [0.04, 0.03, 0.04], [0, 0.56, 0.06]);
       break;
     }
   }
@@ -250,7 +283,7 @@ function makeAnimator(r: Rig, root: THREE.Group): (s: FigureState) => void {
     }
     r.armR.rotation.x = armR;
     r.armR.rotation.z = -0.06 - idle * 0.02;
-    r.body.scale.y = 0.07 * (1 + idle * 0.02 * (1 - walk));
+    r.body.scale.y = 1 + idle * 0.02 * (1 - walk);
     r.head.position.y = 0.68 + bob + idle * 0.004;
     r.head.rotation.z = Math.sin(phase) * 0.05 * walk;
     r.rig.position.y = bob * 0.6;
@@ -265,16 +298,15 @@ function makeAnimator(r: Rig, root: THREE.Group): (s: FigureState) => void {
 /** The chibi hero of a class: 0.9 tall, the head almost half of that, in the class's colour. */
 export function makePlayerFigure(cls: ClassDef): Figure {
   const outer = new THREE.Group();
-  outer.add(blobShadow(0.85));
   const root = new THREE.Group();
   outer.add(root);
   const shirt = new THREE.Color(cls.color).getHex();
   const r = baseBody(shirt, cls.id === 'vaktare' ? 0x3a4a6a : cls.id === 'helare' ? 0x6a5a3a : cls.id === 'krigare' ? 0x5a4636 : 0x3a2a5a);
   root.add(r.rig);
   dressUp(r, cls);
-  bakeRig(r.rig, new Set<THREE.Object3D>([r.body, ...(r.tip ? [r.tip] : [])]));
+  r.body = bakeRig(r);
   const animate = makeAnimator(r, root);
-  return { group: outer, animate, gone: false, dispose: () => outer.removeFromParent() };
+  return { group: outer, animate, gone: false, shadow: 0.85, dispose: () => outer.removeFromParent() };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -282,8 +314,9 @@ export function makePlayerFigure(cls: ClassDef): Figure {
 //
 // A crowd of figures must stay cheap, so a species is described once as a few *joints* (body, head, arms, legs, a
 // tail ...), each with a list of primitives. Every joint is baked into ONE vertex-coloured geometry (shared by all
-// figures of the species) and drawn with one shared material, so a monster is only about six draw calls. Parts that
-// should glow (eyes, cracks, flames) go into a second geometry per joint with an unlit material.
+// figures of the species) and drawn with one shared material, so a monster is one draw call per joint: six for a
+// biped or a golem, seven for a four-legged one or one with a tail or a cape (the blob shadows are drawn together
+// through `Shadows`). Parts that should glow (eyes, cracks, flames) are marked in the same geometry (see figureMaterial).
 // ---------------------------------------------------------------------------------------------------------------
 
 type Prim = 'sphere' | 'box' | 'cyl' | 'cone' | 'capsule' | 'dome' | 'smile' | 'torus';
@@ -328,59 +361,76 @@ const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _c = new THREE.Color();
 
-/** Merges primitives into one geometry that carries a colour per vertex. */
-function bake(ps: P[]): THREE.BufferGeometry {
-  const parts = ps.map((o) => {
-    let base = lowCache.get(o.g);
-    if (!base) lowCache.set(o.g, (base = lowGeos[o.g]()));
-    const g = base.clone();
-    g.applyMatrix4(_m.compose(_p.set(...o.p), _q.setFromEuler(_e.set(...o.r)), _s.set(...o.s)));
-    g.deleteAttribute('uv');
-    _c.set(o.c);
-    const n = g.getAttribute('position').count;
-    const col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) col.set([_c.r, _c.g, _c.b], i * 3);
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    return g;
-  });
-  const merged = mergeGeometries(parts, false)!;
-  for (const g of parts) g.dispose();
-  return merged;
-}
-
-let solidMat: THREE.MeshLambertMaterial | null = null;
-let glowVMat: THREE.MeshBasicMaterial | null = null;
-function ensureMats(): { solid: THREE.MeshLambertMaterial; glow: THREE.MeshBasicMaterial } {
-  solidMat ??= new THREE.MeshLambertMaterial({ vertexColors: true });
-  glowVMat ??= new THREE.MeshBasicMaterial({ vertexColors: true });
-  return { solid: solidMat, glow: glowVMat };
+/** Marks every vertex of a baked part as glowing (1: drawn at its plain colour, no light) or lit (0). */
+function setGlow(g: THREE.BufferGeometry, glow: number): void {
+  g.setAttribute('glow', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count).fill(glow), 1));
 }
 
 /**
- * Merges the plain meshes inside a rig into one lit mesh and one unlit mesh per joint, with the colours baked into
- * the vertices. The hero is built part by part (easy to write and tweak), but a draw call per eye is far too many
- * for a tablet. `keep` are the few meshes that animate on their own (the chest that breathes, a staff's glow).
+ * Every figure is drawn with this one material: lit by the lights, except the vertices marked `glow`, which keep
+ * their colour (eyes, cracks, flames). Glow used to be a second mesh per joint with an unlit material; as an attribute
+ * a joint is one draw call.
  */
-function bakeRig(g: THREE.Object3D, keep: Set<THREE.Object3D>): void {
-  const mats = ensureMats();
-  const solid: THREE.BufferGeometry[] = [];
-  const glow: THREE.BufferGeometry[] = [];
-  for (const c of [...g.children]) {
-    if (c instanceof THREE.Mesh && !keep.has(c)) {
-      c.updateMatrix();
-      const geo = (c.geometry as THREE.BufferGeometry).clone().applyMatrix4(c.matrix);
-      geo.deleteAttribute('uv');
-      const col = (c.material as THREE.MeshLambertMaterial | THREE.MeshBasicMaterial).color;
-      const n = geo.getAttribute('position').count;
-      const arr = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) arr.set([col.r, col.g, col.b], i * 3);
-      geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-      (c.material instanceof THREE.MeshBasicMaterial ? glow : solid).push(geo);
-      g.remove(c);
-    } else if (c instanceof THREE.Group) bakeRig(c, keep);
+let solidMat: THREE.MeshLambertMaterial | null = null;
+function figureMaterial(): THREE.MeshLambertMaterial {
+  if (solidMat) return solidMat;
+  solidMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  solidMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute float glow;\nvarying float vGlow;\nvoid main() {\n  vGlow = glow;');
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying float vGlow;\nvoid main() {').replace('#include <opaque_fragment>', 'outgoingLight = mix(outgoingLight, diffuseColor.rgb, vGlow);\n#include <opaque_fragment>');
+  };
+  return solidMat;
+}
+
+/** Merges the primitives of one joint (lit ones, then glowing ones) into one geometry that carries a colour per vertex. */
+function bakeJoint(solid: P[] = [], glow: P[] = []): THREE.BufferGeometry | null {
+  const baker = new Baker();
+  for (const [list, lit] of [[solid, 0], [glow, 1]] as const) {
+    for (const o of list) {
+      let base = lowCache.get(o.g);
+      if (!base) lowCache.set(o.g, (base = lowGeos[o.g]()));
+      setGlow(baker.add(base, _m.compose(_p.set(...o.p), _q.setFromEuler(_e.set(...o.r)), _s.set(...o.s)), _c.set(o.c)), lit);
+    }
   }
-  if (solid.length) g.add(new THREE.Mesh(mergeGeometries(solid)!, mats.solid));
-  if (glow.length) g.add(new THREE.Mesh(mergeGeometries(glow)!, mats.glow));
+  return baker.build();
+}
+
+/**
+ * Bakes a hero that was built part by part (easy to write and tweak; a draw call per eye would be far too many for a
+ * tablet) into one mesh per joint that really moves (legs, arms, head) plus one for the torso and whatever else hangs
+ * on the rig. Things held in a hand (a sword, an axe, a staff) join the arm. Only the staff's glowing tip stays a mesh
+ * of its own, because it pulses. Returns the torso mesh.
+ */
+function bakeRig(r: Rig): THREE.Mesh {
+  const mat = figureMaterial();
+  const joints = new Set<THREE.Object3D>([r.legL, r.legR, r.armL, r.armR, r.head]);
+  const gather = (baker: Baker, node: THREE.Object3D, m: THREE.Matrix4): void => {
+    for (const c of [...node.children]) {
+      if (c === r.tip) continue;
+      if (c instanceof THREE.Mesh) {
+        c.updateMatrix();
+        const col = (c.material as THREE.MeshLambertMaterial | THREE.MeshBasicMaterial).color;
+        setGlow(baker.add(c.geometry as THREE.BufferGeometry, new THREE.Matrix4().multiplyMatrices(m, c.matrix), col), c.material instanceof THREE.MeshBasicMaterial ? 1 : 0);
+        node.remove(c);
+      } else if (c instanceof THREE.Group && !joints.has(c)) {
+        c.updateMatrix();
+        gather(baker, c, new THREE.Matrix4().multiplyMatrices(m, c.matrix));
+        // a group that still holds the glowing tip stays where it is
+        if (!c.children.length) node.remove(c);
+      }
+    }
+  };
+  for (const j of joints) {
+    const baker = new Baker();
+    gather(baker, j, new THREE.Matrix4());
+    const g = baker.build();
+    if (g) j.add(new THREE.Mesh(g, mat));
+  }
+  const baker = new Baker();
+  gather(baker, r.rig, new THREE.Matrix4());
+  const torso = new THREE.Mesh(baker.build()!, mat);
+  r.rig.add(torso);
+  return torso;
 }
 
 interface PartDef {
@@ -817,7 +867,7 @@ function canine(o: CanineOpts): Def {
 
 interface Blueprint {
   def: Def;
-  joints: { name: string; at: V3; solid: THREE.BufferGeometry | null; glow: THREE.BufferGeometry | null }[];
+  joints: { name: string; at: V3; geo: THREE.BufferGeometry | null }[];
 }
 const blueprints = new Map<string, Blueprint>();
 function blueprint(species: string): Blueprint {
@@ -830,7 +880,7 @@ function blueprint(species: string): Blueprint {
     : { style: 'hop', halfW: 0.3, shadow: 1, parts: { body: { at: [0, 0, 0], solid: [sp(0xb08cf0, [0.35, 0.32, 0.35], [0, 0.32, 0]), ...duo(sp(EYE, 0.04, [0.12, 0.4, 0.31]))] } } };
   bp = {
     def,
-    joints: Object.entries(def.parts).map(([name, p]) => ({ name, at: p.at, solid: p.solid?.length ? bake(p.solid) : null, glow: p.glow?.length ? bake(p.glow) : null })),
+    joints: Object.entries(def.parts).map(([name, p]) => ({ name, at: p.at, geo: bakeJoint(p.solid, p.glow) })),
   };
   blueprints.set(species, bp);
   return bp;
@@ -850,25 +900,18 @@ const GAIT: Record<Style, { leg: number; arm: number; bob: number; rate: number;
 export function makeMobFigure(species: string, size: number): Figure {
   const bp = blueprint(species);
   const { def } = bp;
-  const mats = ensureMats();
+  const mat = figureMaterial();
   const outer = new THREE.Group();
-  outer.add(blobShadow(def.shadow * size));
   const root = new THREE.Group();
   outer.add(root);
   const rig = new THREE.Group();
   rig.scale.setScalar(size);
   root.add(rig);
   const j: Record<string, THREE.Group> = {};
-  const glows: THREE.Mesh[] = [];
   for (const o of bp.joints) {
     const g = new THREE.Group();
     g.position.set(...o.at);
-    if (o.solid) g.add(new THREE.Mesh(o.solid, mats.solid));
-    if (o.glow) {
-      const m = new THREE.Mesh(o.glow, mats.glow);
-      g.add(m);
-      glows.push(m);
-    }
+    if (o.geo) g.add(new THREE.Mesh(o.geo, mat));
     rig.add(g);
     j[o.name] = g;
   }
@@ -885,6 +928,7 @@ export function makeMobFigure(species: string, size: number): Figure {
   let gone = false;
   const self: Figure = {
     group: outer,
+    shadow: def.shadow * size,
     get gone() {
       return gone;
     },
@@ -958,9 +1002,6 @@ export function makeMobFigure(species: string, size: number): Figure {
       rig.scale.set(size / squash, size * squash, size / squash);
       rig.rotation.x = quad ? (s.cast ? -0.35 : atk >= 0 ? Math.sin(atk * Math.PI) * 0.12 : 0) : 0.05 * walk;
       rig.rotation.z = gait.sway * sw * walk + (s.stunned ? Math.sin(t * 14) * 0.06 : 0);
-
-      // glowing parts pulse; a cast makes them swell
-      for (let i = 0; i < glows.length; i++) glows[i]!.scale.setScalar(s.cast ? 1.14 + Math.sin(t * 16 + i) * 0.1 : 1 + Math.sin(t * 5 + i * 1.7) * 0.03);
 
       // falling over, then sinking into the floor and out of sight
       if (def.style === 'block') {

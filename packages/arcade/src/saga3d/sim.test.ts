@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLASSES, DUNGEON_IDS, SAGA_BOSSES, SAGA_MOBS, TILE, bossHpScale, generateSaga, mobHpScale, type ClassId, type DungeonId } from '@lilla-garden/shared';
+import { CLASSES, DUNGEON_IDS, SAGA_BOSSES, SAGA_MOBS, SPELLS, TILE, bossHpScale, generateSaga, mobHpScale, type ClassId, type DungeonId } from '@lilla-garden/shared';
 import { Sim, walkableFromWorld, type SimEvent, type SimMob } from './sim.ts';
 
 const DT = 1 / 60;
@@ -229,6 +229,24 @@ describe('monsters', () => {
     expect(lead.x).toBeCloseTo(lead.home.x, 3);
   });
 
+  it('a monster that goes home is no longer the target, so spells do not fail with "too far" next to it', () => {
+    const { walk, sim } = make('draug');
+    const lead = sim.mobs.get(sim.packs[0]!.members[0]!)!;
+    placeNear(sim, walk, lead, 3);
+    run(sim, 0.1);
+    sim.setTarget(lead.id);
+    expect(sim.player.target).toBe(lead.id);
+    lead.x = lead.home.x + 23;
+    run(sim, 0.05);
+    expect(lead.state).toBe('home');
+    expect(sim.player.target).toBeNull();
+    // and it cannot be picked while it walks home
+    sim.setTarget(lead.id);
+    expect(sim.player.target).toBeNull();
+    sim.cycleTarget();
+    expect(sim.player.target).not.toBe(lead.id);
+  });
+
   it('archers stand and shoot a bolt that hurts only when it lands', () => {
     const { walk, sim } = make('draug');
     const archer = [...sim.mobs.values()].find((m) => m.species === 'draugbage')!;
@@ -414,6 +432,31 @@ describe('spells', () => {
   });
 });
 
+describe('healing ring', () => {
+  const ringSlot = (cls: ClassId): 0 | 1 | 2 | 3 => CLASSES[cls].spells.findIndex((id) => SPELLS[id]?.kind === 'hot') as 0 | 1 | 2 | 3;
+  const healed = (evs: Stamped[]): number => evs.reduce((n, s) => n + (s.e.type === 'heal' ? s.e.amount : 0), 0);
+
+  it('shows no numbers at full health', () => {
+    const { sim } = make('draug', 'helare');
+    expect(sim.cast(ringSlot('helare'))).toBe(true);
+    sim.drain();
+    const evs = run(sim, 4);
+    expect(has(evs, 'heal')).toBe(false);
+  });
+
+  it('shows only what it really gave', () => {
+    const { sim } = make('draug', 'helare');
+    sim.player.hp = sim.player.max - 3;
+    expect(sim.cast(ringSlot('helare'))).toBe(true);
+    sim.drain();
+    const evs = run(sim, 6);
+    expect(sim.player.hp).toBeGreaterThanOrEqual(sim.player.max - 0.001);
+    // 3 health were missing: the numbers add up to that, not to six seconds of ring
+    expect(healed(evs)).toBeLessThanOrEqual(3);
+    expect(healed(evs)).toBeGreaterThan(0);
+  });
+});
+
 describe('bosses', () => {
   it('killing the mid-boss opens the gate', () => {
     const { world, walk, sim } = make('draug', 'krigare');
@@ -581,6 +624,25 @@ describe('bosses', () => {
     expect(add.species).toBe('skelett');
     // a rain mark appears for phase one once the boss is ready
     run(sim, 0.1);
+  });
+
+  it('an add that is sent away is no longer the target', () => {
+    const { walk, sim } = make('draug', 'krigare');
+    const boss = sim.mobs.get(sim.bossId)!;
+    placeNear(sim, walk, boss, 1.3);
+    sim.setTarget(boss.id);
+    boss.hp = Math.floor(boss.max * 0.67) + 5;
+    sim.cast(0);
+    const spawn = sim.drain().find((e) => e.type === 'spawn') as { id: number };
+    expect(sim.mobs.get(spawn.id)).toBeDefined();
+    sim.setTarget(spawn.id);
+    expect(sim.player.target).toBe(spawn.id);
+    // the player leaves the hall: the boss goes home and its helpers are sent away
+    sim.player.x = sim.start.x;
+    sim.player.z = sim.start.z;
+    run(sim, 0.05);
+    expect(sim.mobs.get(spawn.id)!.dead).toBe(true);
+    expect(sim.player.target).toBeNull();
   });
 
   it('pools linger and hurt every second', () => {

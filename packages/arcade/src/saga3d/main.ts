@@ -7,9 +7,10 @@ import { Input } from '../input.ts';
 import { Loop } from '../kit.ts';
 import { ThirdPersonCamera } from './camera.ts';
 import { Fx } from './fx.ts';
-import { makeMobFigure, makePlayerFigure, type Figure } from './figures.ts';
+import { Shadows, makeMobFigure, makePlayerFigure, type Figure } from './figures.ts';
 import { Hud } from './hud.ts';
-import { Sim, type SimEvent, type SimMob } from './sim.ts';
+import { POTION_CD, Sim, type SimEvent, type SimMob } from './sim.ts';
+import { wrapAngle } from './util.ts';
 import { buildWorld } from './world.ts';
 
 const params = new URLSearchParams(location.search);
@@ -31,8 +32,6 @@ const deviceDpr = window.devicePixelRatio || 1;
 let dpr = low ? Math.min(deviceDpr, 1) : Math.min(deviceDpr, 1.5);
 
 const ATTACK_S = 0.45;
-/** Figures farther than this from the player are not drawn at all (the fog hides the cut). */
-const DRAW_DIST = 22;
 const STEP = 1 / 60;
 /** Spell kinds that swing a weapon; the rest raise both arms for a moment. */
 const SWING_KINDS = new Set(['melee', 'bash', 'whirl', 'charge']);
@@ -59,6 +58,8 @@ const LOOK: Record<DungeonId, { hemi: number; sun: number; sunColor: number; fog
   surt: { hemi: 1.9, sun: 0.9, sunColor: 0xffb68a, fog: 0.05, fogNear: 9, fogFar: 26, ground: 0.2 },
 };
 const look = LOOK[dungeonId];
+/** Figures farther than this from the player are not drawn at all. Just past where the fog is complete, so they come out of the fog instead of popping in half visible. */
+const DRAW_DIST = look.fogFar + 1;
 const fogColor = hue.clone().multiplyScalar(look.fog);
 const scene = new THREE.Scene();
 scene.background = fogColor.clone().multiplyScalar(0.4);
@@ -72,8 +73,9 @@ const world = generateSaga(dungeonId);
 const dungeon = buildWorld(world, def);
 scene.add(dungeon.group);
 
-// at most four real lights, hung on the flames nearest the player; the rest of the torches just glow
-const LIGHTS = 4;
+// at most four real lights (two on low quality, where the floor light pools of the art pass fake the rest), hung on
+// the flames nearest the player; the rest of the torches just glow
+const LIGHTS = low ? 2 : 4;
 const lights: THREE.PointLight[] = [];
 for (let i = 0; i < LIGHTS; i++) {
   const l = new THREE.PointLight(0xffa850, 7, 11, 2);
@@ -103,13 +105,19 @@ function assignLights(px: number, pz: number, t: number): void {
 }
 
 // ---- the rules, the player and the monsters ----
-const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 60);
+// nothing is seen past the fog, so the far plane sits just beyond it (and the walls out there are culled whole)
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, look.fogFar + 6);
 const orbit = new ThirdPersonCamera(camera, canvas);
 const sim = new Sim(world, { dungeon: dungeonId, cls: cls.id, walkable: dungeon.isWalkable });
 if (sim.gateOpen) dungeon.setGateOpen(true);
 const player = sim.player;
 const figure = makePlayerFigure(cls);
 scene.add(figure.group);
+// every blob shadow in one draw call
+const shadows = new Shadows();
+scene.add(shadows.mesh);
+// open behind the player, looking the way they face, not from the side
+orbit.lookAlong(player.facing);
 /** Smoothed facing for drawing (the sim turns instantly). */
 let drawFacing = player.facing;
 let lastCastKind = '';
@@ -134,8 +142,8 @@ function viewOf(m: SimMob): MobView {
 }
 
 const input = new Input();
-const hud = new Hud(root, { touch, stats, dungeonName: def.name, input });
-hud.setPlayer(Math.round(player.hp), player.max, cls);
+const hud = new Hud(root, { touch, stats, low, dungeonName: def.name });
+hud.setPlayer(Math.ceil(player.hp), player.max, cls);
 const fx = new Fx(scene, camera, root, sim);
 
 function doCast(slot: number): void {
@@ -162,6 +170,14 @@ function onEvent(e: SimEvent): void {
       hud.speak(b ? `${mobName(b)}: ”${e.text}”` : e.text);
       break;
     }
+    case 'bossMove':
+      // the name of the big attack that is starting (or that was just stopped), so the kid knows what to run from or to interrupt
+      hud.toast(e.interrupted ? `${e.name} avbruten!` : `${e.name}!`, e.interrupted ? 1400 : 1200);
+      break;
+    case 'playerUp':
+      // up again at the checkpoint: back behind the player
+      orbit.lookAlong(player.facing);
+      break;
     case 'fail':
       hud.shake(lastSlot);
       if (e.reason === 'noTarget') hud.toast('Inget mål!', 1100);
@@ -247,16 +263,24 @@ function update(dt: number): void {
   const look = input.stick(1);
   if (look.x || look.y) orbit.orbit(-look.x * 2.6 * dt, look.y * 1.6 * dt);
 
-  // movement is relative to the camera: up on the stick is away from the camera
-  const s = input.stick(0);
+  // movement is relative to the camera: up on the stick is away from the camera. The keys and the gamepad are digital,
+  // the touch stick is analog (HUD's own vector), so a thumb halfway out walks at half speed
+  const k = input.stick(0);
+  let sx = k.x + hud.stick.x;
+  let sy = k.y + hud.stick.y;
+  const sl = Math.hypot(sx, sy);
+  if (sl > 1) {
+    sx /= sl;
+    sy /= sl;
+  }
   const f = orbit.forward();
   const r = orbit.right();
-  const mx = f.x * -s.y + r.x * s.x;
-  const mz = f.z * -s.y + r.z * s.x;
+  const mx = f.x * -sy + r.x * sx;
+  const mz = f.z * -sy + r.z * sx;
   const len = Math.hypot(mx, mz);
   sim.move(mx, mz);
-  // the camera swings behind us when we walk away from or across the view, not when we walk at it
-  orbit.wantYaw = len > 0.05 && !player.down && s.y < 0.2 ? Math.atan2(-mx, -mz) : null;
+  // the camera swings behind us only when we walk away from it: pure sideways input would make it chase its own tail
+  orbit.wantYaw = len > 0.05 && !player.down && sy < -0.2 ? Math.atan2(-mx, -mz) : null;
 
   sim.update(dt);
   for (const e of sim.drain()) onEvent(e);
@@ -271,16 +295,18 @@ let slowSeconds = 0;
 let note = '';
 let grace = 2;
 /** Turns `a` towards `b` by a fraction of the way round (radians). */
-const turn = (a: number, b: number, k: number): number => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
+const turn = (a: number, b: number, k: number): number => a + wrapAngle(b - a) * k;
 let lastNow = performance.now();
 
 /** Everything that depends on what the sim says right now: figures, fx and the HUD. Once per rendered frame. */
 function present(simT: number, t: number, rdt: number): void {
+  shadows.begin();
   // the player
   drawFacing = turn(drawFacing, player.facing, 1 - Math.exp(-rdt * 16));
   figure.group.position.set(player.x, 0, player.z);
   // figures face +z; the sim's facing is atan2(dz, dx), so the yaw is a quarter turn minus it
   figure.group.rotation.y = Math.PI / 2 - drawFacing;
+  shadows.add(player.x, player.z, figure.shadow);
   const since = simT - player.attackAt;
   const swing = SWING_KINDS.has(lastCastKind);
   figure.animate({ t, moving: player.moving, speed: player.speed, attack: swing && since >= 0 && since < ATTACK_S ? since / ATTACK_S : -1, cast: !swing && since >= 0 && since < 0.4, down: player.down });
@@ -294,6 +320,7 @@ function present(simT: number, t: number, rdt: number): void {
       continue;
     }
     g.visible = true;
+    shadows.add(m.x, m.z, v.fig.shadow);
     v.facing = turn(v.facing, m.facing, 1 - Math.exp(-rdt * 12));
     g.position.set(m.x, 0, m.z);
     g.rotation.y = Math.PI / 2 - v.facing;
@@ -301,8 +328,10 @@ function present(simT: number, t: number, rdt: number): void {
     v.fig.animate({ t, moving: m.moving && !m.dead, speed: v.speed, attack: hit >= 0 && hit < ATTACK_S ? hit / ATTACK_S : -1, cast: !!m.cast && !m.dead, down: m.dead, stunned: simT < m.stunUntil && !m.dead });
   }
 
-  // the HUD
-  hud.setPlayer(Math.round(player.hp), player.max, cls);
+  shadows.end();
+
+  // the HUD; health shows rounded up, so a player who is still standing never reads 0
+  hud.setPlayer(Math.ceil(player.hp), player.max, cls);
   hud.setDown(player.down);
   for (let i = 0; i < 4; i++) {
     const sp = SPELLS[cls.spells[i] ?? ''];
@@ -310,7 +339,7 @@ function present(simT: number, t: number, rdt: number): void {
     const gcd = Math.max(0, player.gcdUntil - sim.time) / (GCD_MS / 1000);
     hud.setCooldown(i, Math.max(left, gcd));
   }
-  hud.setCooldown(4, Math.max(0, player.potionReadyAt - sim.time) / 15);
+  hud.setCooldown(4, Math.max(0, player.potionReadyAt - sim.time) / POTION_CD);
   const tm = player.target === null ? undefined : sim.mobs.get(player.target);
   // the boss bar: the targeted boss, else any boss that is fighting (a targeted boss gets no second frame)
   let boss: SimMob | undefined = tm && !tm.dead && (tm.kind === 'boss' || tm.kind === 'mini') ? tm : undefined;
@@ -358,10 +387,58 @@ function render(alpha: number): void {
   }
 }
 
+/**
+ * The first time each shader and each geometry is drawn the driver compiles and uploads it, which froze an old tablet for a
+ * third of a second at the first pack of monsters. So before the loop starts, everything this dungeon can show is shown
+ * once: one figure of every species that lives here (and the helpers its bosses call), every spell effect and telegraph.
+ */
+function warmUp(): void {
+  const species = new Set<string>();
+  for (const m of sim.mobs.values()) {
+    species.add(m.species);
+    const boss = SAGA_BOSSES[m.species];
+    if (boss?.phaseAdds) species.add(boss.phaseAdds.species);
+    for (const mv of boss?.moves ?? []) if (mv.add) species.add(mv.add);
+  }
+  // the camera is behind the player looking at them, so everything put on the player's spot is in view
+  orbit.follow({ x: player.x, y: 0, z: player.z });
+  orbit.update(STEP, dungeon.isWalkable, dungeon.blocksView);
+  camera.updateMatrixWorld();
+  assignLights(player.x, player.z, 0);
+  const temp = [...species].map((sp) => makeMobFigure(sp, 1));
+  for (const f of temp) {
+    f.group.position.set(player.x, 0, player.z);
+    scene.add(f.group);
+  }
+  shadows.begin();
+  shadows.add(player.x, player.z, 1);
+  shadows.end();
+  // the whole dungeon is drawn once too (no culling), so walking into a part of it for the first time uploads nothing
+  const culled: THREE.Object3D[] = [];
+  dungeon.group.traverse((o) => {
+    if (o.frustumCulled) {
+      o.frustumCulled = false;
+      culled.push(o);
+    }
+  });
+  fx.prewarm({ x: player.x, z: player.z }, () => {
+    renderer.compile(scene, camera);
+    renderer.render(scene, camera);
+  });
+  for (const o of culled) o.frustumCulled = true;
+  for (const f of temp) f.dispose();
+  shadows.begin();
+  shadows.end();
+}
+const warmStart = performance.now();
+warmUp();
+const warmMs = performance.now() - warmStart;
+lastNow = performance.now();
+
 const loop = new Loop(update, render);
 
 // a handle for tests and for the people wiring in the sim
-Object.assign(window, { saga3d: { renderer, scene, camera, orbit, world, dungeon, sim, player, fx, hud, input, views, makeMobFigure, fps: () => fps } });
+Object.assign(window, { saga3d: { renderer, scene, camera, orbit, world, dungeon, sim, player, fx, hud, input, views, makeMobFigure, fps: () => fps, shadows, warmMs } });
 
 // no leaked animation loops or listeners when Vite hot-reloads this module
 import.meta.hot?.dispose(() => {
@@ -372,6 +449,7 @@ import.meta.hot?.dispose(() => {
   figure.dispose();
   for (const v of views.values()) v.fig.dispose();
   fx.dispose();
+  shadows.dispose();
   canvas.removeEventListener('pointerdown', onDown);
   canvas.removeEventListener('pointerup', onUp);
   window.removeEventListener('keydown', onKey);
@@ -379,5 +457,7 @@ import.meta.hot?.dispose(() => {
   window.removeEventListener('blur', onBlur);
   window.removeEventListener('resize', resize);
   renderer.dispose();
+  // a reloaded module makes a new canvas; browsers keep only a handful of WebGL contexts alive
+  renderer.forceContextLoss();
   canvas.remove();
 });

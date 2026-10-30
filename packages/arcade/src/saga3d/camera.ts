@@ -2,6 +2,7 @@
 // around and scroll or pinch to zoom, it never sits inside a wall, and when you walk it slowly swings round
 // to look the way you are going.
 import * as THREE from 'three';
+import { wrapAngle } from './util.ts';
 
 const DEG = Math.PI / 180;
 const MIN_PITCH = 10 * DEG;
@@ -10,8 +11,12 @@ const MIN_DIST = 2;
 const MAX_DIST = 9;
 /** Walls are this high, so a camera above it can look over them. */
 const WALL_TOP = 1.7;
-
-const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+/** The camera never comes closer to the player than this, even with a wall right behind. */
+const MIN_FREE = 0.3;
+/** With less room than this behind the player the camera lifts over the wall instead of squeezing in front of it. */
+const CRAMPED = 1.5;
+/** How steeply it may lift to look over a wall (the hand-set pitch stays within 10°–70°). */
+const LIFT_PITCH = 80 * DEG;
 
 export class ThirdPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -31,9 +36,13 @@ export class ThirdPersonCamera {
   private seen = false;
   /** The distance after wall-shortening: it shrinks fast and grows back slowly. */
   private eff = 6;
+  /** The pitch after lifting over a wall: it rises fast and settles back slowly, like `eff`. */
+  private effPitch = 32 * DEG;
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch = 0;
-  private offDragged = 0;
+  /** Handed out by forward() and right(): they are read at once, so one object each is enough. */
+  private fwd = { x: 0, z: 0 };
+  private rgt = { x: 0, z: 0 };
   private cleanup: (() => void)[] = [];
 
   constructor(camera: THREE.PerspectiveCamera, private el: HTMLElement) {
@@ -55,17 +64,29 @@ export class ThirdPersonCamera {
 
   /** Unit vector in the XZ plane that points where the camera looks. */
   forward(): { x: number; z: number } {
-    return { x: -Math.sin(this.yaw), z: -Math.cos(this.yaw) };
+    this.fwd.x = -Math.sin(this.yaw);
+    this.fwd.z = -Math.cos(this.yaw);
+    return this.fwd;
   }
 
   /** Unit vector in the XZ plane that points to the camera's right. */
   right(): { x: number; z: number } {
-    return { x: Math.cos(this.yaw), z: -Math.sin(this.yaw) };
+    this.rgt.x = Math.cos(this.yaw);
+    this.rgt.z = -Math.sin(this.yaw);
+    return this.rgt;
+  }
+
+  /** Looks the way a player faces (`facing` is the sim's atan2(dz, dx)): the camera ends up behind them. The next follow() snaps. */
+  lookAlong(facing: number): void {
+    this.yaw = Math.atan2(-Math.cos(facing), -Math.sin(facing));
+    this.seen = false;
+    this.eff = this.distance;
+    this.effPitch = this.pitch;
   }
 
   /** Orbit by hand (the gamepad's right stick). */
   orbit(dyaw: number, dpitch: number): void {
-    this.yaw = wrap(this.yaw + dyaw);
+    this.yaw = wrapAngle(this.yaw + dyaw);
     this.pitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, this.pitch + dpitch));
   }
 
@@ -88,25 +109,47 @@ export class ThirdPersonCamera {
    */
   update(dt: number, isWalkable: (x: number, z: number) => boolean, blocks?: (x: number, z: number) => boolean): void {
     this.focus.lerp(this.goal, 1 - Math.exp(-dt * 9));
-    if (this.wantYaw !== null && !this.dragging) this.yaw = wrap(this.yaw + wrap(this.wantYaw - this.yaw) * (1 - Math.exp(-dt * 0.9)));
+    if (this.wantYaw !== null && !this.dragging) this.yaw = wrapAngle(this.yaw + wrapAngle(this.wantYaw - this.yaw) * (1 - Math.exp(-dt * 0.9)));
 
-    const cp = Math.cos(this.pitch);
-    const sp = Math.sin(this.pitch);
-    const dirX = Math.sin(this.yaw) * cp;
-    const dirZ = Math.cos(this.yaw) * cp;
     const hit = blocks ?? ((x: number, z: number) => !isWalkable(x, z));
-    // walk out along the line from the player to the camera and stop before the first wall
-    let free = this.distance;
-    for (let s = 0.5; s <= this.distance + 0.001; s += 0.25) {
-      const y = this.focus.y + sp * s;
-      if (y < WALL_TOP && hit(this.focus.x + dirX * s, this.focus.z + dirZ * s)) {
-        free = Math.max(1.2, s - 0.45);
-        break;
+    // with a wall right behind the player there is no room to stand in front of it: lift the camera until the line
+    // from the player clears the wall top, so it looks down over the wall instead of sitting inside it
+    let pitch = this.pitch;
+    let free = this.room(this.pitch, hit);
+    if (free < CRAMPED) {
+      let best = free;
+      for (let p = this.pitch + 5 * DEG; p <= LIFT_PITCH + 1e-6; p += 5 * DEG) {
+        const f = this.room(p, hit);
+        if (f > best) {
+          best = f;
+          pitch = p;
+          free = f;
+        }
+        if (f >= this.distance - 1e-6) break;
       }
     }
+    this.effPitch += (pitch - this.effPitch) * (1 - Math.exp(-dt * (pitch > this.effPitch ? 12 : 2.5)));
     this.eff = free < this.eff ? this.eff + (free - this.eff) * (1 - Math.exp(-dt * 18)) : this.eff + (free - this.eff) * (1 - Math.exp(-dt * 2.5));
-    this.camera.position.set(this.focus.x + dirX * this.eff, this.focus.y + sp * this.eff, this.focus.z + dirZ * this.eff);
+    // the smoothing lags a few frames behind: never stay further out than the room at the pitch in use right now
+    this.eff = Math.min(this.eff, this.room(this.effPitch, hit));
+
+    const cp = Math.cos(this.effPitch);
+    const sp = Math.sin(this.effPitch);
+    this.camera.position.set(this.focus.x + Math.sin(this.yaw) * cp * this.eff, this.focus.y + sp * this.eff, this.focus.z + Math.cos(this.yaw) * cp * this.eff);
     this.camera.lookAt(this.focus.x, this.focus.y + 0.15, this.focus.z);
+  }
+
+  /** How far out along the line from the player at this pitch the camera can go before it meets a wall (a bit short of it). */
+  private room(pitch: number, hit: (x: number, z: number) => boolean): number {
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    const dirX = Math.sin(this.yaw) * cp;
+    const dirZ = Math.cos(this.yaw) * cp;
+    // walk out along the line and stop before the first wall
+    for (let s = 0.25; s <= this.distance + 0.001; s += 0.25) {
+      if (this.focus.y + sp * s < WALL_TOP && hit(this.focus.x + dirX * s, this.focus.z + dirZ * s)) return Math.max(MIN_FREE, s - 0.45);
+    }
+    return this.distance;
   }
 
   /** Stops listening (hot reload). */
@@ -134,7 +177,6 @@ export class ThirdPersonCamera {
     }
     this.dragging = true;
     this.pinch = this.pointers.size === 2 ? this.pinchDistance() : 0;
-    this.offDragged = 0;
   }
 
   private move(e: PointerEvent): void {
@@ -150,7 +192,6 @@ export class ThirdPersonCamera {
       this.pinch = d;
       return;
     }
-    this.offDragged += Math.abs(dx) + Math.abs(dy);
     // dragging right turns the view left, so the world follows the finger; dragging down lifts the camera
     this.orbit(dx * 0.006, dy * 0.005);
   }
@@ -165,10 +206,5 @@ export class ThirdPersonCamera {
   private pinchDistance(): number {
     const [a, b] = [...this.pointers.values()];
     return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
-  }
-
-  /** Was the last drag only a tap (so the integrator can treat it as a click on a monster)? */
-  get wasTap(): boolean {
-    return this.offDragged < 8;
   }
 }

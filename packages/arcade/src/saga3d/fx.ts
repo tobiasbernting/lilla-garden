@@ -4,6 +4,7 @@
 // Cost control, because this has to run on an old tablet: every particle lives in ONE Points object (one draw call
 // however many there are), meshes are shared and pooled, and the numbers are DOM elements that are reused.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SPELLS } from '@lilla-garden/shared';
 import type { P2, Sim, SimEvent, SimMob, SimZone } from './sim.ts';
 
@@ -154,29 +155,40 @@ const runeGeo = (() => {
     t.rotateZ((i / 6) * Math.PI * 2);
     parts.push(t);
   }
-  const merged = mergeFlat(parts);
+  const merged = mergeGeometries(parts, false)!;
+  for (const g of parts) g.dispose();
   return flat(merged);
 })();
 
-function mergeFlat(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  // tiny local merge (positions + index only) so fx.ts does not need the geometry utils
-  const pos: number[] = [];
-  const idx: number[] = [];
-  for (const g of parts) {
-    const base = pos.length / 3;
-    const p = g.getAttribute('position');
-    for (let i = 0; i < p.count; i++) pos.push(p.getX(i), p.getY(i), p.getZ(i));
-    const ix = g.getIndex();
-    if (ix) for (let i = 0; i < ix.count; i++) idx.push(base + ix.getX(i));
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  out.setIndex(idx);
-  return out;
+/** Paints every vertex one grey (the material's colour is multiplied by it). */
+function grey(g: THREE.BufferGeometry, k: number): THREE.BufferGeometry {
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute('position').count * 3).fill(k), 3));
+  return g;
 }
 
-const fxMat = (color: number, opacity: number, additive = false): THREE.MeshBasicMaterial =>
-  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+/**
+ * The edge of a telegraph as ONE mesh: a dark band with a bright rim on its outer edge (a cone also gets its two
+ * straight sides). It is opaque, so only the growing fill on the floor is blended, not three layers of it.
+ */
+function outlineGeo(arc?: { start: number; length: number }): THREE.BufferGeometry {
+  const parts = arc
+    ? [grey(new THREE.RingGeometry(0.8, 0.93, 24, 1, arc.start, arc.length), 0.55), grey(new THREE.RingGeometry(0.93, 1, 24, 1, arc.start, arc.length), 1)]
+    : [grey(new THREE.RingGeometry(0.8, 0.93, 36), 0.55), grey(new THREE.RingGeometry(0.93, 1, 40), 1)];
+  if (arc) {
+    for (const a of [arc.start, arc.start + arc.length]) parts.push(grey(new THREE.PlaneGeometry(0.05, 1).translate(0, 0.5, 0).rotateZ(a - Math.PI / 2), 0.8));
+  }
+  const merged = mergeGeometries(parts, false)!;
+  for (const g of parts) g.dispose();
+  return flat(merged);
+}
+const circleOutline = outlineGeo();
+
+// everything that lies on the floor faces up, so it is drawn single-sided (a double-sided blended disc is drawn twice)
+const fxMat = (color: number, opacity: number, side: THREE.Side = THREE.FrontSide): THREE.MeshBasicMaterial =>
+  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+/** The opaque outline of a telegraph; `color` is multiplied by the greys painted into the geometry. */
+const outlineMat = (color: number): THREE.MeshBasicMaterial =>
+  new THREE.MeshBasicMaterial({ color, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
 
 type FlashShape = 'ring' | 'arc' | 'swirl' | 'disc' | 'rune';
 const FLASH_GEO: Record<FlashShape, THREE.BufferGeometry> = { ring: ringGeo, arc: arcGeo, swirl: swirlGeo, disc: discGeo, rune: runeGeo };
@@ -195,8 +207,11 @@ interface Flash {
   follow: boolean;
 }
 
+type BoltKind = 'ice' | 'arrow' | 'fire' | 'mob';
+
 interface Bolt {
-  mesh: THREE.Object3D;
+  mesh: THREE.Mesh;
+  kind: BoltKind;
   from: P2;
   to: P2;
   t0: number;
@@ -210,9 +225,10 @@ interface Bolt {
 
 interface ZoneVis {
   group: THREE.Group;
-  base: THREE.Mesh;
+  /** The opaque edge (band and rim). */
+  ring: THREE.Mesh;
+  /** The part that fills from the centre until the attack lands: the only blended layer. */
   fill: THREE.Mesh;
-  rim: THREE.Mesh;
   own: THREE.BufferGeometry[];
   zone: SimZone;
   landed: boolean;
@@ -251,12 +267,10 @@ export class Fx {
   private width = 800;
   private height = 600;
 
-  private baseMat = fxMat(0xc81e1e, 0.38);
+  private ringMat = outlineMat(0xff5a4a);
   private fillMat = fxMat(0xffa23a, 0.6);
-  private rimMat = fxMat(0xff6a5a, 0.9);
-  private poolBase = fxMat(0xff7a1a, 0.3);
+  private poolRing = outlineMat(0xffa030);
   private poolFill = fxMat(0xffa030, 0.5);
-  private poolRim = fxMat(0xffc060, 0.9);
   private selMat = fxMat(0xffdd33, 0.95);
   private selection: THREE.Mesh;
   private dome: THREE.Mesh;
@@ -266,6 +280,14 @@ export class Fx {
   private arrowGeo = new THREE.BoxGeometry(0.05, 0.05, 0.8);
   private ballGeo = new THREE.SphereGeometry(1, 10, 8);
   private boltMats = new Map<number, THREE.MeshBasicMaterial>();
+  /** Spent bolt meshes wait here for the next shot of their kind (every shot used to build a new mesh). */
+  private boltPool: Record<BoltKind, THREE.Mesh[]> = { ice: [], arrow: [], fire: [], mob: [] };
+  /** Scratch objects for the per-frame updates, so nothing is allocated while playing. */
+  private seen = new Set<string>();
+  private numV = new THREE.Vector3();
+  private rageOn = false;
+  /** Everything this adds to the scene, for dispose(). */
+  private owned: THREE.Object3D[] = [];
   private stormGeo = new THREE.BoxGeometry(1, 1, 1);
   private stormMat = new THREE.MeshBasicMaterial({ color: 0xfff7b0 });
   private rng = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -276,6 +298,7 @@ export class Fx {
    */
   constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, host: HTMLElement, private sim: Sim) {
     scene.add(this.particles.points);
+    this.owned.push(this.particles.points);
 
     this.selection = new THREE.Mesh(flat(new THREE.RingGeometry(0.4, 0.5, 32)), this.selMat);
     this.selection.position.y = FLOOR + 0.01;
@@ -283,7 +306,8 @@ export class Fx {
     this.selection.visible = false;
     scene.add(this.selection);
 
-    this.dome = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), fxMat(0x6ab8ff, 0.28));
+    // seen from inside as well when the camera is zoomed in close, so this one is double-sided
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), fxMat(0x6ab8ff, 0.28, THREE.DoubleSide));
     this.dome.renderOrder = 4;
     this.dome.visible = false;
     scene.add(this.dome);
@@ -297,8 +321,10 @@ export class Fx {
       const m = new THREE.Mesh(this.stormGeo, this.stormMat);
       m.visible = false;
       scene.add(m);
+      this.owned.push(m);
       this.storm.push({ mesh: m, t: 0 });
     }
+    this.owned.push(this.selection, this.dome, this.hotRing);
 
     this.numRoot = document.createElement('div');
     this.numRoot.className = 'saga3d-floats';
@@ -315,10 +341,50 @@ export class Fx {
     this.particles.setScale(bufferH / (2 * Math.tan((this.camera.fov * Math.PI) / 360)));
   }
 
+  /**
+   * Shows every effect once around `at` while `draw` renders a frame, then hides it all again. That compiles each shader and
+   * uploads each geometry now, so the first fireball or telegraph of a fight does not freeze an old tablet for a third of a second.
+   */
+  prewarm(at: P2, draw: () => void): void {
+    const shown: THREE.Object3D[] = [this.selection, this.dome, this.hotRing, ...this.storm.map((s) => s.mesh)];
+    for (const o of shown) {
+      o.position.x = at.x;
+      o.position.z = at.z;
+      o.visible = true;
+    }
+    for (const shape of Object.keys(FLASH_GEO) as FlashShape[]) this.flash(shape, at.x, FLOOR, at.z, 0.5, 0.5, 1, 0xffffff, 0.5);
+    // a telegraph (the opaque outline and the fill) and a burning pool (their orange twins); a cone's own geometry is tiny and made on demand
+    const temp: THREE.Mesh[] = [];
+    for (const [g, m] of [[circleOutline, this.ringMat], [circleOutline, this.poolRing], [discGeo, this.fillMat], [discGeo, this.poolFill]] as const) {
+      const t = new THREE.Mesh(g, m);
+      t.position.set(at.x, FLOOR, at.z);
+      this.scene.add(t);
+      temp.push(t);
+    }
+    const bolts = (Object.keys(this.boltPool) as BoltKind[]).map((kind) => [kind, this.takeBolt(kind)] as const);
+    for (const [, b] of bolts) b.position.set(at.x, 0.7, at.z);
+    this.particles.spawn(0xffffff, at.x, 0.5, at.z, 0, 0, 0, 1, 0.3, 0.3);
+    this.particles.update(0);
+    draw();
+    for (const o of shown) o.visible = false;
+    for (const f of this.flashes) {
+      f.on = false;
+      f.mesh.visible = false;
+    }
+    for (const t of temp) t.removeFromParent();
+    // the bolts wait in the pool, hidden, for the first real shot
+    for (const [kind, b] of bolts) {
+      b.visible = false;
+      this.boltPool[kind].push(b);
+    }
+    this.particles.update(10);
+  }
+
   dispose(): void {
     this.numRoot.remove();
     this.tint.remove();
-    this.particles.points.removeFromParent();
+    for (const o of this.owned) o.removeFromParent();
+    this.owned.length = 0;
     for (const z of this.zones.values()) this.dropZone(z);
     this.zones.clear();
   }
@@ -482,6 +548,7 @@ export class Fx {
       mesh.renderOrder = 3;
       mesh.visible = false;
       this.scene.add(mesh);
+      this.owned.push(mesh);
       f = { mesh, mat, on: false, t: 0, dur: 1, r0: 1, r1: 1, alpha: 1, spin: 0, follow: false };
       this.flashes.push(f);
     }
@@ -501,44 +568,56 @@ export class Fx {
     f.mesh.visible = true;
   }
 
+  /** A bolt mesh of this kind: a spent one from the pool, else a new one (the shape and size are the kind's own). */
+  private takeBolt(kind: BoltKind): THREE.Mesh {
+    let m = this.boltPool[kind].pop();
+    if (!m) {
+      if (kind === 'ice') m = new THREE.Mesh(this.spikeGeo, this.boltMat(0xcff2ff));
+      else if (kind === 'arrow') m = new THREE.Mesh(this.arrowGeo, this.boltMat(0xfff07a));
+      else {
+        m = new THREE.Mesh(this.ballGeo, this.boltMat(kind === 'fire' ? 0xffb040 : 0xc8ffc8));
+        m.scale.setScalar(kind === 'fire' ? 0.17 : 0.14);
+      }
+      this.scene.add(m);
+      this.owned.push(m);
+    }
+    m.visible = true;
+    return m;
+  }
+
   private addBolt(e: Extract<SimEvent, { type: 'bolt' }>, targetSize: number): void {
     const own = !e.spell.startsWith('mob_');
-    let mesh: THREE.Object3D;
+    let kind: BoltKind;
     let trail: number;
     let glow: number;
     let size = 0.5;
     const y1 = e.target === 'player' ? 0.6 : 0.6 * targetSize;
     const dx = e.to.x - e.from.x;
     const dz = e.to.z - e.from.z;
-    const yaw = Math.atan2(dx, dz);
     if (e.spell === 'isspjut') {
-      mesh = new THREE.Mesh(this.spikeGeo, this.boltMat(0xcff2ff));
+      kind = 'ice';
       trail = 0xaee8ff;
       glow = 0x8fd6f5;
     } else if (e.spell === 'ljuspil') {
-      mesh = new THREE.Mesh(this.arrowGeo, this.boltMat(0xfff07a));
+      kind = 'arrow';
       trail = 0xfff07a;
       glow = 0xffe14a;
       size = 0.35;
     } else if (own) {
-      const b = new THREE.Mesh(this.ballGeo, this.boltMat(0xffb040));
-      b.scale.setScalar(0.17);
-      mesh = b;
+      kind = 'fire';
       trail = 0xff5a1a;
       glow = 0xff8a2a;
       size = 0.75;
     } else {
-      const b = new THREE.Mesh(this.ballGeo, this.boltMat(0xc8ffc8));
-      b.scale.setScalar(0.14);
-      mesh = b;
+      kind = 'mob';
       trail = 0x6dff9a;
       glow = 0x7dffa8;
       size = 0.55;
     }
-    mesh.rotation.y = yaw;
+    const mesh = this.takeBolt(kind);
+    mesh.rotation.y = Math.atan2(dx, dz);
     mesh.position.set(e.from.x, 0.7, e.from.z);
-    this.scene.add(mesh);
-    this.bolts.push({ mesh, from: e.from, to: e.to, t0: this.sim.time, arrive: Math.max(e.arrive, this.sim.time + 0.02), trail, glow, size, y0: 0.7, y1 });
+    this.bolts.push({ mesh, kind, from: e.from, to: e.to, t0: this.sim.time, arrive: Math.max(e.arrive, this.sim.time + 0.02), trail, glow, size, y0: 0.7, y1 });
   }
 
   private boltMat(color: number): THREE.MeshBasicMaterial {
@@ -636,8 +715,12 @@ export class Fx {
         this.particles.spawn(0x9dffb8, p.x + Math.cos(a) * d, 0.05, p.z + Math.sin(a) * d, 0, this.rng(0.6, 1.2), 0, 0.9, 0.2, 0.05);
       }
     }
+    // the red edge pulses by a CSS animation, so nothing is written to the page while it runs
     const rage = p.rageUntil > sim.time && !p.down;
-    this.tint.style.opacity = rage ? String(0.55 + Math.sin(this.clock * 7) * 0.25) : '0';
+    if (rage !== this.rageOn) {
+      this.rageOn = rage;
+      this.tint.classList.toggle('saga3d-on', rage);
+    }
 
     const t = p.target === null ? undefined : sim.mobs.get(p.target);
     if (t && !t.dead) this.select(t);
@@ -666,7 +749,8 @@ export class Fx {
       this.particles.spawn(b.glow, x, y, z, 0, 0, 0, 0.05, b.size * 0.9, b.size * 0.9, 0.8);
       this.particles.spawn(b.trail, x + this.rng(-0.04, 0.04), y + this.rng(-0.04, 0.04), z + this.rng(-0.04, 0.04), this.rng(-0.2, 0.2), this.rng(-0.1, 0.3), this.rng(-0.2, 0.2), 0.3, b.size * 0.6, 0.05, 0.8);
       if (k >= 1) {
-        this.scene.remove(b.mesh);
+        b.mesh.visible = false;
+        this.boltPool[b.kind].push(b.mesh);
         this.bolts.splice(i, 1);
       }
     }
@@ -676,30 +760,26 @@ export class Fx {
     const group = new THREE.Group();
     group.position.set(z.x, 0, z.z);
     const own: THREE.BufferGeometry[] = [];
-    let baseG = discGeo;
-    let rimG = thinRingGeo;
+    let fillG = discGeo;
+    let ringG = circleOutline;
     if (z.shape === 'cone') {
       const arc = ((z.arc ?? 90) * Math.PI) / 180;
       const start = -(z.dir ?? 0) - arc / 2;
-      baseG = flat(new THREE.CircleGeometry(1, 24, start, arc));
-      rimG = flat(new THREE.RingGeometry(0.94, 1, 24, 1, start, arc));
-      own.push(baseG, rimG);
+      fillG = flat(new THREE.CircleGeometry(1, 24, start, arc));
+      ringG = outlineGeo({ start, length: arc });
+      own.push(fillG, ringG);
     }
-    const base = new THREE.Mesh(baseG, this.baseMat);
-    const fill = new THREE.Mesh(baseG, this.fillMat);
-    const rim = new THREE.Mesh(rimG, this.rimMat);
-    base.position.y = FLOOR;
-    fill.position.y = FLOOR + 0.004;
-    rim.position.y = FLOOR + 0.008;
-    base.renderOrder = 2;
+    const ring = new THREE.Mesh(ringG, this.ringMat);
+    const fill = new THREE.Mesh(fillG, this.fillMat);
+    ring.position.y = FLOOR + 0.008;
+    fill.position.y = FLOOR;
+    ring.renderOrder = 2;
     fill.renderOrder = 2;
-    rim.renderOrder = 2;
-    base.scale.set(z.r, 1, z.r);
-    rim.scale.set(z.r, 1, z.r);
+    ring.scale.set(z.r, 1, z.r);
     fill.scale.set(0.01, 1, 0.01);
-    group.add(base, fill, rim);
+    group.add(fill, ring);
     this.scene.add(group);
-    return { group, base, fill, rim, own, zone: z, landed: false };
+    return { group, ring, fill, own, zone: z, landed: false };
   }
 
   private dropZone(v: ZoneVis): void {
@@ -708,7 +788,8 @@ export class Fx {
   }
 
   private updateZones(simT: number): void {
-    const seen = new Set<string>();
+    const seen = this.seen;
+    seen.clear();
     for (const z of this.sim.zones) {
       seen.add(z.id);
       let v = this.zones.get(z.id);
@@ -722,19 +803,16 @@ export class Fx {
         // burning ground: orange, full, pulsing
         if (!v.landed) {
           v.landed = true;
-          v.base.material = this.poolBase;
+          v.ring.material = this.poolRing;
           v.fill.material = this.poolFill;
-          v.rim.material = this.poolRim;
           this.flash('ring', z.x, FLOOR, z.z, z.r * 0.5, z.r * 1.2, 0.35, 0xffa030, 0.9);
         }
         v.fill.scale.set(z.r * 0.92, 1, z.r * 0.92);
         if (Math.random() < 0.25) this.particles.spawn(0xff9a30, z.x + this.rng(-z.r, z.r) * 0.7, 0.05, z.z + this.rng(-z.r, z.r) * 0.7, 0, this.rng(0.5, 1.2), 0, 0.7, 0.25, 0.05, 0.9);
       }
     }
-    // pools pulse together: two shared materials, no per-zone cost
-    const pulse = Math.sin(this.clock * 6);
-    this.poolBase.opacity = 0.3 + pulse * 0.08;
-    this.poolFill.opacity = 0.5 + pulse * 0.15;
+    // pools pulse together: one shared material, no per-zone cost
+    this.poolFill.opacity = 0.5 + Math.sin(this.clock * 6) * 0.15;
     for (const [id, v] of this.zones) {
       if (seen.has(id)) continue;
       // a circle that just landed gets a flash and a puff of dust; one that was cancelled or timed out just goes
@@ -758,7 +836,7 @@ export class Fx {
   }
 
   private updateNumbers(dt: number): void {
-    const v = new THREE.Vector3();
+    const v = this.numV;
     for (const n of this.nums) {
       if (!n.on) continue;
       n.t += dt;

@@ -6,7 +6,8 @@
 .saga3d-fps { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); font: 600 14px/1.35 ui-monospace, monospace; text-align: right; background: rgba(20, 22, 40, 0.45); padding: 6px 10px; border-radius: 12px; white-space: pre; }
 
 .saga3d-bar { position: relative; height: 22px; border-radius: 11px; background: rgba(20, 22, 40, 0.7); border: 2px solid rgba(255, 255, 255, 0.75); overflow: hidden; }
-.saga3d-bar > i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 9px; transition: width 0.15s; background: linear-gradient(#7be08e, #3ea85a); }
+/* the fill is always full width and scaled from its left edge (the script sets the scale), so a health change never lays the page out again; the bar's own rounded edge clips it */
+.saga3d-bar > i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: 0 50%; transition: transform 0.15s; will-change: transform; background: linear-gradient(#7be08e, #3ea85a); }
 .saga3d-bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
 
 .saga3d-player { position: absolute; left: var(--pad); bottom: max(14px, env(safe-area-inset-bottom)); width: min(260px, 38vw); }
@@ -50,8 +51,12 @@
 .saga3d-hurt { color: #ff5a5a; font-size: 30px; }
 .saga3d-heal { color: #6dff9a; }
 /* rage: a red glow round the edge of the screen that pulses */
-.saga3d-rage { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 110px 26px rgba(255, 40, 20, 0.7); transition: opacity 0.2s; }
+.saga3d-rage { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 110px 26px rgba(255, 40, 20, 0.7); will-change: opacity; }
+.saga3d-rage.saga3d-on { animation: saga3d-rage 0.9s ease-in-out infinite alternate; }
+@keyframes saga3d-rage { from { opacity: 0.3; } to { opacity: 0.8; } }
 .saga3d-toast { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); max-width: 80vw; font-size: 38px; font-weight: 800; text-align: center; opacity: 0; transition: opacity 0.35s; text-shadow: 0 3px 8px #000; color: #ffe27a; }
 .saga3d-toast.saga3d-on { opacity: 1; }
-.saga3d-down { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800; background: rgba(20, 22, 30, 0.55); backdrop-filter: grayscale(1); opacity: 0; transition: opacity 0.4s; }
+.saga3d-down { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800; background: rgba(20, 22, 30, 0.55); opacity: 0; transition: opacity 0.4s; }
 .saga3d-down.saga3d-on { opacity: 1; }
+/* the grey-out of a fallen player needs a backdrop filter; on low quality the dark tint alone does it */
+.saga3d-hud:not(.saga3d-low) .saga3d-down { backdrop-filter: grayscale(1); }

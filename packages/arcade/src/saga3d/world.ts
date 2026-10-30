@@ -1,9 +1,12 @@
-// Turns a dungeon's tile grid into Three.js meshes: one merged floor, one instanced wall mesh, a few merged
-// decor meshes, and the collision grid the player and camera use. Everything is built once, so the draw
-// call count stays tiny (that is the point of the 3D proof of concept: old tablets must keep up).
+// Turns a dungeon's tile grid into Three.js meshes: one merged floor, the walls and decor baked per 8x8-tile block, and
+// the collision the player and camera use. Everything is built once, so the draw call count stays small and a block
+// that is behind the camera or out in the fog is skipped whole (that is the point of the 3D proof of concept: old
+// tablets must keep up).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MAP_H, MAP_W, objectDef, type SagaDungeonDef, type Terrain, type WorldState } from '@lilla-garden/shared';
+import { MAP_H, MAP_W, type SagaDungeonDef, type Terrain, type WorldState } from '@lilla-garden/shared';
+import { Baker } from './bake.ts';
+import { walkableFromWorld } from './sim.ts';
 
 export interface SagaWorld {
   group: THREE.Group;
@@ -13,8 +16,7 @@ export interface SagaWorld {
   blocksView(x: number, z: number): boolean;
   /** Where the flames are (torches and braziers): the integrator hangs the few real lights on the nearest ones. */
   torches: THREE.Vector3[];
-  start: { x: number; z: number };
-  bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** Hides the gate meshes. The rule itself (can one walk through?) is `world.saga.gateOpen`, which the sim sets. */
   setGateOpen(open: boolean): void;
   dispose(): void;
 }
@@ -69,50 +71,36 @@ const prim = {
 };
 type Prim = keyof typeof prim;
 
-/** Collects coloured parts of one kind of mesh and merges them into one geometry at the end. */
+/** Glowing parts get their shading painted in (a lit top, a darker underside), because no light touches them. */
+const glowShade = (ny: number): number => 0.8 + 0.2 * Math.max(-1, Math.min(1, ny));
+
+/** Collects coloured parts of one kind of mesh (lit or glowing) and merges them into one geometry at the end. */
 class Bake {
-  private parts: THREE.BufferGeometry[] = [];
+  private baker = new Baker();
   /** Per object: where in the flicker cycle its flames are, so no two torches pulse together. */
   phase = 0;
   constructor(private glow: boolean) {}
   /** Adds a primitive: size (scale), position, rotation (euler XYZ), colour. A `flame` part flickers (see `flickerMaterial`). */
   add(p: Prim, color: number | THREE.Color, size: V3 | number, pos: V3, rot: V3 = [0, 0, 0], base?: THREE.Matrix4, tint = 1, flame = false): void {
-    const g = prim[p].clone();
-    g.deleteAttribute('uv');
     const s: V3 = typeof size === 'number' ? [size, size, size] : size;
     const m = new THREE.Matrix4().compose(new THREE.Vector3(...pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)), new THREE.Vector3(...s));
     if (base) m.premultiply(base);
-    g.applyMatrix4(m);
-    const c = typeof color === 'number' ? hex(color) : color;
-    const n = g.getAttribute('normal');
-    const col = new Float32Array(n.count * 3);
-    for (let i = 0; i < n.count; i++) {
-      // emissive parts get their shading painted in (a lit top, a darker underside) because no light touches them
-      const k = this.glow ? 0.8 + 0.2 * Math.max(-1, Math.min(1, n.getY(i))) : 1;
-      col[i * 3] = c.r * k * tint;
-      col[i * 3 + 1] = c.g * k * tint;
-      col[i * 3 + 2] = c.b * k * tint;
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    if (this.glow) {
-      // x: how much this vertex flickers (0 = not at all), y: the phase, z: the height it grows from (the foot of the flame)
-      g.computeBoundingBox();
-      const footY = g.boundingBox!.min.y;
-      const fl = new Float32Array(n.count * 3);
-      if (flame) for (let i = 0; i < n.count; i++) fl.set([1, this.phase, footY], i * 3);
-      g.setAttribute('flick', new THREE.BufferAttribute(fl, 3));
-    }
-    this.parts.push(g);
+    this.addGeo(prim[p], m, (typeof color === 'number' ? hex(color) : color).clone().multiplyScalar(tint), flame);
   }
-  get empty(): boolean {
-    return this.parts.length === 0;
+  /** Adds any geometry. `shaded: false` keeps a glowing part at its plain colour. */
+  addGeo(src: THREE.BufferGeometry, matrix: THREE.Matrix4, color: THREE.Color, flame = false, shaded = true): void {
+    const g = this.baker.add(src, matrix, color, this.glow && shaded ? glowShade : undefined);
+    if (!this.glow) return;
+    // x: how much this vertex flickers (0 = not at all), y: the phase, z: the height it grows from (the foot of the flame)
+    g.computeBoundingBox();
+    const footY = g.boundingBox!.min.y;
+    const n = g.getAttribute('position').count;
+    const fl = new Float32Array(n * 3);
+    if (flame) for (let i = 0; i < n; i++) fl.set([1, this.phase, footY], i * 3);
+    g.setAttribute('flick', new THREE.BufferAttribute(fl, 3));
   }
   build(): THREE.BufferGeometry | null {
-    if (!this.parts.length) return null;
-    const g = mergeGeometries(this.parts, false);
-    for (const p of this.parts) p.dispose();
-    this.parts = [];
-    return g;
+    return this.baker.build();
   }
 }
 
@@ -364,7 +352,6 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
   // ---- classify every tile ----
   /** 0 void or wall, 1 floor, 2 gate. */
   const kind = new Uint8Array(MAP_W * MAP_H);
-  const solid = new Uint8Array(MAP_W * MAP_H);
   const wallVariant = new Int8Array(MAP_W * MAP_H).fill(-1);
   const idx = (x: number, y: number): number => y * MAP_W + x;
   const inb = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H;
@@ -379,9 +366,8 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     if (o.kind === 'saga_gate') {
       kind[idx(o.x, o.y)] = 2;
       gates.push({ x: o.x, y: o.y, variant: o.variant ?? def.wall });
-    } else if (kind[idx(o.x, o.y)] === 1 && o.kind !== 'saga_wall' && objectDef(o.kind).solid) solid[idx(o.x, o.y)] = 1;
+    }
   }
-  let gateOpen = false;
   const isFloorTile = (x: number, y: number): boolean => inb(x, y) && kind[idx(x, y)] !== 0;
 
   // ---- bounds: only the dungeon's own box is drawn ----
@@ -459,8 +445,18 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     group.add(floor);
   }
 
-  // ---- walls: one InstancedMesh of chunky blocks: a dark, slightly wider base row, an inset body that gets lighter
-  // towards the top, and a bevelled, lighter cap. All painted with vertex colours, so it is still a single draw call ----
+  // ---- the stone and the decor, baked per 8x8-tile block. A block's walls (a dark base row, an inset body that gets
+  // lighter towards the top, a bevelled cap, a bit of moss, a few bricks), its lit furniture and its glowing bits are
+  // two meshes: one lit, one unlit. A block is also the unit of frustum culling, so what is behind the camera or far
+  // off in the fog is never drawn. All painted with vertex colours, so a block is two draw calls whatever is in it. ----
+  const BLOCK = 8;
+  const blocks = new Map<number, { lit: Bake; glow: Bake }>();
+  const blockAt = (x: number, y: number): { lit: Bake; glow: Bake } => {
+    const key = Math.floor(y / BLOCK) * MAP_W + Math.floor(x / BLOCK);
+    let b = blocks.get(key);
+    if (!b) blocks.set(key, (b = { lit: new Bake(false), glow: new Bake(true) }));
+    return b;
+  };
   {
     const band = WALL_BAND[Math.min(2, Math.max(0, def.wall))]!;
     const white: V3 = [1, 1, 1];
@@ -469,130 +465,90 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
       block(0.94, 0.94, 0.3, 1.0, 0.7, 0.95, 0, white, false),
       block(1, 0.9, 1.3, 0.3, 1.02, 1.12, 1.3, white),
     ];
-    const geo = track(mergeGeometries(parts, false));
+    const wallGeo = track(mergeGeometries(parts, false));
     for (const p of parts) p.dispose();
-    const tiles: { x: number; y: number; v: number }[] = [];
-    for (let y = minZ; y < maxZ; y++) for (let x = minX; x < maxX; x++) if (wallVariant[idx(x, y)]! >= 0) tiles.push({ x, y, v: wallVariant[idx(x, y)]! });
-    const mat = track(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    const walls = new THREE.InstancedMesh(geo, mat, Math.max(1, tiles.length));
-    walls.count = tiles.length;
+    const mossGeo = track(new THREE.IcosahedronGeometry(1, 0));
+    const brickGeo = track(new THREE.BoxGeometry(1, 1, 1));
+    const mossColor = hex(0x74b85a);
+    const mossTint = hex(0x78b06e);
+    const crackColor = hex(0xff8a2a);
+    // a jagged crack: three thin slabs, glowing (unlit) so the basalt looks like it has lava inside
+    const slabs: THREE.BufferGeometry[] = [];
+    for (const [x, y, w, h, a] of [
+      [-0.1, 0.0, 0.07, 0.3, 0.25],
+      [0.0, 0.22, 0.06, 0.24, -0.5],
+      [0.08, -0.2, 0.05, 0.26, 0.6],
+    ] as const) {
+      const p = new THREE.BoxGeometry(w, h, 0.03);
+      p.rotateZ(a);
+      p.translate(x, y, 0);
+      slabs.push(p);
+    }
+    const crackGeo = track(mergeGeometries(slabs, false));
+    for (const p of slabs) p.dispose();
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
-    const moss: THREE.Matrix4[] = [];
-    const cracks: THREE.Matrix4[] = [];
-    const bricks: { m: THREE.Matrix4; c: THREE.Color }[] = [];
-    tiles.forEach((t, i) => {
-      m.makeTranslation(t.x + 0.5, 0, t.y + 0.5);
-      walls.setMatrixAt(i, m);
-      const v = Math.min(2, Math.max(0, t.v));
-      c.setHex(WALL_BASE[v]!);
-      const r = hash(t.x, t.y, 3);
-      c.multiplyScalar(0.93 + r * 0.14);
-      if (v === 0 && hash(t.x, t.y, 4) < 0.22) c.lerp(hex(0x78b06e), 0.4);
-      walls.setColorAt(i, c);
-      if (v === 0 && hash(t.x, t.y, 4) < 0.22) {
-        // a hint of moss: a couple of squashed green blobs on the cap
-        for (let n = 0; n < 2; n++) {
-          const ox = (hash(t.x, t.y, 5 + n) - 0.5) * 0.7;
-          const oz = (hash(t.x, t.y, 7 + n) - 0.5) * 0.7;
-          const s = 0.12 + hash(t.x, t.y, 9 + n) * 0.1;
-          moss.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x + 0.5 + ox, 1.6, t.y + 0.5 + oz), new THREE.Quaternion(), new THREE.Vector3(s * 1.6, s * 0.7, s * 1.6)));
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    for (let y = minZ; y < maxZ; y++)
+      for (let x = minX; x < maxX; x++) {
+        const variant = wallVariant[idx(x, y)]!;
+        if (variant < 0) continue;
+        const { lit, glow } = blockAt(x, y);
+        const v = Math.min(2, Math.max(0, variant));
+        c.setHex(WALL_BASE[v]!);
+        c.multiplyScalar(0.93 + hash(x, y, 3) * 0.14);
+        const mossy = v === 0 && hash(x, y, 4) < 0.22;
+        if (mossy) c.lerp(mossTint, 0.4);
+        lit.addGeo(wallGeo, m.makeTranslation(x + 0.5, 0, y + 0.5), c);
+        if (mossy) {
+          // a hint of moss: a couple of squashed green blobs on the cap
+          for (let n = 0; n < 2; n++) {
+            const ox = (hash(x, y, 5 + n) - 0.5) * 0.7;
+            const oz = (hash(x, y, 7 + n) - 0.5) * 0.7;
+            const s = 0.12 + hash(x, y, 9 + n) * 0.1;
+            lit.addGeo(mossGeo, m.compose(new THREE.Vector3(x + 0.5 + ox, 1.6, y + 0.5 + oz), q.identity(), new THREE.Vector3(s * 1.6, s * 0.7, s * 1.6)), mossColor);
+          }
         }
-      }
-      if (v === 0) {
-        // a brick or two sticking out of the faces that look into the room, so the stone does not read as a plain box
         for (const [dx, dz] of [
           [1, 0],
           [-1, 0],
           [0, 1],
           [0, -1],
         ] as const) {
-          if (!isFloorTile(t.x + dx, t.y + dz) || hash(t.x, t.y, 80 + dx * 3 + dz) > 0.38) continue;
-          const yy = 0.42 + hash(t.x, t.y, 90 + dx + dz * 2) * 0.7;
-          const off = (hash(t.x, t.y, 100 + dx + dz * 2) - 0.5) * 0.5;
-          const w = 0.26 + hash(t.x, t.y, 110 + dx + dz * 2) * 0.12;
-          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(dx, dz));
-          const sideways = new THREE.Vector3(dz !== 0 ? 1 : 0, 0, dx !== 0 ? 1 : 0).multiplyScalar(off);
-          const mx = new THREE.Matrix4().compose(
-            new THREE.Vector3(t.x + 0.5 + dx * 0.485 + sideways.x, yy, t.y + 0.5 + dz * 0.485 + sideways.z),
-            q,
-            new THREE.Vector3(w, 0.15, 0.1),
-          );
-          bricks.push({ m: mx, c: c.clone().multiplyScalar(1.08 + hash(t.x, t.y, 120 + dx + dz * 2) * 0.12) });
+          if (!isFloorTile(x + dx, y + dz)) continue;
+          const sideways = new THREE.Vector3(dz !== 0 ? 1 : 0, 0, dx !== 0 ? 1 : 0);
+          q.setFromAxisAngle(up, Math.atan2(dx, dz));
+          if (v === 0 && hash(x, y, 80 + dx * 3 + dz) <= 0.38) {
+            // a brick or two sticking out of the faces that look into the room, so the stone does not read as a plain box
+            const yy = 0.42 + hash(x, y, 90 + dx + dz * 2) * 0.7;
+            const off = (hash(x, y, 100 + dx + dz * 2) - 0.5) * 0.5;
+            const w = 0.26 + hash(x, y, 110 + dx + dz * 2) * 0.12;
+            sideways.multiplyScalar(off);
+            const brick = c.clone().multiplyScalar(1.08 + hash(x, y, 120 + dx + dz * 2) * 0.12);
+            lit.addGeo(brickGeo, m.compose(new THREE.Vector3(x + 0.5 + dx * 0.485 + sideways.x, yy, y + 0.5 + dz * 0.485 + sideways.z), q, new THREE.Vector3(w, 0.15, 0.1)), brick);
+          } else if (v === 2 && hash(x, y, 20 + dx * 3 + dz) <= 0.5) {
+            // glowing cracks on the sides that face the floor
+            const yy = 0.4 + hash(x, y, 30 + dx + dz * 2) * 0.55;
+            const off = (hash(x, y, 40 + dx + dz * 2) - 0.5) * 0.4;
+            sideways.multiplyScalar(off);
+            glow.addGeo(crackGeo, m.compose(new THREE.Vector3(x + 0.5 + dx * 0.47 + sideways.x, yy, y + 0.5 + dz * 0.47 + sideways.z), q, new THREE.Vector3(1, 1, 1)), crackColor, false, false);
+          }
         }
       }
-      if (v === 2) {
-        // glowing cracks on the sides that face the floor
-        for (const [dx, dz] of [
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ] as const) {
-          if (!isFloorTile(t.x + dx, t.y + dz) || hash(t.x, t.y, 20 + dx * 3 + dz) > 0.5) continue;
-          const yy = 0.4 + hash(t.x, t.y, 30 + dx + dz * 2) * 0.55;
-          const off = (hash(t.x, t.y, 40 + dx + dz * 2) - 0.5) * 0.4;
-          const yaw = Math.atan2(dx, dz);
-          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-          const sideways = new THREE.Vector3(dz !== 0 ? 1 : 0, 0, dx !== 0 ? 1 : 0).multiplyScalar(off);
-          cracks.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x + 0.5 + dx * 0.47 + sideways.x, yy, t.y + 0.5 + dz * 0.47 + sideways.z), q, new THREE.Vector3(1, 1, 1)));
-        }
-      }
-    });
-    walls.instanceMatrix.needsUpdate = true;
-    if (walls.instanceColor) walls.instanceColor.needsUpdate = true;
-    walls.computeBoundingSphere();
-    group.add(walls);
-    if (moss.length) {
-      const g = track(new THREE.IcosahedronGeometry(1, 0));
-      const mm = new THREE.InstancedMesh(g, track(new THREE.MeshLambertMaterial({ color: 0x74b85a })), moss.length);
-      moss.forEach((mx, i) => mm.setMatrixAt(i, mx));
-      mm.computeBoundingSphere();
-      group.add(mm);
-    }
-    if (bricks.length) {
-      const mm = new THREE.InstancedMesh(track(new THREE.BoxGeometry(1, 1, 1)), track(new THREE.MeshLambertMaterial({ color: 0xffffff })), bricks.length);
-      bricks.forEach((b, i) => {
-        mm.setMatrixAt(i, b.m);
-        mm.setColorAt(i, b.c);
-      });
-      mm.computeBoundingSphere();
-      group.add(mm);
-    }
-    if (cracks.length) {
-      // a jagged crack: three thin slabs, glowing (unlit) so the basalt looks like it has lava inside
-      const parts: THREE.BufferGeometry[] = [];
-      for (const [x, y, w, h, a] of [
-        [-0.1, 0.0, 0.07, 0.3, 0.25],
-        [0.0, 0.22, 0.06, 0.24, -0.5],
-        [0.08, -0.2, 0.05, 0.26, 0.6],
-      ] as const) {
-        const p = new THREE.BoxGeometry(w, h, 0.03);
-        p.rotateZ(a);
-        p.translate(x, y, 0);
-        parts.push(p);
-      }
-      const g = track(mergeGeometries(parts, false));
-      for (const p of parts) p.dispose();
-      const mm = new THREE.InstancedMesh(g, track(new THREE.MeshBasicMaterial({ color: 0xff8a2a })), cracks.length);
-      cracks.forEach((mx, i) => mm.setMatrixAt(i, mx));
-      mm.computeBoundingSphere();
-      group.add(mm);
-    }
   }
 
-  // ---- decor: baked into one lit mesh and one glowing mesh (whose flames flicker in the vertex shader) ----
+  // ---- decor: the same blocks. Flames grow and shrink a little in the vertex shader (see the glow material below) ----
   const torches: THREE.Vector3[] = [];
   /** Where each flame's light lands on the floor, in world x and z. */
   const pools: { x: number; z: number; r: number }[] = [];
   /** Shared by every flickering thing; written once per draw, so nothing is allocated per frame. */
   const clock = { value: 0 };
   {
-    const lit = new Bake(false);
-    const glow = new Bake(true);
     for (const o of Object.values(world.objects)) {
       const build = DECOR[o.kind];
       if (!build) continue;
+      const { lit, glow } = blockAt(o.x, o.y);
       const variant = o.variant ?? 0;
       // things lean a little differently from one another so rows of urns do not look stamped
       const yaw = o.kind === 'saga_torch' ? 0 : (hash(o.x, o.y, 50) - 0.5) * 0.6 + (o.kind === 'saga_coffin' ? (variant % 2) * Math.PI : 0);
@@ -612,28 +568,36 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
         },
       });
     }
-    const litGeo = lit.build();
-    if (litGeo) group.add(new THREE.Mesh(track(litGeo), track(new THREE.MeshLambertMaterial({ vertexColors: true }))));
-    const glowGeo = glow.build();
-    if (glowGeo) {
-      const mat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
-      // flames grow and shrink a little from their foot; the cost is one sine pair per vertex of a few dozen flames
-      mat.onBeforeCompile = (sh) => {
-        sh.uniforms.uTime = clock;
-        sh.vertexShader = sh.vertexShader
-          .replace('void main() {', 'attribute vec3 flick;\nuniform float uTime;\nvoid main() {')
-          .replace(
-            '#include <begin_vertex>',
-            `#include <begin_vertex>
-            float fl = sin(uTime * 11.0 + flick.y) * 0.6 + sin(uTime * 27.0 + flick.y * 2.3) * 0.4;
-            transformed.y = flick.z + (transformed.y - flick.z) * (1.0 + 0.2 * fl * flick.x);`,
-          );
-      };
-      const glowMesh = new THREE.Mesh(track(glowGeo), mat);
-      glowMesh.onBeforeRender = () => {
-        clock.value = (performance.now() / 1000) % 1000;
-      };
-      group.add(glowMesh);
+    const litMat = track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
+    // flames grow and shrink a little from their foot; the cost is one sine pair per vertex of a few dozen flames
+    glowMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = clock;
+      sh.vertexShader = sh.vertexShader
+        .replace('void main() {', 'attribute vec3 flick;\nuniform float uTime;\nvoid main() {')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          float fl = sin(uTime * 11.0 + flick.y) * 0.6 + sin(uTime * 27.0 + flick.y * 2.3) * 0.4;
+          transformed.y = flick.z + (transformed.y - flick.z) * (1.0 + 0.2 * fl * flick.x);`,
+        );
+    };
+    for (const b of blocks.values()) {
+      const litGeo = b.lit.build();
+      if (litGeo) {
+        const mesh = new THREE.Mesh(track(litGeo), litMat);
+        mesh.matrixAutoUpdate = false;
+        group.add(mesh);
+      }
+      const glowGeo = b.glow.build();
+      if (glowGeo) {
+        const mesh = new THREE.Mesh(track(glowGeo), glowMat);
+        mesh.matrixAutoUpdate = false;
+        mesh.onBeforeRender = () => {
+          clock.value = (performance.now() / 1000) % 1000;
+        };
+        group.add(mesh);
+      }
     }
   }
 
@@ -764,23 +728,14 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     group.add(gateGroup);
   }
 
-  const start = world.saga ? { x: world.saga.start.x + 0.5, z: world.saga.start.y + 0.5 } : { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 };
-
-  const isWalkable = (x: number, z: number): boolean => {
-    const tx = Math.floor(x);
-    const tz = Math.floor(z);
-    if (!inb(tx, tz)) return false;
-    const i = idx(tx, tz);
-    const k = kind[i];
-    if (k === 1) return solid[i] === 0;
-    return k === 2 && gateOpen;
-  };
+  // one rule set for the sim, the tests and the camera: the sim sets `world.saga.gateOpen` the moment the mid-boss falls
+  const isWalkable = walkableFromWorld(world);
   const blocksView = (x: number, z: number): boolean => {
     const tx = Math.floor(x);
     const tz = Math.floor(z);
     if (!inb(tx, tz)) return true;
     const k = kind[idx(tx, tz)];
-    return k === 0 || (k === 2 && !gateOpen);
+    return k === 0 || (k === 2 && !world.saga?.gateOpen);
   };
 
   return {
@@ -788,10 +743,7 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     isWalkable,
     blocksView,
     torches,
-    start,
-    bounds: { minX, maxX, minZ, maxZ },
     setGateOpen(open: boolean) {
-      gateOpen = open;
       gateGroup.visible = !open;
     },
     dispose() {

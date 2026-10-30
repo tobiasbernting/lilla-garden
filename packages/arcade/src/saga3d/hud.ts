@@ -2,7 +2,6 @@
 // with cooldown sweeps, a target frame, a boss bar, a speech line and the walking stick for touch screens.
 // DOM is cheap on a tablet and lets the text stay sharp whatever the render resolution is.
 import { SPELLS, type ClassDef } from '@lilla-garden/shared';
-import type { Input } from '../input.ts';
 import './style.css';
 
 export interface HudOptions {
@@ -11,8 +10,8 @@ export interface HudOptions {
   /** Show draw calls, triangles and pixel ratio next to the FPS. */
   stats: boolean;
   dungeonName: string;
-  /** Receives the stick (-1..1, y down) via `touchStickMove`. */
-  input: Input;
+  /** Low quality: no `backdrop-filter` (it is slow on old tablets). */
+  low?: boolean;
 }
 
 const STICK_R = 56;
@@ -40,7 +39,8 @@ class Bar {
     const key = `${Math.ceil(hp)}/${max}`;
     if (key === this.last) return;
     this.last = key;
-    this.fill.style.width = `${Math.max(0, Math.min(1, hp / Math.max(1, max))) * 100}%`;
+    // scaled, not resized: a transform moves on the GPU and never makes the page lay itself out again
+    this.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, hp / Math.max(1, max)))})`;
     this.text.textContent = `${Math.max(0, Math.ceil(hp))} / ${Math.ceil(max)}`;
   }
 }
@@ -53,6 +53,8 @@ export class Hud {
   onTap: (x: number, y: number) => void = () => {};
 
   readonly root: HTMLElement;
+  /** The walking stick right now: x right, y down, each -1..1 and the length at most 1 (still 0,0 without touch). It is analog, so a thumb halfway out walks at half speed. */
+  readonly stick = { x: 0, y: 0 };
   private fps: HTMLElement;
   private playerLabel: HTMLElement;
   private playerBar: Bar;
@@ -75,11 +77,13 @@ export class Hud {
   private sayTimer = 0;
   private cls: ClassDef | null = null;
   private fpsText = '';
+  private stats = '';
   private cleanup: (() => void)[] = [];
 
   constructor(parent: HTMLElement, private opts: HudOptions) {
     this.root = el('div', 'saga3d-hud', parent);
     if (opts.touch) this.root.classList.add('saga3d-touch');
+    if (opts.low) this.root.classList.add('saga3d-low');
     el('div', 'saga3d-name', this.root, opts.dungeonName);
     this.fps = el('div', 'saga3d-fps', this.root);
 
@@ -153,7 +157,8 @@ export class Hud {
 
   /** How much of a spell's cooldown is left, 0 (ready) to 1 (just cast). Slot 4 is the potion. */
   setCooldown(slot: number, fraction: number): void {
-    const f = Math.round(Math.max(0, Math.min(1, fraction)) * 200) / 200;
+    // in 40 steps: a finer sweep would repaint the button every frame for nothing anyone can see
+    const f = Math.round(Math.max(0, Math.min(1, fraction)) * 40) / 40;
     if (slot === 4) {
       if (f !== this.potionLast) this.potionCd.style.setProperty('--cd', String(f));
       this.potionLast = f;
@@ -216,7 +221,6 @@ export class Hud {
     this.refreshFps();
   }
 
-  private stats = '';
   /** Draw calls, triangles and pixel ratio; only shown with ?stats=1. */
   setStats(calls: number, triangles: number, dpr: number): void {
     if (!this.opts.stats) return;
@@ -259,13 +263,16 @@ export class Hud {
         dy = (dy / d) * STICK_R;
       }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      this.opts.input.touchStickMove(dx / STICK_R, dy / STICK_R);
+      // the page reads this itself: Input.touchStickMove would also press the digital arrows past 0.45 and snap the walk to the axes
+      this.stick.x = dx / STICK_R;
+      this.stick.y = dy / STICK_R;
     };
     const end = (e: PointerEvent): void => {
       if (e.pointerId !== id) return;
       id = -1;
       if (e.type === 'pointerup' && performance.now() - downAt < 350 && Math.hypot(e.clientX - ox, e.clientY - oy) < 10) this.onTap(e.clientX, e.clientY);
-      this.opts.input.touchStickMove(0, 0);
+      this.stick.x = 0;
+      this.stick.y = 0;
       rest();
     };
     const on = <K extends keyof HTMLElementEventMap>(t: K, f: (e: HTMLElementEventMap[K]) => void): void => {
