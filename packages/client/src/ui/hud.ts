@@ -69,7 +69,7 @@ export class Hud {
       setRun(true);
     });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) run.addEventListener(ev, () => setRun(false));
-    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('🧭', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), this.fullscreenBtn(), this.artBtn());
+    const right = h('div', { class: 'hud-right' }, this.roundBtn('🎒', () => this.openMenu('inventory')), this.roundBtn('😊', () => this.openMenu('emotes')), this.roundBtn('📖', () => this.openMenu('book')), this.roundBtn('🗺️', () => this.openMenu('map')), this.roundBtn('🧭', () => this.minimap.toggle()), this.roundBtn('❓', () => this.openMenu('help')), this.muteBtn(), ...(matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches ? [] : [this.fullscreenBtn()]), this.artBtn());
     this.minimap = new Minimap();
     document.addEventListener('lilla:minimap', () => this.minimap.toggle());
     this.root.append(this.top, right, this.hotbar, this.heldName, this.toasts, zone, act, run, this.minimap.el);
@@ -99,6 +99,8 @@ export class Hud {
     const b = h('div', { class: 'round small', title: T.fullscreen }, '⛶');
     onTap(b, () => {
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+      // iPhone Safari can't make a page fullscreen; a game started from the home screen fills the screen instead
+      if (!el.requestFullscreen && !el.webkitRequestFullscreen) return this.toast(T.fullscreenIphone, 8000);
       if (document.fullscreenElement) void document.exitFullscreen();
       else void (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.())?.catch(() => {});
     });
@@ -126,11 +128,11 @@ export class Hud {
     return b;
   }
 
-  toast(text: string): void {
+  toast(text: string, ms = 3000): void {
     const el = h('div', { class: 'toast' }, text);
     this.toasts.append(el);
     while (this.toasts.children.length > 3) this.toasts.firstChild?.remove();
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), ms);
   }
 
   render(): void {

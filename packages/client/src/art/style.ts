@@ -21,6 +21,8 @@ export const R: number = HD ? 4 : 1;
 
 export function setArtStyle(style: ArtStyle): void {
   try {
+    // remember the style we came from until the game has started in the new one (see clientljs/prefs.ts)
+    localStorage.setItem(KEY + '.prev', ART_STYLE);
     localStorage.setItem(KEY, style);
   } catch {
     /* ignore */

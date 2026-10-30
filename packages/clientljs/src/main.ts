@@ -1,6 +1,6 @@
 // Lilla Gården (LittleJS): the same server, HUD, menus, sounds and pixel art as the 2D game, with the world drawn by
 // LittleJS: light and shadow through the day, lamps at night, and things that sway, squash and pop.
-import './prefs.ts';
+import { artStyleWorks } from './prefs.ts';
 import { T } from '@lilla-garden/shared';
 import {
   averageFPS,
@@ -172,6 +172,7 @@ function start(): void {
   view.load();
   hud.root.style.display = '';
   hud.render();
+  setTimeout(artStyleWorks, 5000);
 }
 
 void engineInit(
