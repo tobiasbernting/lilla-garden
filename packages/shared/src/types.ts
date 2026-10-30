@@ -1,5 +1,7 @@
 // Core shared types. Identifiers are English; all player-facing text lives in sv.ts.
 
+import type { SagaInstance, SagaProgress } from './saga.ts';
+
 export const TILE = 16;
 export const MAP_W = 64;
 export const MAP_H = 64;
@@ -51,7 +53,10 @@ export type Terrain =
   | 'moon' // moon dust
   | 'space' // the starry sky around the moon
   // Minigames (2026-10-30)
-  | 'carpet'; // Spelhallen's patterned arcade carpet
+  | 'carpet' // Spelhallen's patterned arcade carpet
+  // Dungeons (2026-10-30)
+  | 'crypt' // Draugkryptan's old flagstones
+  | 'forge'; // Surts smedja: black stone with glowing seams
 
 /** Ground nobody walks on or builds on: water and the like, cliffs, and the sky around the moon. */
 export const WALL_TERRAIN: ReadonlySet<Terrain> = new Set<Terrain>(['water', 'bog', 'lava', 'choco', 'rock', 'sandstone', 'basalt', 'space']);
@@ -143,7 +148,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores' | 'saga' | 'sagaclass' | 'rest' | 'sagachest';
   /** A loot table (LOOT in data.ts) rolled when it is broken, dug up or opened. */
   loot?: string;
   /** Gives light at night (client). */
@@ -178,6 +183,10 @@ export interface AnimalDef {
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
   /** Vehicles: speed multiplier when driven; traffic = AI-driven city vehicles; rideable = players may drive/board it. */
   vehicle?: { speed: number; ride?: number; traffic?: boolean; seats?: number; rideable?: boolean };
+  /** Dungeon monsters and bosses (see saga.ts): they fight by the dungeon's rules. */
+  saga?: boolean;
+  /** Mounts from the dungeons: ridden like a horse, anywhere outdoors, this much faster than walking. */
+  mount?: { speed: number };
 }
 
 export interface RecipeDef {
@@ -264,6 +273,8 @@ export interface PlayerState {
   achievements: string[];
   /** Minigames: best scores, tickets and the TV games this player found. */
   arcade?: ArcadeState;
+  /** Dungeons: class, Völvan's story, cleared dungeons, quests, titles. */
+  saga?: SagaProgress;
 }
 
 export interface ArcadeState {
@@ -448,6 +459,8 @@ export interface WorldState {
   gen?: number;
   /** How many of each renewable thing (berries, crystals, buried treasure…) grow back here. */
   renew?: Record<string, number>;
+  /** A dungeon (Sagan om Världsträdet) while the family is in it. */
+  saga?: SagaInstance;
 }
 
 /** The look of a cave out in the world (each biome has its own). */

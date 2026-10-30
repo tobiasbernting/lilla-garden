@@ -1,4 +1,5 @@
 // All player-facing Swedish strings.
+import { SAGA_BOSSES, SAGA_ITEMS, SAGA_MOBS } from './saga.ts';
 
 export const ITEM_NAMES: Record<string, string> = {
   hoe: 'Hacka',
@@ -361,7 +362,12 @@ export const SPECIES_NAMES: Record<string, string> = {
   gummy: 'Gelébjörn',
   alien: 'Rymdvarelse',
   dragon: 'Drake',
+  korp: 'Korp',
+  fenrisvalp: 'Fenrisvalp',
+  sleipner: 'Sleipner',
+  gullinbursti: 'Gullinbursti',
 };
+for (const m of [...Object.values(SAGA_MOBS), ...Object.values(SAGA_BOSSES)]) SPECIES_NAMES[m.species] = m.name;
 
 export const SEASON_NAMES: Record<string, string> = {
   none: 'Ingen',
@@ -518,6 +524,44 @@ export const T = {
   bathhouseName: 'Badhuset',
   enteredHall: 'Välkommen till Spelhallen! Spela, vinn biljetter och byt dem mot priser i prisdisken.',
   hallName: 'Spelhallen',
+  // Sagan om Världsträdet
+  sagaNeedClass: 'Du behöver välja en väg först. Prata med Völvan Sigrun på torget i staden!',
+  sagaLocked: '{name} är förseglad. Besegra först {boss} i {prev}.',
+  sagaClassChange: 'Du kan bara byta väg utanför fängelsehålorna.',
+  sagaClassChosen: 'Du är nu {cls}! Dina besvärjelser ligger på knapparna 1–4.',
+  sagaAllDone: 'Sagan är slut, och Världsträdet är räddat. Tack, hjälte!',
+  sagaChapter: 'Kapitel {n}: {title}',
+  sagaChapterDone: '{title}: klart!',
+  sagaTitle: '👑 Ny titel: {title}!',
+  sagaQuestTaken: '📜 Nytt uppdrag: {title}',
+  sagaQuestProgress: '{goal}: {n}/{count}',
+  sagaQuestDone: '📜 Uppdraget {title} är klart!',
+  sagaRestHint: 'Vilostenen läker er när ni inte slåss. Faller ni vaknar ni här.',
+  sagaRestLit: 'Vilostenen lyser!',
+  sagaRestSub: 'Här vaknar ni om ni faller. Vila tills ni är friska igen.',
+  sagaNotReady: 'Inte redo än.',
+  sagaNoPotion: 'Du har inga läkedrycker.',
+  sagaLooted: 'Du har redan tagit din skatt ur den här kistan.',
+  sagaChestGuarded: 'Kistan är vaktad! Besegra monstren först.',
+  sagaTreasureName: 'Skattkistan',
+  sagaNoTarget: 'Inget monster inom räckhåll.',
+  sagaAllWell: 'Alla mår bra!',
+  sagaNoneDown: 'Ingen har fallit.',
+  sagaDown: '💀 {name} har fallit!',
+  sagaUp: '🌅 {name} är uppe igen!',
+  sagaInterrupt: '🛡️ {move} avbröts!',
+  sagaBossDown: '{boss} är besegrad!',
+  sagaGateOpen: 'Porten har öppnats. Vägen fortsätter!',
+  sagaCleared: '{dungeon} är klarad! Öppna kistan, och gå sedan tillbaka till Völvan Sigrun.',
+  sagaFamilyWin: '⚔️ {names} besegrade {boss}!',
+  sagaFrozen: '🧊 {name} är infrusen! Slå sönder isen!',
+  sagaWipe: 'Alla föll…',
+  sagaWipeSub: 'Ni vaknar vid vilostenen. Försök igen!',
+  jumpTo: '✨ Du hoppade till {name}!',
+  jumpedHere: '✨ {name} hoppade hit till dig!',
+  jumpNo: 'Det går inte att hoppa dit just nu.',
+  notHereIndoors: 'Här inne kan du inte rida.',
+  sagaPetCome: '✨ {name} är din nu och följer dig vart du går!',
   arcadeRecord: '👑 {name} slog familjerekordet i {game}: {score} poäng!',
   notEnoughTickets: 'Du har inte tillräckligt med biljetter.',
   familyHasGame: 'Familjen har redan det spelet på TV:n.',
@@ -664,6 +708,12 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   fossil_5: { title: 'Fossiljägare', text: 'Hitta 5 fossil' },
   moon_1: { title: 'Astronaut', text: 'Åk raket till månen' },
   dragon_1: { title: 'Drakmamma', text: 'Kläck ett drakägg' },
+  saga_class: { title: 'Hjältens väg', text: 'Välj en klass vid Kämpastenen' },
+  saga_draug: { title: 'Draugdödare', text: 'Besegra Draugkungen Hrolf' },
+  saga_frost: { title: 'Frostbrytare', text: 'Besegra Rimtursen' },
+  saga_surt: { title: 'Världsträdets väktare', text: 'Besegra Surt' },
+  saga_mobs_50: { title: 'Monsterjägare', text: 'Besegra 50 monster i fängelsehålorna' },
+  saga_quests_6: { title: 'Byns hjälte', text: 'Gör alla sex uppdrag åt byborna' },
 };
 
 /** Daily quest text templates. {n} and {item} are filled in. */
@@ -682,6 +732,14 @@ export const QUEST_TEXTS: Record<string, string[]> = {
   garden: ['Till trädgården vill jag ha {n} {item}.', 'Kan du hitta {n} {item} åt mig? Det blir så fint.'],
   explore: ['Jag längtar efter {item} från de vilda markerna. Kan du hitta {n}?', 'Ute i världen växer det {item}. Tar du med {n} till mig?'],
 };
+
+for (const s of SAGA_ITEMS) ITEM_NAMES[s.id] = s.name;
+OBJECT_NAMES.saga_portal = 'Valv';
+OBJECT_NAMES.saga_stone = 'Kämpastenen';
+OBJECT_NAMES.saga_rest = 'Vilosten';
+OBJECT_NAMES.saga_chest = 'Kista';
+OBJECT_NAMES.saga_exit = 'Utgång';
+OBJECT_NAMES.saga_gate = 'Port';
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
 export const objectName = (kind: string): string => OBJECT_NAMES[kind] ?? ITEM_NAMES[kind] ?? kind;
@@ -925,6 +983,22 @@ export const HELP: HelpTopic[] = [
       { icon: 'cart_star', text: 'Spelkassetter ligger gömda i skattkistor i grottorna och i ufot på månen. Hittar du en kommer spelet på TV:n för hela familjen.' },
       { icon: 'trophy', text: 'Topplistan visar familjens bästa poäng i varje spel. Slår du någon annans rekord får alla veta det!' },
       { icon: 'emoji:⏸️', text: 'Escape eller pausknappen pausar spelet. Spelen fungerar med tangentbord, handkontroll och pekskärm.' },
+    ],
+  },
+  {
+    id: 'saga',
+    emoji: '⚔️',
+    title: 'Sagan om Världsträdet',
+    intro: 'Tre onda väsen har vaknat och Världsträdet är i fara. Völvan Sigrun på torget i staden berättar sagan.',
+    steps: [
+      { icon: 'saga_stone', text: 'Välj din väg vid Kämpastenen bredvid Völvan: Väktare (tank), Helare, Krigare eller Magiker. Du får klassens kläder, och kan byta när du vill.' },
+      { icon: 'emoji:⚔️', text: 'Fängelsehålorna klaras i ordning: Draugkryptan i skogen nordväst om gården, Frostjättens borg två kartor norr om gården och Surts smedja i vulkanen sydost om gården.' },
+      { icon: 'emoji:🔢', text: 'Inne i en fängelsehåla är knapparna 1–4 dina besvärjelser och 5 en läkedryck. Klicka på ett monster för att sikta på det.' },
+      { icon: 'emoji:🛡️', text: 'Väktaren håller monstren borta från de andra, helaren läker, och krigaren och magikern gör skada. Det går att spela ensam, men det är roligare tillsammans!' },
+      { icon: 'emoji:🔴', text: 'Bossarnas stora attacker syns på marken innan de träffar. Spring ut ur det röda! Vissa kan avbrytas med Sköldslag eller Stormsteg.' },
+      { icon: 'emoji:🪨', text: 'Vilostenar läker er, och där vaknar ni om ni faller. En helare kan också väcka den som har fallit.' },
+      { icon: 'emoji:✨', text: 'Hoppa till någon i familjen från familjelistan, så hamnar du bredvid dem, även inne i en fängelsehåla.' },
+      { icon: 'runsvard', text: 'Varje boss lämnar en kista med egen skatt åt alla: lysande vapen, nordiska kläder, och med lite tur Odens korpar, Fenrisvalpen, Sleipner eller Gullinbursti.' },
     ],
   },
   {

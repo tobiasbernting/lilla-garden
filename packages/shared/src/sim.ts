@@ -11,6 +11,9 @@ import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, gener
 import { ARCADE, ARCADE_GAMES, ARCADE_MAX_SCORE, MAX_TICKETS_PER_DAY, MIN_GAME_MS, PRIZES, SPARE_CART_TICKETS, isArcadeGame, ticketsFor } from './arcade.ts';
 import { INDOOR_EXIT, familyBest, familyGames, generateHall, hallDoorTile, hallKey, isHallKey, isIndoorKey, villageOfHall } from './hall.ts';
 import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
+import { DUNGEONS, VOLVA_ID, dungeonOfKey, isSagaKey, sagaItem } from './saga.ts';
+import { generateSaga } from './sagamap.ts';
+import { enterSaga, ensureSagaPlaces, idleSaga, isSagaMob, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -126,13 +129,15 @@ export const isPetAnimal = (a: AnimalState): boolean => {
 };
 
 /** Animals that listen to their owner's "stay" and whistle: pets and the owner's horses. */
-export const isCallable = (a: AnimalState): boolean => !!a.owner && !isVehicle(a) && (isPetAnimal(a) || a.species === 'horse');
+export const isCallable = (a: AnimalState): boolean => !!a.owner && !isVehicle(a) && (isPetAnimal(a) || isMount(a));
+/** Horses, and Sleipner and Gullinbursti from the dungeons. */
+export const isMount = (a: AnimalState): boolean => a.species === 'horse' || !!ANIMALS[a.species]?.mount;
 
 /** Cars, mopeds (and city traffic): parked where they stand, driven like a horse. */
 
 /** Maps you may drive or ride in: any overworld map, not the cave, the bath house or indoors. */
 const canRideIn = (world: WorldState, tx: number, ty: number): boolean =>
-  !isUnderground(world.area) && !isIndoorKey(world.area) && !(isFarm(world) && inInterior(tx, ty));
+  !isUnderground(world.area) && !isIndoorKey(world.area) && !isSagaKey(world.area) && !(isFarm(world) && inInterior(tx, ty));
 
 /** Speed multiplier while riding or driving: horses are steady, vehicles love roads and hate mud. */
 export function rideSpeedMul(world: WorldState, p: { x: number; y: number; riding?: number }): number {
@@ -140,7 +145,7 @@ export function rideSpeedMul(world: WorldState, p: { x: number; y: number; ridin
   const a = world.animals[p.riding];
   if (!a) return 1;
   const v = ANIMALS[a.species]?.vehicle;
-  if (!v) return RIDE_SPEED_MUL;
+  if (!v) return ANIMALS[a.species]?.mount?.speed ?? RIDE_SPEED_MUL;
   const t = world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] as string | undefined;
   const ground = t === 'road' || t === 'crossing' ? 1.3 : t === 'soil' || t === 'soil_wet' || t === 'sand' || t === 'gravel' ? 0.7 : 1;
   return (v.ride ?? RIDE_SPEED_MUL) * ground;
@@ -313,9 +318,9 @@ export function createPlayer(world: WorldState, name: string, appearance: Appear
 
 export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.selected] ?? null;
 
-const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
-const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash' | 'honk'): Change => ({
+export const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
+export const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
+export const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash' | 'honk'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -474,9 +479,16 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     wakeUp(p, out, true);
     return out;
   }
+  if (isSagaKey(world.area)) return sagaAct(world, p, tx, ty, ctx);
   const held = heldItem(p);
   const heldDef = held ? item(held.item) : null;
   const tool = heldDef?.tool;
+
+  // 0'. A pet or mount from the dungeons: out of the bag and by your side
+  if (held && (sagaItem(held.item)?.kind === 'pet' || sagaItem(held.item)?.kind === 'mount') && !objectAt(world, tx, ty) && !animalAt(world, tx, ty)) {
+    summonFromBag(world, p, held.item, out);
+    return out;
+  }
 
   // 0. Bazooka: works everywhere, fires straight ahead
   if (tool === 'bazooka') {
@@ -550,7 +562,7 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   // 0b. Villager / fishing
   const npc = npcAt(world, tx, ty);
   if (npc) {
-    out.push({ t: 'open', to: p.id, ui: 'npc', npc: npc.id });
+    out.push({ t: 'open', to: p.id, ui: npc.id === VOLVA_ID ? 'saga' : 'npc', npc: npc.id });
     return out;
   }
   if (p.fishing) {
@@ -700,7 +712,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.wildPetted, { name })), { t: 'animal', id: a.id, animal: a }, playerChange(p));
     return;
   }
-  if (a.species === 'horse' && a.petted && a.named) {
+  if (isMount(a) && a.petted && a.named) {
     mount(world, p, a, out);
     return;
   }
@@ -730,7 +742,8 @@ function mount(world: WorldState, p: PlayerState, a: AnimalState, out: Change[])
     return;
   }
   const vehicle = isVehicle(a);
-  if (vehicle ? !canRideIn(world, tileOf(p.x), tileOf(p.y)) : !isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
+  const anywhere = vehicle || !!ANIMALS[a.species]?.mount;
+  if (anywhere ? !canRideIn(world, tileOf(p.x), tileOf(p.y)) : !isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
     out.push(toast(p.id, T.notNow));
     return;
   }
@@ -895,6 +908,12 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
       return;
     case 'hall':
       out.push(...enterHall(world, p.id));
+      return;
+    case 'saga':
+      out.push(...enterSaga(world, p, obj));
+      return;
+    case 'sagaclass':
+      out.push({ t: 'open', to: p.id, ui: 'sagaClass', id: obj.id });
       return;
     case 'tv':
     case 'machine':
@@ -1399,6 +1418,7 @@ export function setOnline(world: WorldState, playerId: string, online: boolean):
 export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean): void {
   const p = world.players[playerId];
   if (!p || !Number.isFinite(x) || !Number.isFinite(y) || p.sleeping) return;
+  if (isSagaKey(world.area) && sagaRooted(world, p)) return;
   if (p.moveLock && p.moveLock > 0) {
     // just arrived on another map: the client's old positions are meaningless; accept only nearby ones
     if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
@@ -1671,7 +1691,7 @@ export const areaOf = (world: WorldState, p: PlayerState): WorldState => {
 };
 
 /** The farm world that owns a dungeon or area world (they keep a non-enumerable back reference). */
-const farmOf = (world: WorldState): WorldState => (!isFarm(world) ? ((world as WorldState & { farm?: WorldState }).farm ?? world) : world);
+export const farmOf = (world: WorldState): WorldState => (!isFarm(world) ? ((world as WorldState & { farm?: WorldState }).farm ?? world) : world);
 
 const linkToFarm = (child: WorldState, farm: WorldState): void => {
   Object.defineProperty(child, 'farm', { value: farm, enumerable: false, writable: true, configurable: true });
@@ -1694,6 +1714,10 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
     } else if (isHallKey(keyStr)) {
       if (!getArea(farm, villageOfHall(keyStr))) return null;
       a = generateHall(villageOfHall(keyStr));
+    } else if (isSagaKey(keyStr)) {
+      const id = dungeonOfKey(keyStr);
+      if (!id) return null;
+      a = generateSaga(id);
     } else if (isMoonKey(keyStr)) a = generateMoon();
     else if (isCaveKey(keyStr)) {
       // a cave is built from its entrance: the theme from the entrance, the way out in front of it
@@ -1711,25 +1735,33 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
     farm.areas[keyStr] = a;
   }
   linkToFarm(a, farm);
+  if (!sagaChecked.has(a)) {
+    sagaChecked.add(a);
+    ensureSagaPlaces(keyStr, a);
+  }
   return a;
 }
+/** Maps already checked for their dungeon arch and Kämpastenen. */
+const sagaChecked = new WeakSet<WorldState>();
 
 export const areaName = (keyStr: string, world?: WorldState): string => {
   if (keyStr === 'farm' || keyStr === 'dungeon') return BIOME_NAMES[keyStr];
   if (isBathKey(keyStr)) return T.bathhouseName;
   if (isHallKey(keyStr)) return T.hallName;
+  const sagaId = dungeonOfKey(keyStr);
+  if (sagaId) return DUNGEONS[sagaId].name;
   const a = world ? getArea(world, keyStr) : null;
   return placeName(a?.biome);
 };
 
 /** Moves a player to another map at a given tile. */
-function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, ty: number, facing: Facing, out: Change[]): boolean {
+export function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, ty: number, facing: Facing, out: Change[]): boolean {
   const farm = farmOf(world);
   const target = getArea(farm, keyStr);
   if (!target) return false;
   const current = areaOf(farm, p);
   const ridden = p.riding !== undefined ? current.animals[p.riding] : undefined;
-  const drove = ridden && isVehicle(ridden) ? ridden : undefined;
+  const drove = ridden && (isVehicle(ridden) || ANIMALS[ridden.species]?.mount) ? ridden : undefined;
   if (p.riding !== undefined) dismount(current, p, out);
   if (current !== farm) delete current.players[p.id];
   p.area = keyStr;
@@ -1769,7 +1801,9 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
 function movePetsAlong(from: WorldState, to: WorldState, toKey: string, p: PlayerState, out: Change[]): void {
   if (to.area === 'dungeon') return;
   for (const a of Object.values(from.animals)) {
-    if (a.owner !== p.id || !isPetAnimal(a) || a.stay) continue;
+    // pets follow, and the dungeons' mounts when whistled for (but they wait outside a dungeon)
+    const mount = !!ANIMALS[a.species]?.mount && !!a.follow && !isSagaKey(toKey) && !isIndoorKey(toKey);
+    if (a.owner !== p.id || !(isPetAnimal(a) || mount) || a.stay) continue;
     moveAnimalAlong(from, to, toKey, a, p, out);
   }
 }
@@ -2308,6 +2342,23 @@ export function flyRocket(world: WorldState, playerId: string): Change[] {
 }
 
 /** Morning: dragon eggs that spent the night somewhere hatch into a little dragon for whoever put them down. */
+/** A pet or mount from the dungeons comes out of the bag: it follows you from now on. */
+function summonFromBag(world: WorldState, p: PlayerState, itemId: string, out: Change[]): void {
+  const s = sagaItem(itemId);
+  if (!s?.species) return;
+  if (isUnderground(world.area) || isIndoorKey(world.area) || isSagaKey(world.area) || (isFarm(world) && inInterior(tileOf(p.x), tileOf(p.y)))) {
+    out.push(toast(p.id, T.notNow));
+    return;
+  }
+  if (!removeItem(p.inventory, itemId, 1)) return;
+  const a: AnimalState = { ...dummyAnimal, id: world.nextId++, species: s.species, name: s.name, x: p.x, y: p.y + 4, owner: p.id, age: 10, named: true, petted: true, waitMs: 500 };
+  if (s.kind === 'mount') a.follow = true;
+  world.animals[a.id] = a;
+  const tx = tileOf(p.x);
+  const ty = tileOf(p.y);
+  out.push({ t: 'animal', id: a.id, animal: a }, fx(tx, ty, 'sparkle'), fx(tx, ty + 1, 'heart'), toast(p.id, fmt(T.sagaPetCome, { name: s.name })), playerChange(p));
+}
+
 function hatchEggs(farm: WorldState, ctx: SimCtx, out: Change[]): void {
   const maps: [string, WorldState][] = [['farm', farm], ...Object.entries(farm.areas ?? {})];
   for (const [k, m] of maps) {
@@ -2524,7 +2575,7 @@ function tickFlee(world: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx):
 const MOB_SIGHT = 7 * TILE;
 
 /** True when no wall or rock lies on the straight tile line between two points. */
-function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y1: number): boolean {
+export function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y1: number): boolean {
   const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (TILE / 2));
   for (let i = 1; i < steps; i++) {
     const t = i / steps;
@@ -2602,8 +2653,13 @@ function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Chang
     }
   }
   for (const [k, a] of Object.entries(world.areas ?? {})) {
-    if (!areaOccupied(a)) continue;
+    if (!areaOccupied(a)) {
+      // an empty dungeon starts over after a while
+      if (a.saga && idleSaga(world, k, a, ctx.now)) delete world.areas![k];
+      continue;
+    }
     const local: Change[] = [];
+    if (a.saga) tickSaga(a, k, dtMs, ctx, out);
     tickAnimals(a, dtMs, ctx, local);
     tickNpcs(a, dtMs);
     tickDrops(a, local);
@@ -2841,7 +2897,7 @@ const STAY_LEASH = 1.5 * TILE;
 function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
   const owner = a.owner ? world.players[a.owner] : undefined;
   if (!owner || !owner.online || owner.area !== (world.area ?? 'farm')) return false;
-  const horse = a.species === 'horse';
+  const horse = isMount(a);
   // a horse waits outside while you are indoors
   if (horse && isFarm(world) && inInterior(tileOf(owner.x), tileOf(owner.y))) return false;
   const dx = owner.x - a.x;
@@ -2876,7 +2932,8 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
   if (world.area !== 'dungeon' && !isIndoorKey(world.area)) tickRiding(world, out);
   const walkers = world.biome === 'by' ? npcsIn(world).map((n) => npcState(world, n.id)) : [];
   for (const a of Object.values(world.animals)) {
-    if ((a.species === 'horse' || isVehicle(a)) && riderOf(world, a)) continue;
+    if ((isMount(a) || isVehicle(a)) && riderOf(world, a)) continue;
+    if (world.saga?.mobs[a.id]) continue; // dungeon monsters fight by their own rules (tickSaga)
     if (isVehicle(a)) {
       // city traffic follows its route; a player's own vehicle stays parked
       if (a.route !== undefined) {
@@ -2884,7 +2941,7 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
       } else a.moving = false;
       continue;
     }
-    if (!a.stay && (isPetAnimal(a) || (a.species === 'horse' && a.follow)) && tickPet(world, a, dtMs)) continue;
+    if (!a.stay && (isPetAnimal(a) || (isMount(a) && a.follow)) && tickPet(world, a, dtMs)) continue;
     if (tickFlee(world, a, dtMs, ctx)) continue;
     if (isHostile(a) && tickMob(world, a, dtMs, ctx, out)) continue;
     if (a.waitMs > 0) {

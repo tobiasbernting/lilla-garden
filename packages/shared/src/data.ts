@@ -1,5 +1,6 @@
 import { ARCADE_GAMES, cartOf } from './arcade.ts';
-import type { Achievement, AnimalDef, CropDef, ItemDef, NpcDef, ObjectDef, RecipeDef } from './types.ts';
+import { SAGA_BOSSES, SAGA_ITEMS, SAGA_MOBS, VOLVA_ID, VOLVA_SPOT } from './saga.ts';
+import { TILE, type Achievement, type AnimalDef, type CropDef, type ItemDef, type NpcDef, type ObjectDef, type RecipeDef } from './types.ts';
 
 // ---------- Items ----------
 
@@ -270,6 +271,17 @@ found('hat_space', 'hat', 'space', '#e8eef5');
 found('shirt_space', 'shirt', 'space', '#eef1f5');
 found('hat_frog', 'hat', 'frog', '#5aae4a');
 found('hat_dino', 'hat', 'dino', '#4f9a3a');
+// Dungeons (Sagan om Världsträdet): glowing weapons that work as tools too, Norse clothes, the classes'
+// clothes, pets and mounts only the dungeons give, healing potions, what the villagers ask for, and the
+// saga's keepsakes for home
+for (const s of SAGA_ITEMS) {
+  if (s.kind === 'weapon') add(I(s.id, 'tool', { tool: s.tool }));
+  else if (s.kind === 'hat' || s.kind === 'shirt') found(s.id, s.kind, s.style!, s.color!);
+  else if (s.kind === 'pet' || s.kind === 'mount') add(I(s.id, 'animal', { species: s.species, stack: 1 }));
+  else if (s.kind === 'potion') add(I(s.id, 'material', { food: { boostMs: 0 }, sell: 10, stack: 20 }));
+  else if (s.kind === 'quest') add(I(s.id, 'material'));
+  else if (s.kind === 'decor') add(I(s.id, 'placeable', { places: s.id, stack: 1 }));
+}
 found('hat_ice_crown', 'hat', 'crown', '#bfe3f5');
 
 export const item = (id: string): ItemDef => {
@@ -442,6 +454,28 @@ addO(O('prize_counter', { w: 3, h: 1, interact: 'prizes', breakWith: undefined, 
 addO(O('score_board', { w: 2, h: 1, interact: 'scores', breakWith: undefined, light: true }));
 addO(O('hall_wall', { breakWith: undefined }));
 addO(O('hall_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
+// Dungeons: walls and the gate after the mid-boss (one look per dungeon: variant), torches, the way out,
+// rest stones, chests, the arches out in the world, Kämpastenen where you pick a class, and things to see
+addO(O('saga_wall', { breakWith: undefined }));
+addO(O('saga_gate', { breakWith: undefined }));
+addO(O('saga_torch', { solid: false, breakWith: undefined, light: true }));
+addO(O('saga_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined, light: true }));
+addO(O('saga_rest', { interact: 'rest', breakWith: undefined, light: true }));
+addO(O('saga_chest', { interact: 'sagachest', breakWith: undefined }));
+addO(O('saga_portal', { w: 3, h: 2, interact: 'saga', breakWith: undefined, light: true }));
+addO(O('saga_stone', { interact: 'sagaclass', breakWith: undefined, light: true }));
+addO(O('saga_coffin', { breakWith: undefined }));
+addO(O('saga_bones', { solid: false, flat: true, breakWith: undefined }));
+addO(O('saga_candles', { solid: false, breakWith: undefined, light: true }));
+addO(O('saga_urn', { breakWith: undefined }));
+addO(O('saga_icecrystal', { breakWith: undefined, light: true }));
+addO(O('saga_frozenpillar', { breakWith: undefined }));
+addO(O('saga_snowdrift', { solid: false, flat: true, breakWith: undefined }));
+addO(O('saga_anvil', { breakWith: undefined }));
+addO(O('saga_brazier', { breakWith: undefined, light: true }));
+addO(O('saga_lavacrack', { solid: false, flat: true, breakWith: undefined, light: true }));
+built('solruna', { light: true });
+built('yggdrasil', { light: true });
 built('plush_cow');
 built('plush_hen');
 built('plush_dragon');
@@ -535,6 +569,12 @@ export const ANIMALS: Record<string, AnimalDef> = {
   troll: { species: 'troll', house: '', growDays: 0, speed: 26, mob: { hp: 4, drops: [{ item: 'gold', min: 2, max: 4, chance: 1 }, { item: 'heartberry', min: 1, max: 1, chance: 0.4 }] } },
   boss: { species: 'boss', house: '', growDays: 0, speed: 20, mob: { hp: 10, boss: true, drops: [{ item: 'gold', min: 8, max: 12, chance: 1 }] } },
 };
+// Dungeon monsters and bosses (they fight by the rules in sagasim.ts), and the animals only dungeons give
+for (const m of [...Object.values(SAGA_MOBS), ...Object.values(SAGA_BOSSES)]) ANIMALS[m.species] = { species: m.species, house: '', growDays: 0, speed: m.speed * TILE, saga: true };
+ANIMALS.korp = { species: 'korp', house: '', growDays: 0, speed: 72, pet: true };
+ANIMALS.fenrisvalp = { species: 'fenrisvalp', house: '', growDays: 0, speed: 70, pet: true };
+ANIMALS.sleipner = { species: 'sleipner', house: '', growDays: 0, speed: 30, mount: { speed: 1.75 } };
+ANIMALS.gullinbursti = { species: 'gullinbursti', house: '', growDays: 0, speed: 30, mount: { speed: 1.6 } };
 
 // ---------- Recipes ----------
 
@@ -771,8 +811,27 @@ NPCS.lind = {
   ],
 };
 
+/** Völvan Sigrun, the seeress who tells the saga, by Kämpastenen on the square. */
+NPCS[VOLVA_ID] = {
+  id: VOLVA_ID,
+  name: 'Völvan Sigrun',
+  area: VILLAGE_KEY,
+  x: VOLVA_SPOT.x,
+  y: VOLVA_SPOT.y,
+  appearance: { skin: '#eccdb0', hair: '#ece6da', hairStyle: 'long' },
+  outfit: { hat: 'hat_volvakrans', shirt: 'shirt_volvadrakt', pants: 'pants_brown', shoes: 'shoes_boots' },
+  greeting: ['Välkommen, lilla vän. Jag har väntat på dig.', 'Runorna viskar ditt namn…', 'Världsträdet behöver hjältar.'],
+  routine: [{ at: 0, x: VOLVA_SPOT.x, y: VOLVA_SPOT.y }],
+};
+
 /** Context lines villagers say in their speech bubbles. {name} is the player's name. */
 export const NPC_LINES: Record<string, { morning: string[]; day: string[]; evening: string[]; meet: string[] }> = {
+  sigrun: {
+    morning: ['Morgonsolen lyser på runorna.', 'God morgon, {name}. Jag drömde om dig.'],
+    day: ['Yggdrasil darrar…', 'Hej {name}! Har du valt din väg?', 'Ingen hjälte går ensam.'],
+    evening: ['Nu vaknar draugarna…', 'God kväll, {name}. Var försiktig i mörkret.'],
+    meet: ['Hej Bo. Ditt bröd doftar ända hit.', 'Stina! Smid ett svärd åt hjältarna.', 'Fru Lind, rosorna viskar i natt.'],
+  },
   greta: {
     morning: ['God morgon, {name}!', 'Vilken fin morgon!'],
     day: ['Hej {name}!', 'Så flitigt du jobbar!', 'Har du sett mina blomlådor?'],
@@ -883,6 +942,12 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('fossil_5', 'fossil', 5, 2, 'fossil'),
   A('moon_1', 'moon', 1, 3, 'moon_rock'),
   A('dragon_1', 'dragon', 1, 5, 'dragon_egg'),
+  A('saga_class', 'sagaClass', 1, 1, 'hat_vaktarhjalm'),
+  A('saga_draug', 'sagaDraug', 1, 3, 'runsvard'),
+  A('saga_frost', 'sagaFrost', 1, 4, 'frostbett'),
+  A('saga_surt', 'sagaSurt', 1, 5, 'surtsvard'),
+  A('saga_mobs_50', 'sagaMobs', 50, 2, 'draugyxa'),
+  A('saga_quests_6', 'sagaQuests', 6, 3, 'healing_potion'),
 ];
 
 /** Fish and how likely they bite (weights). */

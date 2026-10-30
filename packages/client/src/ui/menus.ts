@@ -98,6 +98,7 @@ export class Menus {
       else if (c.ui === 'travel') this.open('travel', c.id);
       else if (c.ui === 'nameAnimal') this.open('nameAnimal', c.id);
       else if (c.ui === 'arcade') return; // the minigames open over everything (ui/arcade.ts)
+      else if (c.ui === 'saga' || c.ui === 'sagaClass') return; // the saga's own windows (ui/saga.ts)
       else if (c.ui === 'npc') {
         this.npcId = c.npc ?? null;
         this.open('npc');
