@@ -58,6 +58,10 @@ DATABASE_URL=postgres://… node packages/server/dist/main.js   # serves the gam
 
 Or use the container image built by GitHub Actions: `ghcr.io/tobiasbernting/lilla-garden:latest`.
 It needs `DATABASE_URL` and listens on 8080. Migrations run on boot.
+The public farm takes each new `:latest` the night after it's built (03:30 Swedish time): it dumps the database,
+starts the new version and goes back to the old one, database included, if it doesn't answer on `/health`. So a
+merge to `main` is live the next morning, and a migration must work on the real farm's data. The deploy lives in the
+homelab repo (`cloud/roles/lilla-garden`).
 
 (The 3D version, the Phaser client and the `gard-ljs` trial farm were retired on 2026-10-30; their last images
 stay in the registry as they were.)
