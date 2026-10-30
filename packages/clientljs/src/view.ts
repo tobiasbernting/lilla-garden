@@ -57,10 +57,12 @@ import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
 import { SFX } from '@v1/sound.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '@v1/state.ts';
+import { sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
 import type { HudTarget } from '@v1/ui/hud.ts';
 import { animalSprites, characterSprites, loadSprites, paintingSprite, type ObjectSprites, type Sprites } from './art.ts';
 import type { Sprite } from './atlas.ts';
 import { Effects } from './fx.ts';
+import { SagaView, type Spot } from './saga.ts';
 import { alpha, clamp01, DrawQueue, drawSheared, drawSprite, easeOutBack, easeOutElastic, lerp, rgba, smooth, WHITE } from './gfx.ts';
 import { Lamp, lampFor, LightPainter, setAmbient } from './lighting.ts';
 import { Critters } from './critters.ts';
@@ -218,6 +220,8 @@ export class View implements HudTarget {
   private roofsDirty = true;
   private queue = new DrawQueue();
   private fx!: Effects;
+  /** Sagan om Världsträdet: telegraphs, spells, numbers and bars in the dungeons. */
+  private sagaFx!: SagaView;
   private weather!: WeatherView;
   private flashLamps: { lamp: Lamp; fl: { t: number; dur: number } }[] = [];
   private sky: SkyLight = skyLight(0, null, 'none');
@@ -269,8 +273,10 @@ export class View implements HudTarget {
     // clicks and taps on the world (the HUD sits above and keeps its own)
     gameEl.addEventListener('pointerdown', (e) => {
       if (this.uiOpen || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      const t = this.screenToTile(e.clientX, e.clientY);
-      this.actAt(t.tx, t.ty, true);
+      const w = this.screenToWorld(e.clientX, e.clientY);
+      // in a dungeon a click on a monster (or a friend) aims at it
+      if (this.sagaFx?.pick(w.x, w.y)) return;
+      this.actAt(tileOf(w.x), tileOf(w.y), true);
     });
     gameEl.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
@@ -286,6 +292,7 @@ export class View implements HudTarget {
     this.extras = loadExtras();
     new LightPainter(() => this.paintLight());
     this.fx = new Effects(this.art);
+    this.sagaFx = new SagaView(this.art, this.labels, this.fx, (id) => this.spotOf(id));
     this.weather = new WeatherView(this.art);
   }
 
@@ -336,6 +343,7 @@ export class View implements HudTarget {
     this.roofsDirty = true;
     this.snapCamera = true;
     this.weather.julSnow = client.season === 'jul' && this.area === 'farm';
+    this.sagaFx.load(this.area);
     this.loading = false;
   }
 
@@ -356,6 +364,7 @@ export class View implements HudTarget {
     this.talk.clear();
     this.labels.innerHTML = '';
     this.fx?.clear();
+    this.sagaFx?.clear();
     this.weather?.reset();
     this.fireflies = [];
     this.nature.clear();
@@ -578,6 +587,9 @@ export class View implements HudTarget {
       actor.key = key;
     }
     actor.label.textContent = p.name;
+    // the saga's newest title under the name
+    const title = titleOf(p);
+    if (title) actor.label.append(Object.assign(document.createElement('small'), { textContent: `<${title}>` }));
   }
 
   private removePlayer(id: string): void {
@@ -650,6 +662,15 @@ export class View implements HudTarget {
         else this.putPlayer(world.players[c.id] ?? p);
         break;
       }
+      case 'warp': {
+        // a blink, a charge, getting up at a rest stone: straight there (the camera too, if it is far)
+        const a = this.players.get(c.id);
+        if (!a) break;
+        if (c.id === client.me && Math.hypot(c.x - a.x, c.y - a.y) > 6 * TILE) this.snapCamera = true;
+        a.x = c.x;
+        a.y = c.y;
+        break;
+      }
     }
   }
 
@@ -692,17 +713,39 @@ export class View implements HudTarget {
 
   // ------------------------------------------------------------------ acting
 
-  private screenToTile(clientX: number, clientY: number): { tx: number; ty: number } {
+  private screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
     const offX = (innerWidth - mainCanvasSize.x) / 2;
     const offY = (innerHeight - mainCanvasSize.y) / 2;
-    const px = this.camX + (clientX - offX - mainCanvasSize.x / 2) / this.z;
-    const py = this.camY + (clientY - offY - mainCanvasSize.y / 2) / this.z;
-    return { tx: tileOf(px), ty: tileOf(py) };
+    return { x: this.camX + (clientX - offX - mainCanvasSize.x / 2) / this.z, y: this.camY + (clientY - offY - mainCanvasSize.y / 2) / this.z };
+  }
+
+  private screenToTile(clientX: number, clientY: number): { tx: number; ty: number } {
+    const w = this.screenToWorld(clientX, clientY);
+    return { tx: tileOf(w.x), ty: tileOf(w.y) };
+  }
+
+  /** Where a player (id) or an animal (number) stands on screen and how big it is (the dungeons' effects follow them). */
+  private spotOf(id: string | number): Spot | null {
+    if (typeof id === 'string') {
+      // a person is 24 pixels tall, as their name label has it
+      const p = this.players.get(id);
+      return p ? { x: p.x, y: p.y, w: 16, h: 24 } : null;
+    }
+    const a = this.animals.get(id);
+    const s = a?.frames[0];
+    return a && s ? { x: a.x, y: a.y, w: s.w, h: s.h } : null;
   }
 
   /** The touch action button. */
   act(): void {
     this.actFacing();
+  }
+
+  /** A quick tap on the joystick's side of a touch screen: in a dungeon, a monster there becomes the target. */
+  tap(clientX: number, clientY: number): void {
+    if (this.uiOpen) return;
+    const w = this.screenToWorld(clientX, clientY);
+    this.sagaFx?.pick(w.x, w.y);
   }
 
   private actFacing(): void {
@@ -763,7 +806,9 @@ export class View implements HudTarget {
     // --- own movement (predicted) ---
     let dx = 0;
     let dy = 0;
-    if (!this.uiOpen && !me.sleeping) {
+    // in a dungeon: no walking while fallen or frozen, slower when slowed
+    const sagaMul = sagaSpeed();
+    if (!this.uiOpen && !me.sleeping && sagaMul > 0) {
       if (keyIsDown('ArrowLeft') || keyIsDown('KeyA')) dx -= 1;
       if (keyIsDown('ArrowRight') || keyIsDown('KeyD')) dx += 1;
       if (keyIsDown('ArrowUp') || keyIsDown('KeyW')) dy -= 1;
@@ -776,7 +821,7 @@ export class View implements HudTarget {
     }
     const running = !this.uiOpen && (keyIsDown('ShiftLeft') || keyIsDown('ShiftRight') || this.runHeld);
     const boost = me.boostUntil !== undefined && me.boostUntil > serverNow() ? BOOST_SPEED_MUL : 1;
-    stepPlayer(world, me, dx, dy, dtMs, (me.riding !== undefined ? rideSpeedMul(world, me) : running ? 1.7 : 1) * boost);
+    stepPlayer(world, me, dx, dy, dtMs, (me.riding !== undefined ? rideSpeedMul(world, me) : running ? 1.7 : 1) * boost * sagaMul);
     if (me.moving || this.wasMoving) this.sendMove(!me.moving && this.wasMoving);
     this.wasMoving = me.moving;
 
@@ -889,6 +934,7 @@ export class View implements HudTarget {
     this.updateWeather(dt);
     this.updateLight(me, dt);
     this.fx.update(dt);
+    this.sagaFx.update(dt);
 
     const sc = this.makeScene(world, dt);
     this.scene = sc;
@@ -1159,6 +1205,7 @@ export class View implements HudTarget {
   /** Straight into the light map: at night the lit windows throw soft patches of light onto the ground in front. */
   private paintLight(): void {
     if (!this.world) return;
+    this.sagaFx.paintLight();
     const [vx, vy, vw, vh] = this.viewRect();
     // lava lights up its surroundings, day and night
     const lava = this.ground?.lava ?? [];
@@ -1236,16 +1283,19 @@ export class View implements HudTarget {
 
     const quests = world.quests.filter((q) => q.npc === id && !me.questsDone.includes(q.id));
     const canHandIn = quests.some((q) => countItem(me.inventory, q.want.item) >= q.want.count);
+    // the saga's markers: yellow ! for something new, yellow ? to hand in, grey ? while it goes on
+    const saga = sagaMarker(id);
     let text = '';
     let cls = 'bubble';
     if (now < st.until) text = st.text;
+    else if (saga && !saga.cls.endsWith('busy')) ({ text, cls } = saga);
     else if (canHandIn) {
       text = '❗';
       cls = 'bubble marker';
     } else if (quests.length) {
       text = '?';
       cls = 'bubble marker';
-    }
+    } else if (saga) ({ text, cls } = saga);
     if (text) {
       if (!actor.bubble) actor.bubble = this.makeLabel(text, cls);
       actor.bubble.className = `label ${cls}`;
@@ -1364,7 +1414,7 @@ export class View implements HudTarget {
         if (p.riding !== undefined || swimming) continue;
         drawSprite(small, a.x, a.y + 3, small.w, small.h, 0, alpha(0.6));
         const s = this.characterFrame(a, p.facing, p.moving);
-        if (s) this.castShadow(s, a.x, a.y + 4, s.w, s.h, 0.85, 3, a.flip < 0 ? -1 : 1);
+        if (s && this.sagaFx.pose(id) !== 'down') this.castShadow(s, a.x, a.y + 4, s.w, s.h, 0.85, 3, a.flip < 0 ? -1 : 1);
       }
       for (const [id, a] of this.npcs) {
         if (!inView(a.x - 30, a.y - 40, 60, 60)) continue;
@@ -1384,6 +1434,9 @@ export class View implements HudTarget {
         if (s) this.castShadow(s, a.x, a.y + 4 - hop, s.w, s.h, 0.75, s.h * 0.3, a.flip < 0 ? -1 : 1);
       }
     }
+
+    // the dungeons' marks on the ground: a boss's attacks on their way, runes, the ring under your target
+    this.sagaFx.drawGround();
 
     // --- everything else, back to front ---
     const q = this.queue;
@@ -1479,6 +1532,7 @@ export class View implements HudTarget {
         if (ov.ownChimney && ov.chimney && inView(ov.x, ov.y, ov.sprite.w, ov.sprite.h)) q.push(ov.depth + 0.01, this.extras.chimney, ov.chimney.x, ov.chimney.y + 4);
     if (sc) this.critters.queue(sc, q);
     this.fx.draw(q);
+    this.sagaFx.queue(q);
     q.flush();
     this.fx.drawRopes();
     if (sc) {
@@ -1505,6 +1559,13 @@ export class View implements HudTarget {
   }
 
   private queueCharacter(a: Actor, p: PlayerState): void {
+    const pose = this.sagaFx.pose(p.id);
+    if (pose === 'down') {
+      // fallen in a dungeon: lying on the ground, grey, until a healer (or the rest stone) gets them up
+      const s = this.characterFrame(a, 'down', false);
+      if (s) this.queue.push(a.y + 2, s, a.x, a.y + 4 - s.w / 2, s.w, s.h, Math.PI / 2, rgba(0.62, 0.62, 0.72, 1));
+      return;
+    }
     const ride = this.rideInfo(p);
     const swimming = this.bath && inPool(this.world!, a);
     // on the moon everyone walks in slow, floaty bounces
@@ -1630,6 +1691,7 @@ export class View implements HudTarget {
       this.homes.drawBright(sc);
       setAdditiveBlendMode(false);
     }
+    this.sagaFx.drawBright();
     // a soft fade from black after going in or out
     if (this.fade > 0) drawRect(vec2((vx + vw / 2) / TILE, -(vy + vh / 2) / TILE), vec2(vw / TILE + 2, vh / TILE + 2), rgb(0, 0, 0, smooth(this.fade)));
   }
@@ -1649,6 +1711,8 @@ export class View implements HudTarget {
     const place = (el: HTMLElement, x: number, y: number) => {
       el.style.transform = `translate(${Math.round((x - cx) * z + offX)}px, ${Math.round((y - cy) * z + offY)}px) translate(-50%, -100%)`;
     };
+    // the dungeons' floating numbers and health bars
+    this.sagaFx.placeLabels(place);
     for (const a of this.players.values()) {
       place(a.label, a.x, a.y - 24);
       if (a.bubble) place(a.bubble, a.x, a.y - 34);
@@ -1659,6 +1723,11 @@ export class View implements HudTarget {
     }
     for (const [id, a] of this.animals) {
       const an = world.animals[id];
+      if (an && this.sagaFx.ownsLabel(an.species)) {
+        // dungeon monsters have health bars instead (saga.ts)
+        a.label.style.display = 'none';
+        continue;
+      }
       const onOwner = an?.owner && Math.hypot(an.x - me.x, an.y - me.y) < 14; // pet sitting at its owner's feet
       const hostile = an && (ANIMALS[an.species]?.mob || (ANIMALS[an.species]?.predator && !an.owner));
       const near = an && !onOwner && Math.hypot(an.x - me.x, an.y - me.y) < (hostile ? 140 : 40);
