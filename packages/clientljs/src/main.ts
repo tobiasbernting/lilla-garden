@@ -51,10 +51,12 @@ const gameEl = document.getElementById('game')!;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 if (isTouch) document.body.classList.add('touch');
 
-// whole-number zoom so the pixel art stays crisp; the HUD uses the same scale
+// whole-number zoom so the pixel art stays crisp; the HUD uses the same scale. A small screen (a phone, under 3×)
+// would lose too much to rounding down, so it zooms in quarter steps instead and draws at the screen's own pixel
+// density, where an art pixel 1.75 wide still looks even.
 function computeZoom(): number {
   const z = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
-  return Math.max(1, Math.floor(z));
+  return z < 3 ? Math.max(1, Math.floor(z * 4) / 4) : Math.floor(z);
 }
 const labels = h('div', { id: 'labels' });
 ui.append(labels);
@@ -62,6 +64,7 @@ const view = new View(labels, gameEl);
 view.touch = isTouch;
 function applyZoom(): void {
   const zoom = computeZoom();
+  setCanvasPixelRatio(Number.isInteger(zoom) ? 1 : Math.min(2, devicePixelRatio || 1));
   document.documentElement.style.setProperty('--z', String(zoom));
   view.setZoom(zoom);
 }
@@ -154,7 +157,6 @@ let startedAt = 0;
 let speedChecked = false;
 setShowSplashScreen(false);
 setSoundEnable(false); // the game's own synthesised sounds play through sound.ts
-setCanvasPixelRatio(1);
 setTilesPixelated(true);
 setCanvasPixelated(true);
 setCanvasClearColor(rgb(0.165, 0.239, 0.122));

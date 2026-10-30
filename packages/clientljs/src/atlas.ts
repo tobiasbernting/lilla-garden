@@ -2,7 +2,8 @@
 // WebGL batch whenever the texture changes, so with one sheet the whole depth-sorted world draws in one batch.
 import { TextureInfo, glMaxTextureSize } from 'littlejsengine';
 
-/** Transparent gap around each picture, so a turned or scaled sprite never samples its neighbour. */
+/** Gap around each picture of its own (two between neighbours), so a turned or scaled sprite never samples its
+ * neighbour, not even a ground tile's edge pixels smeared into that tile's own gap. */
 const PAD = 2;
 
 export class Sheet {
@@ -26,12 +27,12 @@ export class Sheet {
     if (w + 2 * PAD > this.size) return null;
     if (this.x + w + PAD > this.size) {
       this.x = PAD;
-      this.y += this.rowH + PAD;
+      this.y += this.rowH + 2 * PAD;
       this.rowH = 0;
     }
     if (this.y + h + PAD > this.size) return null;
     const at: [number, number] = [this.x, this.y];
-    this.x += w + PAD;
+    this.x += w + 2 * PAD;
     this.rowH = Math.max(this.rowH, h);
     return at;
   }
