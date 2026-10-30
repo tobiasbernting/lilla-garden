@@ -701,8 +701,6 @@ export interface HelpStep {
 
 export interface HelpTopic {
   id: string;
-  /** Only shown in the 2D game. */
-  only2d?: boolean;
   emoji: string;
   title: string;
   intro?: string;
@@ -931,7 +929,6 @@ export const HELP: HelpTopic[] = [
   },
   {
     id: 'friends',
-    only2d: true,
     emoji: '💬',
     title: 'Prata, djur och väder',
     steps: [

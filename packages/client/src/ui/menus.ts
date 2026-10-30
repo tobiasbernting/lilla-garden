@@ -83,8 +83,6 @@ export class Menus {
   private talk: Talk | null = null;
   /** What you said last, shown above the villager's answer. */
   private said = '';
-  /** 2D game only: villager conversations and the 2D help topics. */
-  features2d = false;
   onChange: (open: boolean) => void = () => {};
 
   constructor(private ui: HTMLElement) {
@@ -635,18 +633,16 @@ export class Menus {
       return;
     }
     const quests = openQuests(client.world!, me, npc.id);
-    if (this.features2d && this.talk) {
+    if (this.talk) {
       this.renderTalk(body, npc.id, quests.length > 0);
       return;
     }
     const greeting = npc.greeting[(client.day + npc.name.length) % npc.greeting.length]!;
     const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length ? greeting : T.questAllDone));
     body.append(talk);
-    if (this.features2d) {
-      const chat = h('button', null, '💬 Prata!');
-      onTap(chat, () => this.say(npc.id, 'start', ''));
-      body.append(h('div', { class: 'npc-actions' }, chat));
-    }
+    const chat = h('button', null, '💬 Prata!');
+    onTap(chat, () => this.say(npc.id, 'start', ''));
+    body.append(h('div', { class: 'npc-actions' }, chat));
     const rows = h('div', { class: 'rows' });
     for (const q of quests) {
       const have = countItem(me.inventory, q.want.item);
@@ -740,7 +736,7 @@ export class Menus {
   private renderHelp(panel: HTMLElement, body: HTMLElement): void {
     const touch = document.body.classList.contains('touch');
     const tabs = h('div', { class: 'tabs' });
-    const topics = HELP.filter((t) => this.features2d || !t.only2d);
+    const topics = HELP;
     for (const t of topics) {
       const b = h('button', { class: this.helpTopic === t.id ? 'on' : '' }, `${t.emoji} ${t.title}`);
       onTap(b, () => {

@@ -96,8 +96,7 @@ initArcade((open) => {
     } else postProcess.enabled = glowWas;
   }
 });
-// chat, pets that stay or come when you whistle, weather, villager conversations
-menus.features2d = true;
+// chat, pets that stay or come when you whistle, weather
 hud.topExtras.push(weatherChip);
 bus.on('weather', () => hud.renderTop());
 const chat = new Chat(hud.root);

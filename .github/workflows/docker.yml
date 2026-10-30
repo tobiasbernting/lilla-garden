@@ -13,19 +13,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          # Lilla Gården (2D), drawn with LittleJS; also tagged lilla-garden-ljs, the image of the gard-ljs trial farm
-          - client: clientljs
-            image: ghcr.io/tobiasbernting/lilla-garden
-            alias: ghcr.io/tobiasbernting/lilla-garden-ljs
-          # The earlier 2D client (Phaser), kept as a fallback
-          - client: client
-            image: ghcr.io/tobiasbernting/lilla-garden-phaser
-          # Lilla Gården v2 (3D)
-          - client: client3d
-            image: ghcr.io/tobiasbernting/lilla-garden-v2
+    env:
+      IMAGE: ghcr.io/tobiasbernting/lilla-garden
+      # also tagged for the gard-ljs trial farm
+      ALIAS: ghcr.io/tobiasbernting/lilla-garden-ljs
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -40,11 +31,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          build-args: CLIENT=${{ matrix.client }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ matrix.image }}:latest
-            ${{ matrix.image }}:${{ github.sha }}
-            ${{ matrix.alias && format('{0}:latest', matrix.alias) || '' }}
-          cache-from: type=gha,scope=${{ matrix.client }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.client }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.ALIAS }}:latest
+          cache-from: type=gha,scope=clientljs
+          cache-to: type=gha,mode=max,scope=clientljs
