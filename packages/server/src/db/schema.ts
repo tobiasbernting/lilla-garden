@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 import type { AnimalState, CropState, DropState, PlayerState, Terrain, WorldObject, WorldState } from '../../../shared/src/index.ts';
 
 /** Single row (id = 1) with the world-wide state. */
@@ -51,4 +51,29 @@ export const areas = pgTable('areas', {
   biome: text('biome').notNull(),
   data: jsonb('data').$type<WorldState>().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---- access control (who may enter the world) ----
+
+/** A browser that redeemed an invite (or was added by a parent). */
+export const devices = pgTable('devices', {
+  id: text('id').primaryKey(),
+  data: jsonb('data').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Invite links the parent created; only a hash of the secret token is stored. */
+export const invites = pgTable('invites', {
+  id: text('id').primaryKey(),
+  data: jsonb('data').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** What happened at the gate: logins, invites redeemed, devices approved, refused visits. */
+export const accessLog = pgTable('access_log', {
+  id: serial('id').primaryKey(),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  event: text('event').notNull(),
+  detail: text('detail').notNull(),
+  ip: text('ip').notNull(),
 });

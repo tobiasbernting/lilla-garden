@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
+import { PgAccessStore } from './accessStore.ts';
 
 export interface Store {
   load(): Promise<WorldState>;
@@ -46,6 +47,11 @@ export class PgStore implements Store {
   constructor(url: string) {
     this.sqlc = postgres(url, { max: 4, onnotice: () => {} });
     this.db = drizzle(this.sqlc);
+  }
+
+  /** The access control's tables live in the same database. */
+  accessStore(): PgAccessStore {
+    return new PgAccessStore(this.db);
   }
 
   async migrate(): Promise<void> {

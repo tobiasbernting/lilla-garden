@@ -2,6 +2,22 @@
 import { rebuildOccupancy, type ClientMsg, type ServerMsg } from '@lilla-garden/shared';
 import { applyChange, bus, client, worldFor } from './state.js';
 
+/** Matches the server: the socket was closed because this device may not play (now). */
+const CLOSE_NO_ACCESS = 4003;
+
+/** The server's gate page explains why (waiting for approval, closed, outside play hours) and comes back by itself. */
+export const toGate = (): void => location.replace('/access');
+
+/** After a dropped connection: if the server says this device may not play, go to the gate page. */
+async function checkAccess(): Promise<void> {
+  try {
+    const res = await fetch('/api/me', { cache: 'no-store' });
+    if (res.status === 403) toGate();
+  } catch {
+    // offline: keep trying to reconnect
+  }
+}
+
 export class Net {
   private ws: WebSocket | null = null;
   private playerId = '';
@@ -41,13 +57,16 @@ export class Net {
       }
       this.handle(msg);
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (this.pingTimer) clearInterval(this.pingTimer);
       this.pingTimer = null;
       if (this.ws !== ws) return;
       this.ws = null;
       bus.emit('connection', 'closed');
       if (this.closedByUser) return;
+      // A parent closed the farm or took this device's access away: show the gate page instead of reconnecting
+      if (ev.code === CLOSE_NO_ACCESS) return toGate();
+      void checkAccess();
       setTimeout(() => this.open(), this.backoff);
       this.backoff = Math.min(8000, this.backoff * 2);
     };

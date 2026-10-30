@@ -15,6 +15,13 @@
       "when": 1792848086017,
       "tag": "0001_soft_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793279245977,
+      "tag": "0002_access_control",
+      "breakpoints": true
     }
   ]
 }

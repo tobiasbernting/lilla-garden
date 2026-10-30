@@ -2,6 +2,7 @@
 import { ITEMS, MAX_PLAYERS, T, itemName, type Appearance, type PlayerSummary } from '@lilla-garden/shared';
 import { HAIR_COLORS, HAIR_STYLES, SKIN_TONES } from '../art/characters.js';
 import { portraitUrl } from '../art/textures.js';
+import { toGate } from '../net.js';
 import { rememberedPlayer } from '../state.js';
 import { clear, h, onTap } from './dom.js';
 
@@ -11,6 +12,7 @@ const STARTER_SHIRTS = ['shirt_red', 'shirt_blue', 'shirt_green', 'shirt_yellow'
 export class Picker {
   root: HTMLElement;
   private status: HTMLElement | null = null;
+  private canCreate = true;
 
   constructor(
     private ui: HTMLElement,
@@ -25,8 +27,12 @@ export class Picker {
     this.root.append(h('h1', null, T.title), h('p', { style: { color: '#fff', fontWeight: '800' } }, T.connecting));
     let players: PlayerSummary[] = [];
     try {
-      const res = await fetch('/api/players');
+      const res = await fetch('/api/players', { cache: 'no-store' });
+      if (res.status === 403) return toGate();
       players = (await res.json()) as PlayerSummary[];
+      // With access control on, guest devices may only create a character or two
+      const me = await fetch('/api/me', { cache: 'no-store' });
+      this.canCreate = !me.ok || ((await me.json().catch(() => ({}))) as { canCreate?: boolean }).canCreate !== false;
     } catch {
       this.root.append(h('div', { class: 'status' }, T.disconnected));
       setTimeout(() => void this.show(), 2000);
@@ -48,7 +54,7 @@ export class Picker {
       onTap(card, () => this.onPick(p.id));
       cards.append(card);
     }
-    if (players.length < MAX_PLAYERS) {
+    if (players.length < MAX_PLAYERS && this.canCreate) {
       const add = h('div', { class: 'card new' }, '＋', h('div', { class: 'nm' }, T.newCharacter));
       onTap(add, () => this.renderCreator());
       cards.append(add);
@@ -112,6 +118,7 @@ export class Picker {
       play.disabled = true;
       try {
         const res = await fetch('/api/players', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: n, appearance, shirt }) });
+        if (res.status === 403) return void this.show();
         if (!res.ok) throw new Error(String(res.status));
         const created = (await res.json()) as PlayerSummary;
         this.onPick(created.id);
