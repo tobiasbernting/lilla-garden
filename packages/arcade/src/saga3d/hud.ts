@@ -49,6 +49,8 @@ export class Hud {
   /** Fired on pointerdown on a spell button (slot 0–3) or when the integrator wires the keys to it. */
   onSpell: (slot: number) => void = () => {};
   onPotion: () => void = () => {};
+  /** A short tap on the walking-stick half of the screen (client coordinates): the integrator can use it to pick a monster. */
+  onTap: (x: number, y: number) => void = () => {};
 
   readonly root: HTMLElement;
   private fps: HTMLElement;
@@ -67,6 +69,9 @@ export class Hud {
   private bossName: HTMLElement;
   private bossBar: Bar;
   private say: HTMLElement;
+  private toastEl: HTMLElement;
+  private toastTimer = 0;
+  private downEl: HTMLElement;
   private sayTimer = 0;
   private cls: ClassDef | null = null;
   private fpsText = '';
@@ -89,6 +94,8 @@ export class Hud {
     this.bossName = el('div', 'saga3d-label', this.bossBox);
     this.bossBar = new Bar(this.bossBox);
     this.say = el('div', 'saga3d-say', this.root);
+    this.toastEl = el('div', 'saga3d-toast', this.root);
+    this.downEl = el('div', 'saga3d-down', this.root, 'Du föll… reser dig snart');
 
     this.spells = el('div', 'saga3d-spells', this.root);
     this.potion = this.makeButton('saga3d-potion', '🧪', '5', 'Dryck');
@@ -159,7 +166,7 @@ export class Hud {
 
   /** A small shake of a button (nothing to hit with that spell). */
   shake(slot: number): void {
-    const b = this.buttons[slot];
+    const b = slot === 4 ? this.potion : this.buttons[slot];
     if (!b) return;
     b.classList.remove('saga3d-shake');
     void b.offsetWidth;
@@ -188,6 +195,19 @@ export class Hud {
     this.say.classList.add('saga3d-on');
     clearTimeout(this.sayTimer);
     this.sayTimer = window.setTimeout(() => this.say.classList.remove('saga3d-on'), ms);
+  }
+
+  /** A big message in the middle of the screen ("Porten öppnas!") that fades after a while. */
+  toast(text: string, ms = 2500): void {
+    this.toastEl.textContent = text;
+    this.toastEl.classList.add('saga3d-on');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('saga3d-on'), ms);
+  }
+
+  /** Greys the screen while the player is down. */
+  setDown(down: boolean): void {
+    this.downEl.classList.toggle('saga3d-on', down);
   }
 
   /** The FPS readout (always); `note` is a short warning like "pixelratio sänkt". */
@@ -223,6 +243,7 @@ export class Hud {
     let id = -1;
     let ox = 0;
     let oy = 0;
+    let downAt = 0;
     const rest = (): void => {
       base.classList.add('saga3d-idle');
       base.style.left = '112px';
@@ -243,6 +264,7 @@ export class Hud {
     const end = (e: PointerEvent): void => {
       if (e.pointerId !== id) return;
       id = -1;
+      if (e.type === 'pointerup' && performance.now() - downAt < 350 && Math.hypot(e.clientX - ox, e.clientY - oy) < 10) this.onTap(e.clientX, e.clientY);
       this.opts.input.touchStickMove(0, 0);
       rest();
     };
@@ -259,6 +281,7 @@ export class Hud {
       const r = zone.getBoundingClientRect();
       ox = p.clientX;
       oy = p.clientY;
+      downAt = performance.now();
       base.classList.remove('saga3d-idle');
       base.style.left = `${ox - r.left}px`;
       base.style.top = `${oy - r.top}px`;
@@ -277,6 +300,7 @@ export class Hud {
 
   dispose(): void {
     clearTimeout(this.sayTimer);
+    clearTimeout(this.toastTimer);
     for (const f of this.cleanup) f();
     this.cleanup = [];
     this.root.remove();

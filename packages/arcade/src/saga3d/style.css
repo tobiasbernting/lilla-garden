@@ -42,3 +42,16 @@
 .saga3d-base.saga3d-idle { opacity: 0.55; }
 .saga3d-knob { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); border: 3px solid rgba(255, 255, 255, 0.85); }
 .saga3d-touch .saga3d-player { bottom: max(14px, env(safe-area-inset-bottom)); }
+
+/* floating numbers (white on monsters, red on the player, green for healing), moved by script each frame */
+.saga3d-floats { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.saga3d-num { position: absolute; left: 0; top: 0; display: none; font: 800 26px system-ui, sans-serif; white-space: nowrap; will-change: transform, opacity; text-shadow: 0 2px 3px #000, 0 0 6px rgba(0, 0, 0, 0.6); }
+.saga3d-dmg { color: #fff; }
+.saga3d-hurt { color: #ff5a5a; font-size: 30px; }
+.saga3d-heal { color: #6dff9a; }
+/* rage: a red glow round the edge of the screen that pulses */
+.saga3d-rage { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 110px 26px rgba(255, 40, 20, 0.7); transition: opacity 0.2s; }
+.saga3d-toast { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); max-width: 80vw; font-size: 38px; font-weight: 800; text-align: center; opacity: 0; transition: opacity 0.35s; text-shadow: 0 3px 8px #000; color: #ffe27a; }
+.saga3d-toast.saga3d-on { opacity: 1; }
+.saga3d-down { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800; background: rgba(20, 22, 30, 0.55); backdrop-filter: grayscale(1); opacity: 0; transition: opacity 0.4s; }
+.saga3d-down.saga3d-on { opacity: 1; }
