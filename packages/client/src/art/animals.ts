@@ -1,5 +1,6 @@
 // Animals: side view facing right (flip for left), 2 walk frames, adult + baby, optional tomteluva.
 import { Px, shade } from './px.js';
+import { SAGA_AFTER, SAGA_ANIMAL_SIZE, SAGA_DRAW, SAGA_HAT_POS, SAGA_OUTLINE, SAGA_RIDE_LIFT } from './sagaanimals.ts';
 import { OUTLINE } from './world.js';
 
 export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
@@ -41,6 +42,8 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   gummy: { w: 12, h: 12 },
   alien: { w: 14, h: 17 },
   dragon: { w: 22, h: 18 },
+  // Sagan om Världsträdet: the dungeons' monsters and bosses, their pets and mounts
+  ...SAGA_ANIMAL_SIZE,
 };
 
 function hen(p: Px, f: number): void {
@@ -470,6 +473,9 @@ function dragon(p: Px, f: number): void {
   p.rect(6 + f, 14, 2, 4, d).rect(8, 14, 2, 4, c).rect(11, 14, 2, 4, d).rect(13 - f, 14, 2, 4, c); // legs
 }
 
+/** How high a rider sits on a mount, where not as on the horse (7). */
+export const RIDE_LIFT: Record<string, number> = { ...SAGA_RIDE_LIFT };
+
 /** City traffic: drawn with a colour variant and never with a tomteluva. */
 export const VEHICLE_SPECIES = new Set(['car', 'motorcycle', 'bus', 'train']);
 export const VEHICLE_VARIANTS = 3;
@@ -535,11 +541,11 @@ const DRAW: Record<string, (p: Px, f: number, v?: number) => void> = {
   motorcycle,
   bus,
   train, hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, hare, boar, moose, bear, wolf, lynx, slime, bat, troll, boss,
-  frog, parrot, monkey, salamander, hedgehog, dino, gummy, alien, dragon };
+  frog, parrot, monkey, salamander, hedgehog, dino, gummy, alien, dragon, ...SAGA_DRAW };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
 const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], pig: [14, -1], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0], hare: [11, -1], boar: [14, 1], moose: [19, 0], bear: [18, 1], wolf: [16, 0], lynx: [14, 0],
-  frog: [7, 1], parrot: [12, 1], monkey: [10, 1], salamander: [14, 0], hedgehog: [6, 0], dino: [14, 1], gummy: [6, 0], alien: [7, 3], dragon: [16, 2] };
+  frog: [7, 1], parrot: [12, 1], monkey: [10, 1], salamander: [14, 0], hedgehog: [6, 0], dino: [14, 1], gummy: [6, 0], alien: [7, 3], dragon: [16, 2], ...SAGA_HAT_POS };
 
 export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean, variant = 0): Px {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };
@@ -549,7 +555,8 @@ export function drawAnimal(species: string, frame: number, baby: boolean, jul: b
     const [hx, hy] = HAT_POS[species] ?? [8, 0];
     full.rect(hx - 3, hy + 1, 6, 1, '#ffffff').rect(hx - 2, hy - 1, 4, 2, '#d8363a').rect(hx - 1, hy - 3, 2, 2, '#d8363a').px(hx + 1, hy - 3, '#ffffff');
   }
-  full.outline(OUTLINE);
+  full.outline(SAGA_OUTLINE[species] ?? OUTLINE);
+  SAGA_AFTER[species]?.(full, frame, variant);
   if (!baby) return full;
   // baby: 2/3 scale, drawn bottom-aligned in a same-sized canvas
   const bw = Math.round(size.w * 0.66);
