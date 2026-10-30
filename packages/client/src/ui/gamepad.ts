@@ -61,7 +61,10 @@ export function initGamepad(opts: {
   function setActive(on: boolean): void {
     if (active === on) return;
     active = on;
-    if (!on) setFocus(null);
+    if (!on) {
+      stopPlaying();
+      setFocus(null);
+    }
   }
 
   /** Every connected pad counts, so either of two kids' pads works (they just share the player). */
