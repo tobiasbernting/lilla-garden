@@ -10,6 +10,7 @@ import {
   type PlayerSnap,
   type PlayerState,
   type SagaSnap,
+  type ServerMsg,
   type Season,
   type WeatherState,
   type WorldObject,
@@ -40,6 +41,8 @@ export interface Events {
   weather: WeatherState | null;
   /** Dungeons: the monster or friend you aim at changed. */
   target: void;
+  /** Rallyvärlden: the lobby, the race and free roam from the server (ui/rally.ts). */
+  rally: Extract<ServerMsg, { t: 'race' | 'roam' }>;
 }
 
 class Bus {

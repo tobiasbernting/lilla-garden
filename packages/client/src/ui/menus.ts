@@ -63,6 +63,7 @@ import { stackIconUrl } from '../art/painting.ts';
 import { SFX } from '../sound.ts';
 import { familyScores } from './arcade.ts';
 import { hasSagaQuests, sagaQuestRows } from './saga.ts';
+import { RALLY_HELP_LINE } from './rally.ts';
 
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel' | 'prizes' | 'scores';
 
@@ -767,6 +768,8 @@ export class Menus {
       if (step.only === 'desktop' && touch) continue;
       list.append(h('li', null, this.helpIcon(step.icon), h('span', null, this.helpText(step.text))));
     }
+    // Rallyvärlden's garage sits with the minigames
+    if (topic.id === 'arcade') list.append(h('li', null, this.helpIcon('emoji:🏁'), h('span', null, RALLY_HELP_LINE)));
     body.append(list);
     if (topic.houses) {
       const rows = h('div', { class: 'rows' });

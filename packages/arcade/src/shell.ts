@@ -1,8 +1,10 @@
 // The arcade: a full-screen overlay over the farm game. The TV lists the family's games; a machine in
 // Spelhallen goes straight to its game. Each game gets a title card, is played, can be paused, and ends
-// on a result card with the score, records and (in Spelhallen) tickets.
+// on a result card with the score, records and (in Spelhallen) tickets. Rallyvärlden's garage ('rally') goes
+// straight into a race or a drive and comes back to the garage: no restart in an online race, no tickets.
 import { ARCADE, ARCADE_MAX_SCORE, POINTS_PER_TICKET, type ArcadeGame } from '@lilla-garden/shared';
 import { GAMES } from './games.ts';
+import { rallyOptions } from './games/rally/options.ts';
 import { Input } from './input.ts';
 import type { Button, GameContext, GameInstance, TouchLayout } from './types.ts';
 import './shell.css';
@@ -258,9 +260,14 @@ class Arcade {
     this.show(el('div', 'arc-panel arc-menu', el('h1', null, '📺 TV-spel'), grid, el('div', 'arc-buttons', close)), [...tiles, close]);
   }
 
+  /** Rallyvärlden's garage opened this: it has its own top list and money. */
+  private get garage(): boolean {
+    return this.opts.where === 'rally';
+  }
+
   private topList(game: ArcadeGame, highlight?: number): HTMLElement | null {
     const lines = this.opts.scores?.(game) ?? [];
-    if (!lines.length) return el('p', 'arc-empty', 'Ingen har spelat än. Bli först på topplistan!');
+    if (!lines.length) return this.garage ? null : el('p', 'arc-empty', 'Ingen har spelat än. Bli först på topplistan!');
     const ol = el('ol', 'arc-top');
     lines.slice(0, 5).forEach((l, i) => {
       const li = el('li', l.me ? 'me' : null, el('span', null, MEDALS[i] ?? `${i + 1}.`), el('span', 'arc-top-name', l.name), el('span', 'arc-top-score', fmtScore(l.score)));
@@ -393,12 +400,17 @@ class Arcade {
       console.error(err);
     }
     const go = this.button('▶ Fortsätt', () => this.resume(), true);
-    const again = this.button('↻ Börja om', () => this.game && void this.play(this.game));
+    // an online race (or a drive with the others) can't start over for one player: only leaving it
+    const ro = this.garage ? rallyOptions(this.opts.options) : null;
+    const again = ro?.room || ro?.mode === 'roam' ? null : this.button('↻ Börja om', () => this.game && void this.play(this.game));
     const quit = this.button('✕ Avsluta', () => {
       this.stopGame();
-      if (this.game) this.title(this.game);
+      // the garage: quitting ends the race or the drive and goes back there
+      if (this.garage) this.close();
+      else if (this.game) this.title(this.game);
     });
-    this.show(el('div', 'arc-panel arc-pause', el('h1', null, '⏸ Paus'), el('div', 'arc-buttons', go, again, quit)), [go, again, quit], this.game ? ARCADE[this.game].color : undefined);
+    const buttons = again ? [go, again, quit] : [go, quit];
+    this.show(el('div', 'arc-panel arc-pause', el('h1', null, '⏸ Paus'), el('div', 'arc-buttons', ...buttons)), buttons, this.game ? ARCADE[this.game].color : undefined);
   }
 
   private resume(): void {
@@ -425,6 +437,7 @@ class Arcade {
       console.error(err);
     }
     this.clearTouch();
+    if (this.garage) return this.garageResult(game, detail);
     const best = this.opts.best?.(game) ?? 0;
     const family = this.opts.scores?.(game)[0]?.score ?? 0;
     const tickets = this.opts.where === 'hall' ? (this.opts.tickets?.(score) ?? 0) : 0;
@@ -447,6 +460,15 @@ class Arcade {
       el('div', 'arc-buttons', again, back),
     );
     this.show(card, [again, back], d.color);
+  }
+
+  /** Rallyvärlden: the game's own line (place, time, medal, kr) big, and the way back to the garage. */
+  private garageResult(game: ArcadeGame, detail?: string): void {
+    this.set('result');
+    const d = ARCADE[game];
+    const back = this.button('🏁 Tillbaka till garaget', () => this.close(), true);
+    const card = el('div', 'arc-panel arc-result arc-garage', el('h2', null, `${d.emoji} ${d.name}`), detail ? el('p', 'arc-detail big', detail) : null, this.topList(game), el('div', 'arc-buttons', back));
+    this.show(card, [back], d.color);
   }
 
   private stopGame(): void {

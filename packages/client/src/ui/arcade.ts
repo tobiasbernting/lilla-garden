@@ -11,7 +11,7 @@ let current: ArcadeHandle | null = null;
 let pending: { game: string; score: number } | null = null;
 
 /** The player's colour (their shirt's), for their car, hen or rocket. */
-const colorOf = (p: PlayerState): string => (p.outfit.shirt ? ITEMS[p.outfit.shirt]?.clothing?.color : undefined) ?? '#e8412c';
+export const colorOf = (p: PlayerState): string => (p.outfit.shirt ? ITEMS[p.outfit.shirt]?.clothing?.color : undefined) ?? '#e8412c';
 
 /** Everyone in the family who has played a game, best first. */
 export function familyScores(game: string): { id: string; name: string; score: number; me: boolean }[] {
