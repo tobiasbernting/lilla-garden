@@ -1,5 +1,6 @@
 // Minigames: Spelhallen (the arcade in every city) with a machine per game, the prize counter, the score board, the
-// hall's walls, carpet and door mat; the prizes you can take home; the family's TV; and the game cartridges' icons.
+// hall's walls, carpet and door mat; the prizes you can take home; the family's TV; the game cartridges' icons; and
+// Rallyvärlden's garage on the farm.
 // The machines come in ARCADE_GAMES order, each in its game's colour. Neon is a light tube with a soft halo on what
 // is behind it; light comes from the top-left like everywhere else.
 import { ARCADE, ARCADE_GAMES } from '@lilla-garden/shared';
@@ -445,6 +446,76 @@ function arcadeHall(f: number): Px {
 }
 
 // ---------------------------------------------------------------------------
+// Rallyvärlden's garage (48×48 at oy -16): a blue-grey tin workshop with a red-white-blue rally stripe, a
+// chequered band under the roof and a round wrench sign on it between two amber beacons that take turns. The
+// roll-up door is half up: a red rally car's nose and headlights peek out. The two windows are the pale blue the
+// LittleJS view lights up at night (rally_garage is one of its LIT_KINDS); nothing else on it is that colour.
+// ---------------------------------------------------------------------------
+
+const TIN = pal('#3a4452', '#566273', '#7a8798', '#9eaabb', '#c4ceda');
+const RALLY_RED = ramp('#e8412c');
+const AMBER = pal('#7a3a08', '#b8600a', '#f59a1a', '#ffc85a', '#fff0b0');
+const AMBER_OFF = pal('#4a2a08', '#6a3a0a', '#8a4a10', '#a86020', '#c88040');
+
+function rallyGarage(f: number): Px {
+  const p = new Px(48, 48);
+  // the walls: corrugated tin, ridges every other pixel, lighter on the left like everything lit from there
+  paint(p, 2, 17, 44, 31, (x) => (x === 2 ? TIN.l : x === 45 ? TIN.d : x % 2 === 0 ? TIN.b : x < 24 ? TIN.l : TIN.d));
+  // a low roof with an overhang and its shadow on the wall
+  paint(p, 0, 13, 48, 4, (x, y) => (y === 13 ? (x < 2 || x > 45 ? null : '#6a6a78') : y === 14 ? '#4a4a56' : y === 15 ? '#3a3a44' : '#26262e'));
+  p.rect(0, 14, 48, 1, '#5a5a66').rect(2, 17, 44, 1, TIN.d2);
+  // a chequered band under the roof
+  paint(p, 2, 18, 44, 2, (x, y) => ((Math.floor(x / 2) + y) % 2 === 0 ? '#f2f2f2' : '#202024'));
+  // the rally stripe: red, white and blue, cut on a slant at the ends like it is going fast
+  paint(p, 2, 21, 44, 4, (x, y) => {
+    const k = x + (y - 21);
+    if (k < 5 || k > 46) return null;
+    return y <= 22 ? (y === 21 ? RALLY_RED.l : RALLY_RED.b) : y === 23 ? '#f2f2f2' : '#2f6fe0';
+  });
+  // the roll-up door, half up: slats above, the dark workshop below with a red car's nose in it
+  p.rect(12, 25, 24, 23, METAL.d2).rect(12, 25, 24, 1, METAL.d);
+  paint(p, 13, 26, 22, 12, (_, y) => ((y - 26) % 3 === 2 ? METAL.d : (y - 26) % 3 === 0 ? METAL.l2 : METAL.l));
+  p.rect(22, 37, 4, 1, '#3a3e4a').rect(13, 38, 22, 1, '#3a3e4a');
+  paint(p, 13, 39, 22, 9, (_, y) => (y < 41 ? '#141218' : '#1c1a22'));
+  // the car: bonnet, windscreen in shadow, headlights, grille, a white roundel, the tops of the front tyres
+  p.rect(16, 41, 16, 6, RALLY_RED.b).rect(16, 41, 16, 1, RALLY_RED.l).rect(16, 46, 16, 1, RALLY_RED.d);
+  p.rect(18, 39, 12, 2, '#2a2e44').px(19, 39, '#4a5070');
+  p.rect(17, 43, 3, 2, '#fff0a0').px(17, 43, '#ffffff').rect(28, 43, 3, 2, '#fff0a0').px(30, 43, '#ffffff');
+  p.rect(21, 44, 6, 2, '#2a1a1a').px(22, 44, '#5a3a3a').px(24, 44, '#5a3a3a');
+  p.rect(23, 41, 2, 2, '#f2f2f2').px(23, 41, '#ffffff');
+  p.rect(15, 47, 18, 1, '#5a606e').rect(14, 45, 2, 3, '#202024').rect(32, 45, 2, 3, '#202024');
+  // windows either side of the door
+  for (const wx of [4, 37]) {
+    p.rect(wx - 1, 27, 9, 8, METAL.d).rect(wx - 1, 27, 9, 1, METAL.b);
+    paint(p, wx, 28, 7, 6, (x, y) => {
+      if (x === wx + 3 || y === 31) return METAL.d;
+      const s = (x - wx + (33 - y)) % 7;
+      return s === 0 ? GLASS.l : y > 31 ? GLASS.d : GLASS.b;
+    });
+    p.rect(wx - 1, 35, 9, 1, METAL.l);
+  }
+  // a stack of tyres on the left, a red tool chest on the right
+  for (const ty of [37, 41]) p.ellipse(3, ty, 9, 5, '#26262c').rect(4, ty, 7, 1, '#4a4a56').ellipse(5, ty + 1, 5, 3, '#3a3a44').rect(6, ty + 2, 3, 1, '#18181c');
+  p.rect(3, 46, 9, 1, '#18181c');
+  p.rect(37, 39, 8, 8, RALLY_RED.b).rect(37, 39, 8, 1, RALLY_RED.l2).rect(37, 42, 8, 1, RALLY_RED.d).rect(37, 44, 8, 1, RALLY_RED.d);
+  p.rect(40, 40, 2, 1, '#e4e8ee').rect(40, 43, 2, 1, '#e4e8ee').rect(40, 45, 2, 1, '#e4e8ee').rect(37, 47, 8, 1, '#202024');
+  // the round wrench sign on two legs, a beacon either side taking turns to flash
+  p.rect(21, 11, 1, 3, METAL.d).rect(26, 11, 1, 3, METAL.d);
+  lump(p, 17, 0, 14, 12, GOLD, 0.6);
+  p.tpl(20, 2, ['......#.#', '......#.#', '.....####', '....###..', '...###...', '..###....', '####.....', '#.#......', '#.#......'], { '#': '#3a3e4a' });
+  p.px(25, 4, '#8a90a0').px(24, 5, '#8a90a0').px(23, 6, '#8a90a0');
+  for (const [bx, k] of [[5, 0], [40, 1]] as const) {
+    p.rect(bx, 12, 3, 1, '#3a3a44');
+    lump(p, bx, 9, 3, 3, (f + k) % 2 === 0 ? AMBER : AMBER_OFF, 0.4);
+  }
+  p.outline(OUTLINE);
+  // the lit beacon's glint, after the outline so it spills over the roof
+  const gx = f % 2 === 0 ? 6 : 41;
+  p.px(gx, 8, '#ffe08a').px(gx - 1, 10, '#ffd060').px(gx + 3, 10, '#ffd060');
+  return p;
+}
+
+// ---------------------------------------------------------------------------
 // The prize counter (48×26 at oy -10), the score board (32×36 at oy -20)
 // ---------------------------------------------------------------------------
 
@@ -870,6 +941,7 @@ export function arcadeIcons(): Record<string, Px> {
 export function drawArcade(set: SetArt): void {
   set('tv', n(2, tv), 0, -12, true);
   set('arcade_hall', n(2, arcadeHall), 0, -16, true);
+  set('rally_garage', n(2, rallyGarage), 0, -16, true);
   // frames 0..5: the machines in ARCADE_GAMES order (pick by variant); 6..11: the same with their screens a step on
   set('arcade_machine', n(12, (i) => machine(i % 6, Math.floor(i / 6))), 0, -18);
   set('prize_counter', [prizeCounter()], 0, -10);
