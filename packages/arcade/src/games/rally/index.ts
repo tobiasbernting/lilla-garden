@@ -1835,6 +1835,11 @@ const rally = (ctx: GameContext): GameInstance => {
       audio.resume();
     },
     destroy() {
+      // quit from the pause menu out in free roam: the coins found still go home to the garage
+      if (roam && !ended && meE && phase !== 'intro') {
+        ended = true;
+        opts?.onDone?.({ place: 0, n: 0, time: Math.round(raceT * 1000), damage: Math.round(meE.damage), coins: world?.taken ?? 0 });
+      }
       destroyed = true;
       loop?.stop();
       ro.disconnect();

@@ -124,10 +124,15 @@ export function mountCarPreview(root: HTMLElement, car: GarageCar, opts: CarPrev
   const target = new THREE.Vector3();
   let dist = 9;
 
+  /** False while the size is unknown: the garage window redraws around `root`, detaching it for a moment. */
+  let framed = false;
   const frame = (): void => {
     const r = root.getBoundingClientRect();
-    const w = Math.max(1, r.width);
-    const h = Math.max(1, r.height);
+    // detached (0×0): a 1×1 canvas would stay blank, as the observer sees no change once it is back
+    framed = r.width >= 1 && r.height >= 1;
+    if (!framed) return;
+    const w = r.width;
+    const h = r.height;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     // keep the whole car in view in narrow panels too
@@ -208,6 +213,7 @@ export function mountCarPreview(root: HTMLElement, car: GarageCar, opts: CarPrev
   let last = performance.now();
   const tick = (now: number): void => {
     raf = requestAnimationFrame(tick);
+    if (!framed) frame();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     if (!dragging) {

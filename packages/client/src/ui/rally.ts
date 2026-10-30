@@ -509,6 +509,8 @@ export class RallyUi {
   private buying: CarBody | null = null;
   private game: ArcadeHandle | null = null;
   private run: Run | null = null;
+  /** Free roam: the last list of other drivers (it can come before the game is listening). */
+  private roamPeers: RemoteRacer[] | null = null;
   private l = {
     snaps: new Set<Fn<[string, CarSnap[]]>>(),
     finish: new Set<Fn<[string, number]>>(),
@@ -600,8 +602,11 @@ export class RallyUi {
 
   private fromServer(m: RallyMsg): void {
     if (m.t === 'roam') {
-      if (m.ev === 'peers') this.l.roamPeers.forEach((f) => f(m.peers.filter((p) => p.id !== client.me)));
-      else if (m.ev === 'snap') {
+      if (m.ev === 'peers') {
+        const peers = m.peers.filter((p) => p.id !== client.me);
+        this.roamPeers = peers;
+        this.l.roamPeers.forEach((f) => f(peers));
+      } else if (m.ev === 'snap') {
         if (m.from !== client.me) this.l.roamSnap.forEach((f) => f(m.from, m.snap));
       } else this.l.left.forEach((f) => f(m.id));
       return;
@@ -685,7 +690,11 @@ export class RallyUi {
       onResult: (cb) => add(this.l.result, cb),
       onLeft: (cb) => add(this.l.left, cb),
       onRoamSnap: (cb) => add(this.l.roamSnap, cb),
-      onRoamPeers: (cb) => add(this.l.roamPeers, cb),
+      onRoamPeers: (cb) => {
+        // the answer to 'enter' usually comes while the game is still loading
+        if (this.roamPeers) cb(this.roamPeers);
+        return add(this.l.roamPeers, cb);
+      },
       sendRoamSnap: (snap) => {
         if (this.run) this.run.damage = snap.dm;
         this.send({ t: 'roam', a: 'snap', snap });
@@ -703,6 +712,7 @@ export class RallyUi {
     const back: Tab = mode === 'roam' ? 'roam' : 'race';
     this.close();
     for (const s of Object.values(this.l)) s.clear();
+    this.roamPeers = null;
     const run: Run = { mode, rules, room: room?.id, finished: false, reported: false, damage: car.damage };
     this.run = run;
     const options: RallyOptions = {
@@ -1257,7 +1267,7 @@ export class RallyUi {
     const bar = h(
       'div',
       { class: 'rl-go' },
-      lobby ? null : h('span', { class: 'rl-rec' }, S.raceOn),
+      room.phase === 'countdown' || room.phase === 'racing' ? h('span', { class: 'rl-rec' }, S.raceOn) : null,
       this.btn(S.leave, () => this.send({ t: 'race', a: 'leave' }), 'alt'),
       lobby && mine ? this.btn(mine.ready ? S.unreadyBtn : S.readyBtn, () => this.send({ t: 'race', a: 'ready', ready: !mine.ready }), mine.ready ? 'alt' : '') : null,
       host && lobby ? this.btn(S.startRace, () => this.send({ t: 'race', a: 'start' }), 'rl-start', !allReady, allReady ? undefined : S.waitAll) : null,
