@@ -7,6 +7,7 @@ import { net } from './net.js';
 import { GameScene, VIEW_H, VIEW_W } from './scenes/GameScene.js';
 import { bus, client, helpSeen, markHelpSeen, rememberPlayer } from './state.js';
 import { h } from './ui/dom.js';
+import { initGamepad } from './ui/gamepad.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { Picker } from './ui/picker.js';
@@ -52,6 +53,7 @@ hud.root.style.display = 'none';
 menus.onChange = (open) => {
   if (scene) scene.uiOpen = open;
 };
+initGamepad({ ui, target: () => scene, menus, hud });
 
 const status = h('div', { class: 'status', style: { display: 'none' } }, T.disconnected);
 ui.append(status);

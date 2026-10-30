@@ -67,6 +67,10 @@ Environment:
 
 - Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Esc` stänger.
 - Surfplatta: styrspak till vänster, stor handknapp till höger, tryck på en ruta bredvid dig.
+- Handkontroll (Xbox, PlayStation, Switch): vänster spak går, `A`/`X`/`RT` använder, `B`/`LT` springer, `LB`/`RB` eller
+  styrkorset vänster/höger väljer verktyg, `Y` ryggsäck, styrkorset upp emotes och ner minikarta, Start hjälp, Select bok.
+  I menyerna flyttar spaken/styrkorset markeringen, `A` trycker och `B` stänger.
+  Hur du kopplar ihop en Xbox-, PS5- eller Switch-kontroll med en Android-surfplatta, Mac eller PC står i hjälpen under 🕹️ Handkontroll.
 - `?` i hörnet öppnar hjälpen (visas automatiskt första gången på en enhet).
 
 ## Art
@@ -85,6 +89,8 @@ terrain and objects; swapping those in later only touches `art/world.ts`.
 - Surfplatta: styrspak till vänster, dra på skärmen för att titta, tryck på något för att använda verktyget på det,
   handknappen (håll in för att fortsätta) använder det du tittar på, annars rutan framför dig. ⤒ hoppar,
   🎥 byter kamera, 🖱️ inverterar upp/ner.
+- Handkontroll: som i 2D, men höger spak tittar, `A` hoppar, `X`/`RT` använder (håll in för att fortsätta) och
+  höger spak-klick (`R3`) byter kamera.
 
 #### Gräva och bygga (`WORLD_MODE=voxel`)
 

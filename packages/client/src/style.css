@@ -217,6 +217,12 @@ body {
   image-rendering: pixelated;
   pointer-events: none;
 }
+/* the controller's highlight in menus */
+.pad-focus {
+  outline: calc(2 * var(--u)) solid #fff;
+  outline-offset: var(--u);
+  box-shadow: 0 0 0 calc(3 * var(--u)) var(--ink);
+}
 .slot.selected {
   background: #fff6c8;
   border-color: var(--gold);

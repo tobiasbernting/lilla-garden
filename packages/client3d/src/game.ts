@@ -189,8 +189,9 @@ export class World3D implements HudTarget {
       return false;
     }
   })();
-  /** The use button (mouse or touch) is held down. */
+  /** The use button (mouse, touch or controller) is held down. */
   private holding = false;
+  private padActive = false;
   private nextUse = 0;
   private lastUse = { key: '', at: 0 };
 
@@ -384,7 +385,14 @@ export class World3D implements HudTarget {
   }
 
   private updateLockHint(): void {
-    this.lockHint.style.display = !this.touch && !this.locked && !this.uiOpen && this.world ? 'flex' : 'none';
+    this.lockHint.style.display = !this.touch && !this.padActive && !this.locked && !this.uiOpen && this.world ? 'flex' : 'none';
+  }
+
+  /** Playing with a controller: no need to capture the mouse. */
+  setPadActive(on: boolean): void {
+    if (this.padActive === on) return;
+    this.padActive = on;
+    this.updateLockHint();
   }
 
   setUiOpen(open: boolean): void {
@@ -402,7 +410,7 @@ export class World3D implements HudTarget {
     }
   }
 
-  private look(dYaw: number, dPitch: number): void {
+  look(dYaw: number, dPitch: number): void {
     if (this.invertY) dPitch = -dPitch;
     this.yaw += dYaw;
     this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch + dPitch));

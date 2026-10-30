@@ -5,6 +5,7 @@ import './style.css';
 import { net } from '@v1/net.ts';
 import { bus, client, helpSeen, markHelpSeen, myPlayer, rememberPlayer } from '@v1/state.ts';
 import { h, onTap } from '@v1/ui/dom.ts';
+import { initGamepad } from '@v1/ui/gamepad.ts';
 import { Hud } from '@v1/ui/hud.ts';
 import { Menus } from '@v1/ui/menus.ts';
 import { Picker } from '@v1/ui/picker.ts';
@@ -64,6 +65,7 @@ jumpBtn.addEventListener('pointerdown', (e) => {
   view?.jump();
 });
 hud.root.append(jumpBtn);
+initGamepad({ ui, target: () => view, menus, hud });
 
 const status = h('div', { class: 'status', style: { display: 'none' } }, T.disconnected);
 ui.append(status);
