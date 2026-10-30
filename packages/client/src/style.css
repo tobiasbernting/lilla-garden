@@ -543,8 +543,9 @@ input[type='text'] {
   gap: var(--u);
 }
 .portrait {
+  /* a character is 16×32 virtual pixels: the figure and room over it for a tall hat */
   width: calc(32 * var(--u));
-  height: calc(48 * var(--u));
+  height: calc(64 * var(--u));
   image-rendering: pixelated;
 }
 
@@ -988,4 +989,244 @@ body:not(.touch) .run-btn {
   font-size: calc(8 * var(--u));
   color: #fff;
   text-shadow: 0 calc(1 * var(--u)) 0 var(--ink), 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.5);
+}
+
+/* the rocket to the moon */
+.ride.rocket {
+  background: #05061a;
+}
+.ride.rocket .ride-sky {
+  inset: 0;
+  background:
+    radial-gradient(1px 1px at 12% 22%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 32% 12%, #fff 60%, transparent),
+    radial-gradient(2px 2px at 58% 30%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 77% 16%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 88% 40%, #fff 60%, transparent),
+    radial-gradient(2px 2px at 22% 48%, #fff 60%, transparent),
+    radial-gradient(1px 1px at 46% 60%, #cfe0ff 60%, transparent),
+    linear-gradient(#03041a, #142060 70%, #3a5aa0);
+  animation: rocket-sky 3s ease-in forwards;
+}
+@keyframes rocket-sky {
+  from {
+    filter: brightness(1.4);
+  }
+  to {
+    filter: brightness(0.7);
+  }
+}
+.ride.rocket .ride-ground {
+  height: 16%;
+  background: linear-gradient(#d8c690 0 40%, #9a9aa4 40% 100%);
+  animation: rocket-ground 2.6s ease-in forwards;
+}
+@keyframes rocket-ground {
+  0%,
+  30% {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(120%);
+  }
+}
+.ride-rocket {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  height: calc(44 * var(--u));
+  image-rendering: pixelated;
+  transform: translateX(-50%);
+  animation: rocket-up 2.8s cubic-bezier(0.55, 0, 0.9, 0.5) forwards, rocket-shake 0.07s linear infinite alternate;
+}
+@keyframes rocket-up {
+  0%,
+  25% {
+    bottom: 14%;
+  }
+  to {
+    bottom: 140%;
+  }
+}
+@keyframes rocket-shake {
+  from {
+    margin-left: calc(-0.4 * var(--u));
+  }
+  to {
+    margin-left: calc(0.4 * var(--u));
+  }
+}
+.ride.rocket .ride-text {
+  top: 30%;
+}
+
+/* ---- 2D game: chat, pet buttons, weather chip, villager conversations ---- */
+.social {
+  position: absolute;
+  left: calc(2 * var(--u));
+  bottom: calc(3 * var(--u));
+  display: flex;
+  gap: calc(1.5 * var(--u));
+}
+.round.pet-btn {
+  position: relative;
+}
+.round.pet-btn i {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-style: normal;
+  font-weight: 800;
+  font-size: calc(2.6 * var(--u));
+  color: #fff;
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+  white-space: nowrap;
+  display: none;
+}
+body.touch .round.pet-btn i {
+  display: block;
+}
+.chat-log {
+  position: absolute;
+  left: calc(2 * var(--u));
+  bottom: calc(16 * var(--u));
+  width: calc(78 * var(--u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.5 * var(--u));
+  pointer-events: none !important;
+}
+.chat-log.open {
+  width: calc(150 * var(--u));
+}
+.chat-line {
+  background: rgba(43, 36, 25, 0.72);
+  color: #fff;
+  border-radius: calc(2 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
+  font-size: calc(3.6 * var(--u));
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  transition: opacity 0.6s;
+}
+.chat-line b {
+  color: #ffd98a;
+}
+.chat-line.mine b {
+  color: #b8f08a;
+}
+.chat-line.gone {
+  opacity: 0;
+  display: none;
+}
+.chat-box {
+  position: absolute;
+  left: 50%;
+  top: calc(16 * var(--u));
+  transform: translateX(-50%);
+  width: calc(200 * var(--u));
+  background: var(--panel);
+  border: var(--u) solid var(--ink);
+  border-radius: calc(3 * var(--u));
+  box-shadow: 0 var(--u) 0 var(--ink);
+  padding: calc(2 * var(--u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.5 * var(--u));
+}
+.chat-phrases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--u);
+}
+.chat-phrases button {
+  font-size: calc(3.8 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(2 * var(--u));
+}
+.chat-row {
+  display: flex;
+  gap: calc(1.5 * var(--u));
+  align-items: center;
+}
+.chat-row input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.label.bubble.chat {
+  font-size: calc(4 * var(--u));
+  max-width: calc(70 * var(--u));
+}
+.talk-said {
+  font-size: calc(4 * var(--u));
+  font-style: italic;
+  color: #6a5a40;
+  margin: 0 0 var(--u) calc(30 * var(--u));
+}
+.talk-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(1.5 * var(--u));
+}
+.talk-opts button {
+  text-align: left;
+  font-size: calc(4.2 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2.5 * var(--u));
+}
+.talk-opts button.bye {
+  background: var(--panel-dark);
+  color: var(--ink);
+}
+.npc-actions {
+  display: flex;
+  gap: calc(1.5 * var(--u));
+  margin-bottom: calc(2 * var(--u));
+}
+.talk {
+  width: calc(230 * var(--u));
+  max-width: 100%;
+}
+
+/* Spelhallen's score board: one card per game */
+.scoreboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--u) * 52), 1fr));
+  gap: calc(var(--u) * 3);
+}
+.scoreboard .game {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: calc(var(--u) * 3);
+  padding: calc(var(--u) * 2) calc(var(--u) * 3);
+}
+.scoreboard h3 {
+  margin: 0 0 calc(var(--u) * 1);
+  font-size: calc(var(--u) * 4.5);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+.scoreboard ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.scoreboard li {
+  display: flex;
+  gap: calc(var(--u) * 2);
+  padding: calc(var(--u) * 0.5) calc(var(--u) * 1);
+  border-radius: calc(var(--u) * 1.5);
+}
+.scoreboard li.me {
+  background: rgba(255, 210, 63, 0.25);
+}
+.scoreboard li.none {
+  opacity: 0.7;
+  font-style: italic;
+}
+.scoreboard .who {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

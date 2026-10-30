@@ -1,6 +1,20 @@
 // The running game: world state, connected clients, tick + broadcast loops.
 import {
+  CHAT_COOLDOWN_MS,
+  CHAT_HISTORY,
   DAY_LENGTH_MS,
+  callPets,
+  castSpell,
+  chooseClass,
+  drinkPotion,
+  isSagaKey,
+  jumpTo,
+  rejoinSaga,
+  sagaChapter,
+  sagaQuestAct,
+  sagaSnapshot,
+  cleanChat,
+  setWeather,
   MAX_PLAYERS,
   NPCS,
   TICK_HZ,
@@ -9,8 +23,6 @@ import {
   buy,
   completeQuest,
   cook,
-  digBlock,
-  placeBlock,
   craft,
   createPlayer,
   dropItem,
@@ -26,6 +38,8 @@ import {
   newDay,
   npcState,
   performAction,
+  arcadeScore,
+  buyPrize,
   seasonForDate,
   selectSlot,
   sell,
@@ -45,6 +59,7 @@ import {
   type PlayerSummary,
   type Season,
   type ServerMsg,
+  type WeatherKind,
   type SimCtx,
   type WorldState,
 } from '../../shared/src/index.ts';
@@ -77,6 +92,9 @@ export class Game {
   private timers: NodeJS.Timeout[] = [];
   private lastTick = Date.now();
   private flushCounter = 0;
+  /** Recent chat lines for players who come online (not saved). */
+  private chatLog: Extract<Change, { t: 'chat' }>[] = [];
+  private lastChat = new Map<string, number>();
   tickCount = 0;
 
   constructor(
@@ -138,7 +156,6 @@ export class Game {
       const snap: PlayerSnap = { id: p.id, x: p.x, y: p.y, facing: p.facing, moving: p.moving, held: p.inventory[p.selected]?.item ?? null };
       if (p.emote) snap.emote = p.emote;
       if (p.area !== 'farm') snap.area = p.area;
-      if (p.z !== undefined) snap.z = p.z;
       players.push(snap);
     }
     const animals: AnimalSnap[] = Object.values(this.world.animals).map((a) => ({ id: a.id, x: a.x, y: a.y, facing: a.facing, moving: a.moving }));
@@ -156,7 +173,11 @@ export class Game {
       const st = npcState(w, n.id);
       npcs.push({ id: n.id, x: st.x, y: st.y, facing: st.facing, moving: st.moving, ...(k !== 'farm' ? { area: k } : {}) });
     }
-    this.broadcast({ t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() });
+    const msg: ServerMsg = { t: 'state', timeMs: this.world.timeMs, day: this.world.day, season: this.season(), players, animals, npcs, now: Date.now() };
+    if (this.world.weather) msg.weather = this.world.weather;
+    const saga = sagaSnapshot(this.world, Date.now());
+    if (saga) msg.saga = saga;
+    this.broadcast(msg);
   }
 
   async flush(): Promise<void> {
@@ -229,6 +250,13 @@ export class Game {
     this.broadcastState();
   }
 
+  /** Admin: change the weather now (it lasts its usual time, then the random pattern goes on). */
+  setWeather(kind: WeatherKind): void {
+    this.pending.push(...setWeather(this.world, kind, this.ctx(), true));
+    this.dispatchPending();
+    this.broadcastState();
+  }
+
   skipDay(): void {
     const changes = newDay(this.world, this.ctx());
     this.pending.push(...changes);
@@ -285,7 +313,9 @@ export class Game {
         }
       }
       client.playerId = msg.playerId;
-      client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount });
+      const biomes: Record<string, string> = {};
+      for (const [k, a] of Object.entries(this.world.areas ?? {})) if (k.startsWith('a:') && a.biome) biomes[k] = a.biome;
+      client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount, biomes });
       if (p.area === 'dungeon') {
         // back in the cave after a dropped connection (the cave may have been cleared meanwhile)
         const d = this.world.dungeon;
@@ -293,6 +323,9 @@ export class Game {
           d.players[p.id] = p;
           client.link.send({ t: 'changes', changes: [{ t: 'areaData', to: p.id, key: 'dungeon', world: d }] });
         } else this.pending.push(...leaveCave(this.world, p.id, false));
+      } else if (isSagaKey(p.area)) {
+        // back in a dungeon: up at its last rest stone (it may have started over meanwhile)
+        this.pending.push(...rejoinSaga(this.world, p.id));
       } else if (p.area !== 'farm') {
         const area = getArea(this.world, p.area);
         if (area) {
@@ -302,6 +335,7 @@ export class Game {
       }
       this.pending.push(...setOnline(this.world, p.id, true));
       this.dispatchPending();
+      if (this.chatLog.length) client.link.send({ t: 'changes', changes: this.chatLog.map((c) => ({ ...c, old: true })) });
       return;
     }
     const pid = client.playerId;
@@ -313,14 +347,8 @@ export class Game {
     let changes: Change[] = [];
     switch (msg.t) {
       case 'move':
-        applyMove(w, pid, msg.x, msg.y, msg.facing, msg.moving, msg.z);
+        applyMove(w, pid, msg.x, msg.y, msg.facing, msg.moving);
         return;
-      case 'dig':
-        changes = tagArea(digBlock(w, pid, Math.floor(msg.x), Math.floor(msg.y), Math.floor(msg.h), this.ctx()), areaK);
-        break;
-      case 'place':
-        changes = tagArea(placeBlock(w, pid, Math.floor(msg.x), Math.floor(msg.y), Math.floor(msg.h)), areaK);
-        break;
       case 'act':
         changes = tagArea(performAction(w, pid, Math.floor(msg.tx), Math.floor(msg.ty), this.ctx()), areaK);
         break;
@@ -370,9 +398,43 @@ export class Game {
       case 'paint':
         changes = paint(w, pid, String(msg.pixels ?? ''));
         break;
+      case 'arcade':
+        changes = arcadeScore(this.world, pid, String(msg.game ?? ''), Number(msg.score), this.ctx());
+        break;
+      case 'prize':
+        changes = buyPrize(this.world, pid, String(msg.item ?? ''));
+        break;
       case 'quest':
         changes = completeQuest(w, pid, String(msg.id ?? ''));
         break;
+      case 'pets':
+        changes = callPets(this.world, pid, msg.cmd, this.ctx());
+        break;
+      case 'cast':
+        changes = castSpell(this.world, pid, String(msg.spell ?? ''), typeof msg.target === 'number' || typeof msg.target === 'string' ? msg.target : undefined, this.ctx());
+        break;
+      case 'potion':
+        changes = drinkPotion(this.world, pid, this.ctx());
+        break;
+      case 'saga':
+        if (msg.a === 'class') changes = chooseClass(this.world, pid, String(msg.cls ?? ''));
+        else if (msg.a === 'chapter') changes = sagaChapter(this.world, pid);
+        else if (msg.a === 'quest') changes = sagaQuestAct(this.world, pid, String(msg.id ?? ''));
+        break;
+      case 'jump':
+        changes = jumpTo(this.world, pid, String(msg.to ?? ''));
+        break;
+      case 'chat': {
+        const text = cleanChat(msg.text);
+        const now = Date.now();
+        if (!text || now - (this.lastChat.get(pid) ?? 0) < CHAT_COOLDOWN_MS) return;
+        this.lastChat.set(pid, now);
+        const line: Extract<Change, { t: 'chat' }> = { t: 'chat', from: pid, name: me.name, text, at: now };
+        this.chatLog.push(line);
+        if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
+        changes = [line];
+        break;
+      }
     }
     if (changes.length) {
       this.pending.push(...changes);

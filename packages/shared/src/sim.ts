@@ -1,22 +1,32 @@
 // Authoritative world simulation. Pure functions over WorldState; no I/O.
 // The server runs this; the client reuses movement for prediction.
 
-import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
+import { ACHIEVEMENTS, ANIMALS, COOKING, CROPS, FISH, ITEMS, LOOT, LOOT_REFILL_DAYS, NPCS, RECIPES, TREASURE, item, objectDef } from './data.ts';
 import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dungeon.ts';
-import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
+import { BIOME_EMOJI, BIOME_NAMES, DISCOVERABLE, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, isBiome, placeName, spawnWildAnimals } from './biomes.ts';
+import { caveKey, entranceFront, generateCave, isCaveKey, isUnderground, parseCaveKey, regrow, themeOfEntrance } from './caves.ts';
+import { MOON_KEY, MOON_ROCKET, SPACEPORT_KEY, BASE_ROCKET, generateMoon, isMoonKey, rocketFront } from './space.ts';
+import { landmarkFronts, reachableFrom } from './worldgen.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
+import { ARCADE, ARCADE_GAMES, ARCADE_MAX_SCORE, MAX_TICKETS_PER_DAY, MIN_GAME_MS, PRIZES, SPARE_CART_TICKETS, isArcadeGame, ticketsFor } from './arcade.ts';
+import { INDOOR_EXIT, familyBest, familyGames, generateHall, hallDoorTile, hallKey, isHallKey, isIndoorKey, villageOfHall } from './hall.ts';
 import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
+import { DUNGEONS, VOLVA_ID, dungeonOfKey, isSagaKey, sagaItem } from './saga.ts';
+import { generateSaga } from './sagamap.ts';
+import { enterSaga, ensureSagaPlaces, idleSaga, isSagaMob, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
-import { mulberry32, randInt } from './rng.ts';
+import { randInt } from './rng.ts';
 import { PAINTED_SELL, isValidPainting } from './paint.ts';
 import { WALL_KINDS, findRooms, type Room } from './rooms.ts';
 import { ACHIEVEMENT_TEXT, DEFAULT_ANIMAL_NAMES, QUEST_TEXTS, SPECIES_NAMES, T, fmt, itemName, objectName } from './sv.ts';
 import type { Change, SlotRef } from './protocol.ts';
-import { DIG_REACH, EYE_HEIGHT, PLAYER_HEIGHT, VB, VH, initVoxel, thinForest, voxelMode, blockAt, blockTerrain, bodyFree, cellBlock, columnTop, setBlock, standHeight, steepTile, type VoxelBlock } from './voxel.ts';
+import { tickWeather } from './weather.ts';
+import { WALL_TERRAIN, isFishWater } from './types.ts';
 import type {
   AnimalState,
   Appearance,
+  ArcadeState,
   ClothingSlot,
   CropState,
   DropState,
@@ -118,11 +128,16 @@ export const isPetAnimal = (a: AnimalState): boolean => {
   return !!def && (!!def.pet || (!!def.wild && !!a.owner));
 };
 
+/** Animals that listen to their owner's "stay" and whistle: pets and the owner's horses. */
+export const isCallable = (a: AnimalState): boolean => !!a.owner && !isVehicle(a) && (isPetAnimal(a) || isMount(a));
+/** Horses, and Sleipner and Gullinbursti from the dungeons. */
+export const isMount = (a: AnimalState): boolean => a.species === 'horse' || !!ANIMALS[a.species]?.mount;
+
 /** Cars, mopeds (and city traffic): parked where they stand, driven like a horse. */
 
 /** Maps you may drive or ride in: any overworld map, not the cave, the bath house or indoors. */
 const canRideIn = (world: WorldState, tx: number, ty: number): boolean =>
-  world.area !== 'dungeon' && !isBathKey(world.area) && !(isFarm(world) && inInterior(tx, ty));
+  !isUnderground(world.area) && !isIndoorKey(world.area) && !isSagaKey(world.area) && !(isFarm(world) && inInterior(tx, ty));
 
 /** Speed multiplier while riding or driving: horses are steady, vehicles love roads and hate mud. */
 export function rideSpeedMul(world: WorldState, p: { x: number; y: number; riding?: number }): number {
@@ -130,7 +145,7 @@ export function rideSpeedMul(world: WorldState, p: { x: number; y: number; ridin
   const a = world.animals[p.riding];
   if (!a) return 1;
   const v = ANIMALS[a.species]?.vehicle;
-  if (!v) return RIDE_SPEED_MUL;
+  if (!v) return ANIMALS[a.species]?.mount?.speed ?? RIDE_SPEED_MUL;
   const t = world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] as string | undefined;
   const ground = t === 'road' || t === 'crossing' ? 1.3 : t === 'soil' || t === 'soil_wet' || t === 'sand' || t === 'gravel' ? 0.7 : 1;
   return (v.ride ?? RIDE_SPEED_MUL) * ground;
@@ -138,7 +153,7 @@ export function rideSpeedMul(world: WorldState, p: { x: number; y: number; ridin
 
 export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
-  if (world.terrain[tileIndex(tx, ty)] === 'water') return true;
+  if (WALL_TERRAIN.has(world.terrain[tileIndex(tx, ty)]!)) return true;
   if (npcAt(world, tx, ty)) return true;
   if (vehicleBlocks(world, tx, ty)) return true;
   if (world.area === 'dungeon') {
@@ -161,11 +176,10 @@ export function applyPortal(p: { x: number; y: number; facing: Facing }, world?:
 
 export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boolean {
   if (!inBounds(tx, ty)) return true;
-  const t = world.terrain[tileIndex(tx, ty)];
-  if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields (and out of the pool)
+  const t = world.terrain[tileIndex(tx, ty)]!;
+  if (WALL_TERRAIN.has(t) || t === 'pool' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields (and out of the pool)
   if (world.crops[key(tx, ty)]) return true;
   if (npcAt(world, tx, ty) || portalAt(tx, ty)) return true;
-  if (steepTile(world, tx, ty)) return true; // 3D game: no climbing cliffs or falling into holes
   const obj = objectAt(world, tx, ty);
   if (!obj) return false;
   const def = objectDef(obj.kind);
@@ -304,9 +318,9 @@ export function createPlayer(world: WorldState, name: string, appearance: Appear
 
 export const heldItem = (p: PlayerState): ItemStack | null => p.inventory[p.selected] ?? null;
 
-const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
-const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
-const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash' | 'honk'): Change => ({
+export const toast = (to: string | null, text: string): Change => ({ t: 'toast', to, text });
+export const playerChange = (p: PlayerState): Change => ({ t: 'player', id: p.id, player: p });
+export const fx = (tx: number, ty: number, kind: 'heart' | 'sparkle' | 'water' | 'chop' | 'poof' | 'coin' | 'hit' | 'boom' | 'splash' | 'honk'): Change => ({
   t: 'fx',
   x: tx * TILE + TILE / 2,
   y: ty * TILE + TILE / 2,
@@ -457,8 +471,6 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   const ptx = tileOf(p.x);
   const pty = tileOf(p.y);
   if (Math.abs(tx - ptx) > REACH || Math.abs(ty - pty) > REACH) return out;
-  // 3D game: the ground of a tile far above or below you (from a tunnel, up on a cliff) is out of reach
-  if (world.voxel && p.z !== undefined && Math.abs(columnTop(world, tx, ty) - p.z) > 2.5) return out;
   if (p.riding !== undefined) {
     dismount(world, p, out);
     return out;
@@ -467,9 +479,16 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     wakeUp(p, out, true);
     return out;
   }
+  if (isSagaKey(world.area)) return sagaAct(world, p, tx, ty, ctx);
   const held = heldItem(p);
   const heldDef = held ? item(held.item) : null;
   const tool = heldDef?.tool;
+
+  // 0'. A pet or mount from the dungeons: out of the bag and by your side
+  if (held && (sagaItem(held.item)?.kind === 'pet' || sagaItem(held.item)?.kind === 'mount') && !objectAt(world, tx, ty) && !animalAt(world, tx, ty)) {
+    summonFromBag(world, p, held.item, out);
+    return out;
+  }
 
   // 0. Bazooka: works everywhere, fires straight ahead
   if (tool === 'bazooka') {
@@ -543,14 +562,14 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
   // 0b. Villager / fishing
   const npc = npcAt(world, tx, ty);
   if (npc) {
-    out.push({ t: 'open', to: p.id, ui: 'npc', npc: npc.id });
+    out.push({ t: 'open', to: p.id, ui: npc.id === VOLVA_ID ? 'saga' : 'npc', npc: npc.id });
     return out;
   }
   if (p.fishing) {
     fishingAct(world, p, ctx, out);
     return out;
   }
-  if (tool === 'rod' && world.terrain[tileIndex(tx, ty)] === 'water') {
+  if (tool === 'rod' && isFishWater(world.terrain[tileIndex(tx, ty)])) {
     const wait = 1500 + ctx.rnd() * 3500;
     p.fishing = { x: tx, y: ty, biteAt: ctx.now + wait, bite: false, until: 0 };
     p.emote = { id: 'fiske', until: ctx.now + wait + 2000 };
@@ -595,7 +614,11 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
       return out;
     }
     if (def.interact) {
-      interactObject(world, p, obj, held, out);
+      interactObject(world, p, obj, held, ctx, out);
+      return out;
+    }
+    if (obj.kind === 'dig_spot') {
+      out.push(toast(p.id, T.needHoeToDig));
       return out;
     }
     if (def.flat && tool === 'hoe' && def.breakWith) {
@@ -689,7 +712,7 @@ function actOnAnimal(world: WorldState, p: PlayerState, a: AnimalState, held: It
     out.push(fx(atx, aty, 'heart'), toast(p.id, fmt(T.wildPetted, { name })), { t: 'animal', id: a.id, animal: a }, playerChange(p));
     return;
   }
-  if (a.species === 'horse' && a.petted && a.named) {
+  if (isMount(a) && a.petted && a.named) {
     mount(world, p, a, out);
     return;
   }
@@ -719,12 +742,14 @@ function mount(world: WorldState, p: PlayerState, a: AnimalState, out: Change[])
     return;
   }
   const vehicle = isVehicle(a);
-  if (vehicle ? !canRideIn(world, tileOf(p.x), tileOf(p.y)) : !isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
+  const anywhere = vehicle || !!ANIMALS[a.species]?.mount;
+  if (anywhere ? !canRideIn(world, tileOf(p.x), tileOf(p.y)) : !isFarm(world) || inInterior(tileOf(p.x), tileOf(p.y))) {
     out.push(toast(p.id, T.notNow));
     return;
   }
   p.riding = a.id;
   delete p.fishing;
+  delete a.stay;
   a.x = p.x;
   a.y = p.y;
   a.facing = p.facing;
@@ -766,6 +791,70 @@ export function honk(world: WorldState, playerId: string): Change[] {
   return [fx(tileOf(p.x), tileOf(p.y), 'honk')];
 }
 
+/** "Ann, Bo och Cecilia" */
+const joinNames = (names: string[]): string => (names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} ${T.and} ${names[names.length - 1]}`);
+
+/**
+ * 2D game: tell your pets and horses to stay where they are, or whistle so they come back and follow you.
+ * Only the animals on your map can hear "stay"; a whistle reaches pets left on any map (not in the cave).
+ */
+export function callPets(world: WorldState, playerId: string, cmd: 'stay' | 'come', ctx: SimCtx): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || (cmd !== 'stay' && cmd !== 'come')) return [];
+  const out: Change[] = [];
+  if (cmd === 'come') p.emote = { id: 'vissla', until: ctx.now + EMOTE_MS };
+  if (p.area === 'dungeon') {
+    out.push(toast(p.id, cmd === 'come' ? T.petsCantHear : T.noPetsHere));
+    return out;
+  }
+  const here = areaOf(farm, p);
+  const hereKey = p.area ?? 'farm';
+  const near: string[] = [];
+  const waiting: string[] = [];
+  const maps = [farm, ...Object.values(farm.areas ?? {})];
+  for (const m of maps) {
+    const mk = m.area ?? 'farm';
+    for (const a of Object.values(m.animals)) {
+      if (a.owner !== p.id || !isCallable(a) || riderOf(m, a)) continue;
+      const tag = (c: Change): Change => {
+        if (mk !== 'farm' && (c.t === 'animal' || c.t === 'fx')) c.area = mk;
+        return c;
+      };
+      const name = animalDisplayName(a);
+      if (cmd === 'stay') {
+        if (mk !== hereKey) continue;
+        a.stay = { x: a.x, y: a.y };
+        delete a.follow;
+        delete a.tx;
+        delete a.ty;
+        a.moving = false;
+        a.waitMs = 2000;
+        near.push(name);
+        out.push(tag({ t: 'animal', id: a.id, animal: a }), tag(fx(tileOf(a.x), tileOf(a.y), 'heart')));
+        continue;
+      }
+      delete a.stay;
+      if (a.species === 'horse') {
+        // horses stay on the farm: one whistled for elsewhere waits there and follows you once you are home
+        a.follow = true;
+        out.push(tag({ t: 'animal', id: a.id, animal: a }));
+        if (mk === hereKey) near.push(name);
+        else waiting.push(name);
+        continue;
+      }
+      if (mk !== hereKey) moveAnimalAlong(m, here, hereKey, a, p, out);
+      else out.push(tag({ t: 'animal', id: a.id, animal: a }));
+      near.push(name);
+    }
+  }
+  if (near.length) out.push(toast(p.id, fmt(cmd === 'stay' ? T.petsStay : T.petsCome, { names: joinNames(near) })));
+  if (waiting.length) out.push(toast(p.id, fmt(T.horseWaitsHome, { names: joinNames(waiting) })));
+  if (!near.length && !waiting.length) out.push(toast(p.id, cmd === 'stay' ? T.noPetsHere : T.noPets));
+  out.push(playerChange(p));
+  return out;
+}
+
 const DIR_VEC: Record<Facing, { dx: number; dy: number }> = { up: { dx: 0, dy: -1 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 } };
 
 /** Ridden horses sit under their rider; riders that vanished free their horse. */
@@ -796,7 +885,7 @@ function tickRiding(world: WorldState, out: Change[]): void {
   }
 }
 
-function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, held: ItemStack | null, out: Change[]): void {
+function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, held: ItemStack | null, ctx: SimCtx, out: Change[]): void {
   const def = objectDef(obj.kind);
   switch (def.interact) {
     case 'chest':
@@ -817,6 +906,23 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
     case 'bath':
       out.push(...enterBath(world, p.id));
       return;
+    case 'hall':
+      out.push(...enterHall(world, p.id));
+      return;
+    case 'saga':
+      out.push(...enterSaga(world, p, obj));
+      return;
+    case 'sagaclass':
+      out.push({ t: 'open', to: p.id, ui: 'sagaClass', id: obj.id });
+      return;
+    case 'tv':
+    case 'machine':
+      openArcade(p, obj, ctx, out);
+      return;
+    case 'prizes':
+    case 'scores':
+      out.push({ t: 'open', to: p.id, ui: def.interact });
+      return;
     case 'sleep':
       goToSleep(world, p, out);
       return;
@@ -826,8 +932,22 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
       return;
     case 'exit':
       if (isBathKey(world.area)) out.push(...leaveBath(world, p.id));
+      else if (isHallKey(world.area)) out.push(...leaveHall(world, p.id));
+      else if (isCaveKey(world.area)) out.push(...leaveGrotto(world, p.id));
       return;
     case 'treasure':
+      return;
+    case 'grotto':
+      out.push(...enterGrotto(world, p.id, obj));
+      return;
+    case 'loot':
+      openLootChest(world, p, obj, ctx, out);
+      return;
+    case 'fairy':
+      danceInRing(world, p, obj, ctx, out);
+      return;
+    case 'rocket':
+      out.push(...flyRocket(world, p.id));
       return;
     case 'water':
       if (held && item(held.item).tool === 'can') {
@@ -864,6 +984,17 @@ function breakObject(world: WorldState, p: PlayerState, obj: WorldObject, ctx: S
     if (obj.data !== undefined && d.item === obj.kind) giveStack(world, p, { item: d.item, count: 1, data: obj.data }, out);
     else giveItems(world, p, d.item, randInt(ctx.rnd, d.min, d.max), out);
   }
+  if (def.loot) {
+    // buried treasure and fossils: what you find depends on where you are
+    const table = def.loot === 'dig' && LOOT[`dig_${world.biome}`] ? `dig_${world.biome}` : def.loot;
+    const got = grantLoot(world, p, table, ctx, out);
+    if (obj.kind === 'dig_spot') {
+      bump(p, 'dig', 1, out);
+      out.push(fx(obj.x, obj.y, 'coin'), toast(p.id, got.length ? fmt(T.dugUp, { loot: got.join(' + ') }) : T.dugNothing));
+    } else if (got.length) out.push(fx(obj.x, obj.y, 'sparkle'), toast(p.id, fmt(T.lootOpened, { loot: got.join(' + ') })));
+    else if (obj.kind === 'fossil_rock') out.push(toast(p.id, T.noFossil));
+  }
+  if (obj.kind === 'wisp') out.push(fx(obj.x, obj.y, 'sparkle'), toast(p.id, T.wispCaught));
   if (obj.kind.startsWith('tree')) bump(p, 'chop', 1, out);
   if (def.breakWith === 'pick') bump(p, 'mine', 1, out);
   if (obj.kind === 'tree' || obj.kind === 'tree_pine' || obj.kind === 'tree_apple') {
@@ -954,7 +1085,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
       }
       return;
     case 'can':
-      if (terrain === 'water') {
+      if (isFishWater(terrain)) {
         held.charges = WATERING_CAN_CHARGES;
         out.push(fx(tx, ty, 'water'), toast(p.id, T.filledCan), playerChange(p));
       } else if (terrain === 'soil') {
@@ -1000,7 +1131,7 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
   }
   if (def.category === 'placeable' && def.places) {
     const floor = FLOOR_ITEMS[def.places];
-    if (terrain === 'pool') {
+    if (terrain === 'pool' || (WALL_TERRAIN.has(terrain) && terrain !== 'water')) {
       out.push(toast(p.id, T.cantPlaceHere));
       return;
     }
@@ -1026,8 +1157,8 @@ function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number,
     if (odef.interact === 'chest') extra.items = makeInventory(CHEST_SIZE);
     if (odef.interact === 'feed') extra.items = makeInventory(1);
     if (held.data !== undefined) extra.data = held.data;
-    // 2D game: remember which tiles were indoors, to tell when this piece closes a new room
-    const indoorsBefore = WALL_KINDS.has(def.places) && !voxelMode() ? new Set(findRooms(world).flatMap((r) => r.tiles)) : null;
+    // remember which tiles were indoors, to tell when this piece closes a new room
+    const indoorsBefore = WALL_KINDS.has(def.places) ? new Set(findRooms(world).flatMap((r) => r.tiles)) : null;
     const obj = addObject(world, def.places, tx, ty, extra);
     if (!obj) {
       out.push(toast(p.id, T.cantPlaceHere));
@@ -1284,13 +1415,10 @@ export function setOnline(world: WorldState, playerId: string, online: boolean):
   return [playerChange(p)];
 }
 
-export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean, z?: number): void {
+export function applyMove(world: WorldState, playerId: string, x: number, y: number, facing: Facing, moving: boolean): void {
   const p = world.players[playerId];
   if (!p || !Number.isFinite(x) || !Number.isFinite(y) || p.sleeping) return;
-  if (world.voxel) {
-    applyMoveVoxel(world, p, x, y, z, facing, moving);
-    return;
-  }
+  if (isSagaKey(world.area) && sagaRooted(world, p)) return;
   if (p.moveLock && p.moveLock > 0) {
     // just arrived on another map: the client's old positions are meaningless; accept only nearby ones
     if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
@@ -1327,180 +1455,6 @@ export function applyMove(world: WorldState, playerId: string, x: number, y: num
       a.waitMs = 1500;
     }
   }
-}
-
-/**
- * 3D game: the tile rules (water, trees, houses, fences, villagers…) apply to a body standing at about
- * the height of that tile's ground, not to someone in a tunnel below or up on a pillar above.
- */
-export function blockedByTiles(world: WorldState, px: number, py: number, z: number): boolean {
-  const hw = PLAYER_HALF_W;
-  const hh = PLAYER_HALF_H;
-  for (let ty = tileOf(py - hh); ty <= tileOf(py + hh - 0.01); ty++)
-    for (let tx = tileOf(px - hw); tx <= tileOf(px + hw - 0.01); tx++) {
-      if (!inBounds(tx, ty)) return true;
-      const top = columnTop(world, tx, ty);
-      if (z + PLAYER_HEIGHT <= top - 0.2 || z >= top + tileHeight(world, tx, ty)) continue;
-      if (isFarm(world) && portalAt(tx, ty)) continue;
-      if (isSolidForPlayer(world, tx, ty)) return true;
-    }
-  return false;
-}
-
-/** How tall (blocks) whatever makes a tile solid stands: you can only get past it by being higher. */
-function tileHeight(world: WorldState, tx: number, ty: number): number {
-  const o = objectAt(world, tx, ty);
-  if (!o) return 1; // water, a villager
-  if (o.kind.startsWith('tree') || o.kind === 'palm' || o.kind === 'cactus' || o.kind.startsWith('wall') || o.kind === 'window') return 12;
-  const d = objectDef(o.kind);
-  return d.w > 1 || d.h > 1 ? 12 : 1.5; // buildings / fences, chests, rocks
-}
-
-/** 3D game: accept a move that ends somewhere free, close to where the player was. */
-function applyMoveVoxel(world: WorldState, p: PlayerState, x: number, y: number, z: number | undefined, facing: Facing, moving: boolean): void {
-  if (p.moveLock && p.moveLock > 0) {
-    if (Math.hypot(x - p.x, y - p.y) > 3 * TILE) return;
-    delete p.moveLock;
-  }
-  const portal = isFarm(world) ? PORTALS.find((pt) => Math.hypot(p.x - (pt.from.x + 0.5) * TILE, p.y - (pt.from.y + 0.5) * TILE) <= 3 * TILE && Math.hypot(x - (pt.to.x + 0.5) * TILE, y - (pt.to.y + 0.5) * TILE) <= 3 * TILE) : undefined;
-  const zz = z !== undefined && Number.isFinite(z) ? z : standHeight(world, x, y);
-  const close = portal || (Math.hypot(x - p.x, y - p.y) <= 2 * TILE && Math.abs(zz - (p.z ?? zz)) <= 8);
-  if (close && bodyFree(world, x, y, zz) && !blockedByTiles(world, x, y, zz)) {
-    if ((x !== p.x || y !== p.y) && p.fishing) delete p.fishing;
-    p.x = x;
-    p.y = y;
-    p.z = zz;
-  } else if (p.z === undefined || !bodyFree(world, p.x, p.y, p.z)) p.z = standHeight(world, p.x, p.y);
-  p.facing = facing;
-  p.moving = moving;
-  if (applyPortal(p, world)) {
-    p.z = standHeight(world, p.x, p.y);
-    if (p.riding !== undefined) {
-      const a = world.animals[p.riding];
-      delete p.riding;
-      if (a) {
-        a.x = x;
-        a.y = y;
-        a.moving = false;
-        a.waitMs = 1500;
-      }
-    }
-  }
-}
-
-/** What digging a block gives you (nothing for snow). */
-const BLOCK_DROP: Partial<Record<VoxelBlock, string>> = {
-  dirt: 'dirt',
-  sand: 'sand',
-  gravel: 'gravel',
-  stone: 'stone',
-  cobble: 'stone',
-  coal_ore: 'coal',
-  gold_ore: 'gold',
-  crystal_ore: 'gem',
-  planks: 'wood',
-};
-/** Blocks that need the pickaxe (everything else digs with any tool, or bare hands). */
-const HARD = new Set<VoxelBlock>(['stone', 'cobble', 'coal_ore', 'gold_ore', 'crystal_ore']);
-
-const eyeDistance = (p: PlayerState, x: number, y: number, h: number): number =>
-  Math.hypot(x + 0.5 - p.x / TILE, y + 0.5 - p.y / TILE, h + 0.5 - ((p.z ?? 0) + EYE_HEIGHT));
-
-/** Something living stands in the cell (other players' bodies, animals and villagers on their tile's ground). */
-function cellTaken(world: WorldState, x: number, y: number, h: number, builder: PlayerState): boolean {
-  for (const q of Object.values(world.players)) {
-    if (!q.online || q.z === undefined || q === builder) continue;
-    if (Math.abs(q.x / TILE - (x + 0.5)) < 0.5 + 0.3 && Math.abs(q.y / TILE - (y + 0.5)) < 0.5 + 0.3 && h + 1 > q.z && h < q.z + PLAYER_HEIGHT) return true;
-  }
-  const top = columnTop(world, x, y);
-  if ((h === top || h === top + 1) && (animalAtTile(world, x, y) || npcAt(world, x, y))) return true;
-  return false;
-}
-const animalAtTile = (world: WorldState, tx: number, ty: number): AnimalState | undefined => {
-  for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return a;
-  return undefined;
-};
-
-/** Sets a block and keeps the tile's terrain describing whatever is on top now. */
-function changeBlock(world: WorldState, x: number, y: number, h: number, b: number, out: Change[]): void {
-  const topChanged = setBlock(world, x, y, h, b);
-  out.push({ t: 'block', x, y, h, b });
-  if (topChanged) {
-    const top = columnTop(world, x, y);
-    const below = top > 0 ? cellBlock(world, x, y, top - 1) : 'stone';
-    const terrain = blockTerrain(VB[below]);
-    world.terrain[tileIndex(x, y)] = terrain;
-    out.push({ t: 'terrain', x, y, terrain });
-  }
-}
-
-/** 3D game: dig out one block. The pickaxe digs everything; any tool or bare hands dig soft blocks. */
-export function digBlock(world: WorldState, playerId: string, x: number, y: number, h: number, ctx: SimCtx): Change[] {
-  const p = world.players[playerId];
-  const out: Change[] = [];
-  if (!world.voxel || !p || !inBounds(x, y) || h <= 0 || h >= VH || p.sleeping || p.riding !== undefined) return out;
-  if (eyeDistance(p, x, y, h) > DIG_REACH + 1.5) return out; // (+ slack: the server sees you a moment late)
-  const raw = blockAt(world, x, y, h);
-  if (raw === VB.air || raw === VB.bedrock) return out;
-  const top = columnTop(world, x, y);
-  const onTop = h === top - 1;
-  if (onTop && world.terrain[tileIndex(x, y)] === 'water') return out;
-  const on = onTop ? objectAt(world, x, y) : undefined;
-  if (on && objectDef(on.kind).flat && !objectDef(on.kind).interact) {
-    // a tuft, a flower, a shell lying on top: it goes first (and gives what it gives)
-    breakObject(world, p, on, ctx, out);
-  } else if (onTop && (on || world.crops[key(x, y)])) {
-    out.push(toast(p.id, T.digOccupied));
-    return out;
-  }
-  const kind = cellBlock(world, x, y, h);
-  const tool = heldItem(p) ? item(heldItem(p)!.item).tool : undefined;
-  if (HARD.has(kind) && tool !== 'pick') {
-    out.push(toast(p.id, fmt(T.needTool, { tool: itemName(toolItemId('pick')) })));
-    return out;
-  }
-  changeBlock(world, x, y, h, VB.air, out);
-  const drop = BLOCK_DROP[kind];
-  if (drop) giveItems(world, p, drop, 1, out);
-  bump(p, 'dig', 1, out);
-  out.push(fx(x, y, 'chop'), playerChange(p));
-  return out;
-}
-
-/** 3D game: build a block from the held item (dirt, sand, gravel, stone, wood) into an empty cell. */
-export function placeBlock(world: WorldState, playerId: string, x: number, y: number, h: number): Change[] {
-  const p = world.players[playerId];
-  const out: Change[] = [];
-  if (!world.voxel || !p || !inBounds(x, y) || h <= 0 || h >= VH || p.sleeping || p.riding !== undefined) return out;
-  const held = heldItem(p);
-  const name = held ? item(held.item).block : undefined;
-  if (!held || !name) return out;
-  if (eyeDistance(p, x, y, h) > DIG_REACH + 1.5) return out; // (+ slack: the server sees you a moment late)
-  if (blockAt(world, x, y, h) !== VB.air) return out;
-  // it has to lean on something
-  const touches = [
-    [1, 0, 0],
-    [-1, 0, 0],
-    [0, 1, 0],
-    [0, -1, 0],
-    [0, 0, 1],
-    [0, 0, -1],
-  ].some(([dx, dy, dh]) => blockAt(world, x + dx!, y + dy!, h + dh!) !== VB.air);
-  if (!touches) return out;
-  const top = columnTop(world, x, y);
-  // never bury things standing on the tile, nor the water
-  const thingThere = objectAt(world, x, y) || world.crops[key(x, y)] || world.terrain[tileIndex(x, y)] === 'water' || world.terrain[tileIndex(x, y)] === 'pool';
-  if ((thingThere && h >= top && h <= top + 2) || cellTaken(world, x, y, h, p)) {
-    out.push(toast(p.id, T.cantPlaceHere));
-    return out;
-  }
-  changeBlock(world, x, y, h, VB[name], out);
-  // built under your own feet (jumping up a pillar, like in Minecraft): you end up on top of it
-  if (p.z !== undefined && !bodyFree(world, p.x, p.y, p.z)) p.z = standHeight(world, p.x, p.y);
-  takeFromSlot(p.inventory, p.selected, 1);
-  bump(p, 'build', 1, out);
-  out.push(playerChange(p));
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1594,7 +1548,6 @@ const isSolidForNpc = (world: WorldState, tx: number, ty: number): boolean => {
   const t = world.terrain[tileIndex(tx, ty)];
   if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true;
   if (world.crops[key(tx, ty)] || portalAt(tx, ty)) return true;
-  if (steepTile(world, tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
   return !!obj && objectDef(obj.kind).solid;
 };
@@ -1625,13 +1578,14 @@ const QUEST_POOL: { npc: string; kind: keyof typeof QUEST_TEXTS; items: string[]
   { npc: 'greta', kind: 'product', items: ['egg', 'milk', 'wool'], count: [1, 2], stars: 2 },
   { npc: 'greta', kind: 'material', items: ['wood', 'stone', 'fiber'], count: [6, 12], stars: 1 },
   { npc: 'greta', kind: 'dish', items: ['bread', 'pancakes', 'carrot_cake', 'strawberry_jam'], count: [1, 2], stars: 3 },
+  { npc: 'greta', kind: 'explore', items: ['blueberry', 'cloudberry', 'banana', 'mushroom'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'fish', items: ['fish_roach', 'fish_perch', 'fish_pike'], count: [1, 3], stars: 2 },
   { npc: 'elsa', kind: 'kid', items: ['strawberry', 'carrot', 'egg', 'bread', 'hay'], count: [1, 3], stars: 1 },
   { npc: 'elsa', kind: 'flowers', items: ['fiber'], count: [3, 6], stars: 1 },
   { npc: 'bo', kind: 'bake', items: ['wheat', 'egg', 'milk', 'honey'], count: [2, 4], stars: 2 },
   { npc: 'pino', kind: 'pizza', items: ['tomato', 'wheat'], count: [2, 4], stars: 2 },
-  { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem'], count: [1, 6], stars: 2 },
-  { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry'], count: [2, 5], stars: 2 },
+  { npc: 'stina', kind: 'smith', items: ['stone', 'gold', 'gem', 'crystal', 'obsidian'], count: [1, 6], stars: 2 },
+  { npc: 'lind', kind: 'garden', items: ['fiber', 'honey', 'mushroom', 'strawberry', 'iceberry', 'glowshroom', 'blueberry'], count: [2, 5], stars: 2 },
   { npc: 'sven', kind: 'material', items: ['wood'], count: [5, 10], stars: 1 },
 ];
 
@@ -1737,11 +1691,14 @@ export const areaOf = (world: WorldState, p: PlayerState): WorldState => {
 };
 
 /** The farm world that owns a dungeon or area world (they keep a non-enumerable back reference). */
-const farmOf = (world: WorldState): WorldState => (!isFarm(world) ? ((world as WorldState & { farm?: WorldState }).farm ?? world) : world);
+export const farmOf = (world: WorldState): WorldState => (!isFarm(world) ? ((world as WorldState & { farm?: WorldState }).farm ?? world) : world);
 
 const linkToFarm = (child: WorldState, farm: WorldState): void => {
   Object.defineProperty(child, 'farm', { value: farm, enumerable: false, writable: true, configurable: true });
 };
+
+/** Generates the overworld map at (ax, ay). */
+export const buildArea = (ax: number, ay: number): WorldState => generateArea(ax, ay);
 
 /** Loads (or generates) an overworld area. The server may pre-fill world.areas from the database. */
 export function getArea(world: WorldState, keyStr: string): WorldState | null {
@@ -1754,37 +1711,57 @@ export function getArea(world: WorldState, keyStr: string): WorldState | null {
     if (isBathKey(keyStr)) {
       if (!getArea(farm, villageOfBath(keyStr))) return null;
       a = generateBath(villageOfBath(keyStr));
+    } else if (isHallKey(keyStr)) {
+      if (!getArea(farm, villageOfHall(keyStr))) return null;
+      a = generateHall(villageOfHall(keyStr));
+    } else if (isSagaKey(keyStr)) {
+      const id = dungeonOfKey(keyStr);
+      if (!id) return null;
+      a = generateSaga(id);
+    } else if (isMoonKey(keyStr)) a = generateMoon();
+    else if (isCaveKey(keyStr)) {
+      // a cave is built from its entrance: the theme from the entrance, the way out in front of it
+      const ck = parseCaveKey(keyStr);
+      const parent = ck ? getArea(farm, ck.parent) : null;
+      const mouth = ck && parent ? parent.objects[ck.mouth] : undefined;
+      const theme = mouth ? themeOfEntrance(mouth) : null;
+      if (!ck || !mouth || !theme) return null;
+      a = generateCave(keyStr, theme, ck.parent, entranceFront(mouth));
     } else {
       const c = areaCoords(keyStr);
       if (!c) return null;
-      a = generateArea(c.ax, c.ay);
-      if (voxelMode()) {
-        const seed = (c.ax * 7919 + c.ay * 104729 + 1337) >>> 0;
-        thinForest(a, mulberry32(seed));
-        initVoxel(a, seed);
-      }
+      a = buildArea(c.ax, c.ay);
     }
     farm.areas[keyStr] = a;
   }
   linkToFarm(a, farm);
+  if (!sagaChecked.has(a)) {
+    sagaChecked.add(a);
+    ensureSagaPlaces(keyStr, a);
+  }
   return a;
 }
+/** Maps already checked for their dungeon arch and Kämpastenen. */
+const sagaChecked = new WeakSet<WorldState>();
 
 export const areaName = (keyStr: string, world?: WorldState): string => {
   if (keyStr === 'farm' || keyStr === 'dungeon') return BIOME_NAMES[keyStr];
   if (isBathKey(keyStr)) return T.bathhouseName;
+  if (isHallKey(keyStr)) return T.hallName;
+  const sagaId = dungeonOfKey(keyStr);
+  if (sagaId) return DUNGEONS[sagaId].name;
   const a = world ? getArea(world, keyStr) : null;
-  return BIOME_NAMES[(a?.biome as Biome) ?? 'ang'];
+  return placeName(a?.biome);
 };
 
 /** Moves a player to another map at a given tile. */
-function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, ty: number, facing: Facing, out: Change[]): boolean {
+export function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, ty: number, facing: Facing, out: Change[]): boolean {
   const farm = farmOf(world);
   const target = getArea(farm, keyStr);
   if (!target) return false;
   const current = areaOf(farm, p);
   const ridden = p.riding !== undefined ? current.animals[p.riding] : undefined;
-  const drove = ridden && isVehicle(ridden) ? ridden : undefined;
+  const drove = ridden && (isVehicle(ridden) || ANIMALS[ridden.species]?.mount) ? ridden : undefined;
   if (p.riding !== undefined) dismount(current, p, out);
   if (current !== farm) delete current.players[p.id];
   p.area = keyStr;
@@ -1806,14 +1783,18 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
     }
   }
   if (!p.visited) p.visited = ['farm'];
-  const firstVisit = !p.visited.includes(keyStr);
+  // dungeons greet you themselves and are not places on the world map
+  const firstVisit = !isSagaKey(keyStr) && !p.visited.includes(keyStr);
   if (firstVisit) {
     p.visited.push(keyStr);
-    bump(p, 'areas', 1, out);
+    if (isCaveKey(keyStr)) bump(p, 'caves', 1, out);
+    else if (!isIndoorKey(keyStr)) bump(p, 'areas', 1, out);
   }
   if (target !== farm) out.push({ t: 'areaData', to: p.id, key: keyStr, world: target });
   out.push(playerChange(p));
-  if (firstVisit && keyStr !== 'farm') out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })), fx(tx, ty, 'sparkle'));
+  // the first time somewhere: a cheer for a new kind of place, else a hello (caves and buildings greet you themselves)
+  if (firstVisit && keyStr !== 'farm' && !discoverBiome(farm, p, target, out) && !isCaveKey(keyStr) && !isIndoorKey(keyStr)) out.push(toast(p.id, fmt(T.newArea, { name: areaName(keyStr, farm) })));
+  if (firstVisit && keyStr !== 'farm') out.push(fx(tx, ty, 'sparkle'));
   return true;
 }
 
@@ -1821,7 +1802,9 @@ function placeIn(world: WorldState, p: PlayerState, keyStr: string, tx: number, 
 function movePetsAlong(from: WorldState, to: WorldState, toKey: string, p: PlayerState, out: Change[]): void {
   if (to.area === 'dungeon') return;
   for (const a of Object.values(from.animals)) {
-    if (a.owner !== p.id || !isPetAnimal(a)) continue;
+    // pets follow, and the dungeons' mounts when whistled for (but they wait outside a dungeon)
+    const mount = !!ANIMALS[a.species]?.mount && !!a.follow && !isSagaKey(toKey) && !isIndoorKey(toKey);
+    if (a.owner !== p.id || !(isPetAnimal(a) || mount) || a.stay) continue;
     moveAnimalAlong(from, to, toKey, a, p, out);
   }
 }
@@ -1877,16 +1860,35 @@ export function travel(world: WorldState, playerId: string, dir: 'n' | 's' | 'e'
 export function teleport(world: WorldState, playerId: string, keyStr: string): Change[] {
   const farm = farmOf(world);
   const p = farm.players[playerId];
-  if (!p || p.area === 'dungeon' || keyStr === 'dungeon') return [];
+  if (!p || p.area === 'dungeon' || keyStr === 'dungeon' || isCaveKey(keyStr) || isIndoorKey(keyStr)) return [];
   if (keyStr !== 'farm' && !(p.visited ?? []).includes(keyStr)) return [];
   const out: Change[] = [];
   if (keyStr === 'farm') placeIn(farm, p, 'farm', SPAWN.x, SPAWN.y, 'down', out);
-  else placeIn(farm, p, keyStr, MAP_W / 2, MAP_H / 2, 'down', out);
-  // make sure the landing tile is free
-  const target = areaOf(farm, p);
-  for (let r = 0; r < 6 && isSolidForPlayer(target, tileOf(p.x), tileOf(p.y)); r++) p.y += TILE;
+  else {
+    const target = getArea(farm, keyStr);
+    if (!target) return [];
+    const at = isMoonKey(keyStr) ? rocketFront(MOON_ROCKET) : openTileNear(target, MAP_W / 2, MAP_H / 2);
+    placeIn(farm, p, keyStr, at.x, at.y, 'down', out);
+  }
   out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'));
   return out;
+}
+
+/** The open tile nearest (x, y) that you can walk to from the map's openings (else just any open tile). */
+export function openTileNear(world: WorldState, x: number, y: number): { x: number; y: number } {
+  const reach = reachableFrom(world, arrivalTile('n'));
+  let fallback: { x: number; y: number } | null = null;
+  for (let r = 0; r < MAP_W; r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const tx = x + dx;
+        const ty = y + dy;
+        if (!inBounds(tx, ty) || isSolidForPlayer(world, tx, ty)) continue;
+        if (reach[tileIndex(tx, ty)]) return { x: tx, y: ty };
+        fallback ??= { x: tx, y: ty };
+      }
+  return fallback ?? { x, y };
 }
 
 // ---------------------------------------------------------------------------
@@ -2178,6 +2180,234 @@ function openTreasure(d: WorldState, p: PlayerState, chest: WorldObject, ctx: Si
   out.push(toast(p.id, fmt(T.treasureOpened, { loot: loot.join(' + ') })), toast(null, T.caveCleared), playerChange(p));
 }
 
+
+// ---------------------------------------------------------------------------
+// The wider world: discoveries, caves, treasure, fairy rings and the rocket to the moon
+// ---------------------------------------------------------------------------
+
+/** First time in a map of a new biome: +1 star and a cheer (returns whether it was new). The count is rebuilt from the maps visited. */
+function discoverBiome(farm: WorldState, p: PlayerState, target: WorldState, out: Change[]): boolean {
+  const b = target.biome;
+  if (!isBiome(b)) return false;
+  const seen = new Set<string>();
+  for (const k of p.visited ?? []) {
+    if (k === 'farm' || isCaveKey(k) || isIndoorKey(k)) continue;
+    const bm = farm.areas?.[k]?.biome;
+    if (isBiome(bm)) seen.add(bm);
+  }
+  const before = p.stats?.biomes ?? 0;
+  if (seen.size <= before) return false; // nothing new (or counted already)
+  if (!p.stats) p.stats = {};
+  p.stats.biomes = seen.size - 1;
+  bump(p, 'biomes', 1, out);
+  p.stars += 1;
+  out.push(toast(p.id, fmt(T.newBiome, { emoji: BIOME_EMOJI[b], name: BIOME_NAMES[b], n: seen.size, total: DISCOVERABLE.length })), playerChange(p));
+  return true;
+}
+
+/** Rolls a loot table and gives it to the player; returns what they got, for the toast. */
+export function grantLoot(world: WorldState, p: PlayerState, table: string, ctx: SimCtx, out: Change[]): string[] {
+  const lt = LOOT[table];
+  if (!lt) return [];
+  const got: string[] = [];
+  if (lt.coins) {
+    const kr = randInt(ctx.rnd, lt.coins[0], lt.coins[1]);
+    p.coins += kr;
+    bump(p, 'earned', kr, out);
+    got.push(`${kr} ${T.coins}`);
+  }
+  const total = lt.pool.reduce((n, e) => n + e.weight, 0);
+  for (let k = 0; k < lt.picks; k++) {
+    let r = ctx.rnd() * total;
+    let pick = lt.pool[0]!;
+    for (const e of lt.pool) {
+      r -= e.weight;
+      if (r <= 0) {
+        pick = e;
+        break;
+      }
+    }
+    if (!pick.item) continue;
+    const n = randInt(ctx.rnd, pick.min, pick.max);
+    const game = ITEMS[pick.item]?.game;
+    if (game) {
+      got.push(findCartridge(farmOf(world), p, game, out));
+      continue;
+    }
+    if (ITEMS[pick.item]?.category === 'clothing') {
+      // clothes go to the wardrobe; one you already have becomes a gem
+      if (!p.wardrobe.includes(pick.item)) {
+        p.wardrobe.push(pick.item);
+        got.push(`${itemName(pick.item)} (${T.inWardrobe})`);
+      } else {
+        giveItems(world, p, 'gem', 1, out);
+        got.push(itemName('gem'));
+      }
+      continue;
+    }
+    giveItems(world, p, pick.item, n, out);
+    got.push(n > 1 ? `${n} ${itemName(pick.item).toLowerCase()}` : itemName(pick.item));
+    if (pick.item === 'fossil') bump(p, 'fossil', n, out);
+  }
+  if (lt.stars) {
+    p.stars += lt.stars;
+    got.push(`${lt.stars} ⭐`);
+  }
+  out.push(playerChange(p));
+  return got;
+}
+
+/** Opens a loot chest: something for every player once a week. */
+function openLootChest(world: WorldState, p: PlayerState, chest: WorldObject, ctx: SimCtx, out: Change[]): void {
+  const today = farmOf(world).day;
+  const last = chest.openedBy?.[p.id];
+  if (last !== undefined && today - last < LOOT_REFILL_DAYS) {
+    const left = LOOT_REFILL_DAYS - (today - last);
+    out.push(toast(p.id, left <= 1 ? T.lootEmptyTomorrow : fmt(T.lootEmpty, { n: left })));
+    return;
+  }
+  chest.openedBy = { ...chest.openedBy, [p.id]: today };
+  const table = chest.loot ?? (world.cave ? `cave_${world.cave.theme}` : 'shipwreck');
+  const got = grantLoot(world, p, table, ctx, out);
+  bump(p, 'loot', 1, out);
+  out.push({ t: 'object', id: chest.id, obj: chest }, fx(chest.x, chest.y, 'sparkle'), fx(chest.x, chest.y, 'coin'), toast(p.id, fmt(T.lootOpened, { loot: got.join(' + ') })));
+}
+
+/** Dancing in a fairy ring: the fairies give a little something once a day. */
+function danceInRing(world: WorldState, p: PlayerState, ring: WorldObject, ctx: SimCtx, out: Change[]): void {
+  const today = farmOf(world).day;
+  if (ring.openedBy?.[p.id] === today) {
+    out.push(toast(p.id, T.fairyTired));
+    return;
+  }
+  ring.openedBy = { ...ring.openedBy, [p.id]: today };
+  p.emote = { id: 'dans', until: ctx.now + EMOTE_MS };
+  const got = grantLoot(world, p, 'fairy', ctx, out);
+  out.push({ t: 'object', id: ring.id, obj: ring }, fx(ring.x, ring.y, 'sparkle'), fx(ring.x + 1, ring.y + 1, 'sparkle'), fx(ring.x + 1, ring.y, 'heart'), toast(p.id, fmt(T.fairyDance, { loot: got.join(' + ') })));
+}
+
+/** Walks into a cave out in the world (built the first time anyone goes in). */
+export function enterGrotto(world: WorldState, playerId: string, entrance: WorldObject): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || isUnderground(p.area) || !themeOfEntrance(entrance)) return [];
+  const here = areaOf(farm, p);
+  if (here.objects[entrance.id] !== entrance) return [];
+  const k = caveKey(p.area, entrance.id);
+  const cave = getArea(farm, k);
+  if (!cave?.cave) return [];
+  const out: Change[] = [];
+  if (!placeIn(farm, p, k, cave.cave.start.x, cave.cave.start.y, 'up', out)) return [];
+  out.push(toast(p.id, fmt(T.enteredGrotto, { name: placeName(cave.biome) })));
+  return out;
+}
+
+/** Back out of a cave, in front of its entrance. */
+export function leaveGrotto(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !isCaveKey(p.area)) return [];
+  const cave = farm.areas?.[p.area]?.cave;
+  const out: Change[] = [];
+  if (!cave || !getArea(farm, cave.parent)) {
+    placeIn(farm, p, 'farm', SPAWN.x, SPAWN.y, 'down', out);
+    return out;
+  }
+  placeIn(farm, p, cave.parent, cave.out.x, cave.out.y, 'down', out);
+  return out;
+}
+
+/** The rocket: from the space base to the moon, and from the moon back to the base. */
+export function flyRocket(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p) return [];
+  const toMoon = !isMoonKey(p.area);
+  const dest = toMoon ? MOON_KEY : SPACEPORT_KEY;
+  const target = getArea(farm, dest);
+  if (!target) return [];
+  const rocket = Object.values(target.objects).find((o) => o.kind === 'rocket');
+  const front = rocketFront(rocket ?? (toMoon ? MOON_ROCKET : BASE_ROCKET));
+  const out: Change[] = [
+    { t: 'ride', to: p.id, via: 'rocket', place: toMoon ? BIOME_NAMES.mane : BIOME_NAMES.rymdbas },
+    toast(p.id, toMoon ? T.rocketUp : T.rocketHome),
+  ];
+  let ty = front.y;
+  for (let r = 0; r < 4 && isSolidForPlayer(target, front.x, ty); r++) ty++;
+  if (!placeIn(farm, p, dest, front.x, ty, 'down', out)) return [];
+  if (toMoon) {
+    bump(p, 'moon', 1, out);
+    if ((p.stats.moon ?? 0) > 1) out.push(toast(p.id, T.onTheMoon));
+  }
+  return out;
+}
+
+/** Morning: dragon eggs that spent the night somewhere hatch into a little dragon for whoever put them down. */
+/** A pet or mount from the dungeons comes out of the bag: it follows you from now on. */
+function summonFromBag(world: WorldState, p: PlayerState, itemId: string, out: Change[]): void {
+  const s = sagaItem(itemId);
+  if (!s?.species) return;
+  if (isUnderground(world.area) || isIndoorKey(world.area) || isSagaKey(world.area) || (isFarm(world) && inInterior(tileOf(p.x), tileOf(p.y)))) {
+    out.push(toast(p.id, T.notNow));
+    return;
+  }
+  if (!removeItem(p.inventory, itemId, 1)) return;
+  const a: AnimalState = { ...dummyAnimal, id: world.nextId++, species: s.species, name: s.name, x: p.x, y: p.y + 4, owner: p.id, age: 10, named: true, petted: true, waitMs: 500 };
+  if (s.kind === 'mount') a.follow = true;
+  world.animals[a.id] = a;
+  const tx = tileOf(p.x);
+  const ty = tileOf(p.y);
+  out.push({ t: 'animal', id: a.id, animal: a }, fx(tx, ty, 'sparkle'), fx(tx, ty + 1, 'heart'), toast(p.id, fmt(T.sagaPetCome, { name: s.name })), playerChange(p));
+}
+
+function hatchEggs(farm: WorldState, ctx: SimCtx, out: Change[]): void {
+  const maps: [string, WorldState][] = [['farm', farm], ...Object.entries(farm.areas ?? {})];
+  for (const [k, m] of maps) {
+    for (const egg of Object.values(m.objects)) {
+      if (egg.kind !== 'dragon_egg' || !egg.by) continue;
+      const owner = farm.players[egg.by];
+      if (!owner) continue;
+      removeObject(m, egg.id);
+      const dragon: AnimalState = {
+        ...dummyAnimal,
+        id: m.nextId++,
+        species: 'dragon',
+        name: SPECIES_NAMES.dragon ?? 'Drake',
+        x: egg.x * TILE + TILE / 2,
+        y: egg.y * TILE + TILE / 2,
+        owner: owner.id,
+        age: 10,
+        waitMs: 1000,
+      };
+      m.animals[dragon.id] = dragon;
+      const local: Change[] = [{ t: 'object', id: egg.id, obj: null }, { t: 'animal', id: dragon.id, animal: dragon }, fx(egg.x, egg.y, 'sparkle'), fx(egg.x, egg.y, 'heart')];
+      out.push(...tagArea(local, k));
+      bump(owner, 'dragon', 1, out);
+      out.push(toast(null, fmt(T.dragonHatched, { name: owner.name })), playerChange(owner));
+      if (owner.online) out.push({ t: 'open', to: owner.id, ui: 'nameAnimal', id: dragon.id });
+      void ctx;
+    }
+  }
+}
+
+/** Morning out in the world: berries, crystals and buried treasure grow back a little everywhere. */
+function regrowAreas(farm: WorldState, ctx: SimCtx, out: Change[]): void {
+  for (const [k, a] of Object.entries(farm.areas ?? {})) {
+    if (!a.renew) continue;
+    const people = Object.values(a.players).map((pl) => [tileOf(pl.x), tileOf(pl.y)] as const);
+    const fronts = landmarkFronts(a);
+    const start = a.cave?.start;
+    const blocked = (x: number, y: number) =>
+      inEdgeGap(x, y) ||
+      people.some(([px, py]) => Math.abs(px - x) <= 1 && Math.abs(py - y) <= 1) ||
+      fronts.some((f) => Math.abs(f.x - x) <= 1 && Math.abs(f.y - y) <= 1) ||
+      (!!start && Math.abs(start.x - x) + Math.abs(start.y - y) < 3) ||
+      !!npcAt(a, x, y);
+    const grown = regrow(a, ctx.rnd, blocked);
+    if (grown.length) out.push(...tagArea(grown.map((o) => ({ t: 'object' as const, id: o.id, obj: o })), k));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Lasso, predators and hearts outside the cave
 // ---------------------------------------------------------------------------
@@ -2346,7 +2576,7 @@ function tickFlee(world: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx):
 const MOB_SIGHT = 7 * TILE;
 
 /** True when no wall or rock lies on the straight tile line between two points. */
-function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y1: number): boolean {
+export function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y1: number): boolean {
   const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (TILE / 2));
   for (let i = 1; i < steps; i++) {
     const t = i / steps;
@@ -2403,7 +2633,7 @@ function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: 
 export function tagArea(changes: Change[], keyStr: string): Change[] {
   if (keyStr === 'farm') return changes;
   for (const c of changes) {
-    if (c.t === 'terrain' || c.t === 'block' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop' || c.t === 'fx') c.area = keyStr;
+    if (c.t === 'terrain' || c.t === 'crop' || c.t === 'object' || c.t === 'animal' || c.t === 'drop' || c.t === 'fx') c.area = keyStr;
   }
   return changes;
 }
@@ -2424,12 +2654,18 @@ function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Chang
     }
   }
   for (const [k, a] of Object.entries(world.areas ?? {})) {
-    if (!areaOccupied(a)) continue;
+    if (!areaOccupied(a)) {
+      // an empty dungeon starts over after a while
+      if (a.saga && idleSaga(world, k, a, ctx.now)) delete world.areas![k];
+      continue;
+    }
     const local: Change[] = [];
+    if (a.saga) tickSaga(a, k, dtMs, ctx, out);
     tickAnimals(a, dtMs, ctx, local);
     tickNpcs(a, dtMs);
     tickDrops(a, local);
     if (isBathKey(k)) tickBath(a, local, out);
+    else if (isHallKey(k)) tickHall(a, out);
     out.push(...tagArea(local, k));
   }
 }
@@ -2442,7 +2678,7 @@ function tickOtherAreas(world: WorldState, dtMs: number, ctx: SimCtx, out: Chang
 export function enterBath(world: WorldState, playerId: string): Change[] {
   const farm = farmOf(world);
   const p = farm.players[playerId];
-  if (!p || p.area === 'dungeon' || p.area === 'farm' || isBathKey(p.area)) return [];
+  if (!p || p.area === 'dungeon' || p.area === 'farm' || isIndoorKey(p.area)) return [];
   const out: Change[] = [];
   if (!placeIn(farm, p, bathKey(p.area), BATH_EXIT.x, BATH_EXIT.y - 1, 'up', out)) return [];
   out.push(toast(p.id, T.enteredBath));
@@ -2490,6 +2726,126 @@ function tickBath(bath: WorldState, local: Change[], out: Change[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Minigames: the TV at home and Spelhallen in the city
+// ---------------------------------------------------------------------------
+
+function arcadeOf(p: PlayerState): ArcadeState {
+  if (!p.arcade) p.arcade = { best: {}, tickets: 0, games: [], day: 0, won: 0 };
+  return p.arcade;
+}
+
+/** Walks into Spelhallen from the street. */
+export function enterHall(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || p.area === 'dungeon' || p.area === 'farm' || isIndoorKey(p.area)) return [];
+  const out: Change[] = [];
+  if (!placeIn(farm, p, hallKey(p.area), INDOOR_EXIT.x, INDOOR_EXIT.y - 1, 'up', out)) return [];
+  out.push(toast(p.id, T.enteredHall));
+  return out;
+}
+
+/** Back out through the door to the city. */
+export function leaveHall(world: WorldState, playerId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !isHallKey(p.area)) return [];
+  const villageKey = villageOfHall(p.area);
+  const village = getArea(farm, villageKey);
+  if (!village) return [];
+  const door = hallDoorTile(village);
+  const out: Change[] = [];
+  placeIn(farm, p, villageKey, door.x, door.y, 'down', out);
+  return out;
+}
+
+/** Players walk out through the door. */
+function tickHall(hall: WorldState, out: Change[]): void {
+  for (const p of Object.values(hall.players)) {
+    if (!p.online || p.moveLock) continue;
+    if (tileOf(p.x) === INDOOR_EXIT.x && tileOf(p.y) === INDOOR_EXIT.y) out.push(...leaveHall(hall, p.id));
+  }
+}
+
+/** The TV or a machine is turned on: the client opens the arcade (a machine plays its own game). */
+function openArcade(p: PlayerState, obj: WorldObject, ctx: SimCtx, out: Change[]): void {
+  const a = arcadeOf(p);
+  a.open = obj.kind === 'arcade_machine' ? { where: 'hall', game: ARCADE_GAMES[obj.variant ?? 0] ?? ARCADE_GAMES[0], at: ctx.now } : { where: 'tv', at: ctx.now };
+  out.push({ t: 'open', to: p.id, ui: 'arcade', id: obj.id });
+}
+
+/** A game cartridge was found: a new game on the family's TV, or tickets when the family has it already. Returns what to tell. */
+function findCartridge(farm: WorldState, p: PlayerState, game: string, out: Change[]): string {
+  const a = arcadeOf(p);
+  if (!isArcadeGame(game) || familyGames(farm).includes(game)) {
+    a.tickets += SPARE_CART_TICKETS;
+    return `🎟️ ${fmt(T.spareCart, { n: SPARE_CART_TICKETS })}`;
+  }
+  a.games.push(game);
+  bump(p, 'carts', 1, out);
+  return `📺 ${ARCADE[game].name} (${T.newTvGame})`;
+}
+
+/** A minigame run ended: keep the best score, and in Spelhallen win tickets (up to a daily limit). */
+export function arcadeScore(world: WorldState, playerId: string, game: string, raw: number, ctx: SimCtx): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !isArcadeGame(game)) return [];
+  const a = arcadeOf(p);
+  const open = a.open;
+  if (!open || ctx.now - open.at < MIN_GAME_MS) return [];
+  if (open.where === 'hall' ? open.game !== game || !isHallKey(p.area) : !familyGames(farm).includes(game)) return [];
+  const score = Math.max(0, Math.min(ARCADE_MAX_SCORE, Math.round(Number(raw) || 0)));
+  const out: Change[] = [];
+  const record = familyBest(farm, game);
+  if (score > (a.best[game] ?? 0)) a.best[game] = score;
+  // one run takes a while: quick repeats only keep the score
+  if (open.where === 'hall' && (open.last === undefined || ctx.now - open.last >= MIN_GAME_MS)) {
+    if (a.day !== farm.day) {
+      a.day = farm.day;
+      a.won = 0;
+    }
+    const n = Math.min(ticketsFor(score), Math.max(0, MAX_TICKETS_PER_DAY - a.won));
+    a.tickets += n;
+    a.won += n;
+    if (n > 0) bump(p, 'tickets', n, out);
+  }
+  open.last = ctx.now;
+  bump(p, 'arcade', 1, out);
+  // beating someone else's family record is news for everyone
+  if (record.id && record.id !== p.id && score > record.score) out.push(toast(null, fmt(T.arcadeRecord, { name: p.name, game: ARCADE[game].name, score: score.toLocaleString('sv-SE') })));
+  out.push(playerChange(p));
+  return out;
+}
+
+/** Swaps tickets for a prize at the prize counter. */
+export function buyPrize(world: WorldState, playerId: string, itemId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !isHallKey(p.area)) return [];
+  const prize = PRIZES.find((x) => x.item === itemId);
+  if (!prize) return [];
+  const a = arcadeOf(p);
+  const out: Change[] = [];
+  const cart = ITEMS[itemId]?.game;
+  const game = isArcadeGame(cart) ? cart : null;
+  if (cart && (!game || familyGames(farm).includes(game))) {
+    out.push(toast(p.id, T.familyHasGame));
+    return out;
+  }
+  if (a.tickets < prize.tickets) {
+    out.push(toast(p.id, T.notEnoughTickets));
+    return out;
+  }
+  if (game) a.games.push(game);
+  else giveItems(areaOf(farm, p), p, itemId, 1, out);
+  a.tickets -= prize.tickets;
+  bump(p, 'prizes', 1, out);
+  out.push(toast(p.id, fmt(T.prizeBought, { item: game ? `${ARCADE[game].name} (${T.newTvGame})` : itemName(itemId) })), playerChange(p));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Tick
 // ---------------------------------------------------------------------------
 
@@ -2510,6 +2866,7 @@ export function tick(world: WorldState, dtMs: number, ctx: SimCtx): Change[] {
   tickFishing(world, ctx, out);
   tickHearts(world, ctx, out);
   tickSleep(world, ctx, out);
+  tickWeather(world, ctx, out);
   tickOtherAreas(world, dtMs, ctx, out);
   for (const p of Object.values(world.players)) {
     if (p.emote && p.emote.until < ctx.now) delete p.emote;
@@ -2533,10 +2890,17 @@ const LEASH = 7 * TILE;
 
 const PET_FOLLOW = 26;
 const PET_TELEPORT = 7 * TILE;
+/** A called horse trots after its owner (its wandering speed is a slow walk). */
+const HORSE_FOLLOW_SPEED = 60;
+/** How far a staying animal potters around the spot it was told to stay on. */
+const STAY_LEASH = 1.5 * TILE;
 
 function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
   const owner = a.owner ? world.players[a.owner] : undefined;
   if (!owner || !owner.online || owner.area !== (world.area ?? 'farm')) return false;
+  const horse = isMount(a);
+  // a horse waits outside while you are indoors
+  if (horse && isFarm(world) && inInterior(tileOf(owner.x), tileOf(owner.y))) return false;
   const dx = owner.x - a.x;
   const dy = owner.y - a.y;
   const dist = Math.hypot(dx, dy);
@@ -2553,7 +2917,7 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
     delete a.ty;
     return true;
   }
-  const speed = ANIMALS[a.species]?.speed ?? 60;
+  const speed = horse ? HORSE_FOLLOW_SPEED : (ANIMALS[a.species]?.speed ?? 60);
   const step = Math.min(dist - PET_FOLLOW + 1, (speed * dtMs) / 1000);
   const nx = a.x + (dx / dist) * step;
   const ny = a.y + (dy / dist) * step;
@@ -2566,10 +2930,11 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
 }
 
 function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]): void {
-  if (world.area !== 'dungeon' && !isBathKey(world.area)) tickRiding(world, out);
+  if (world.area !== 'dungeon' && !isIndoorKey(world.area)) tickRiding(world, out);
   const walkers = world.biome === 'by' ? npcsIn(world).map((n) => npcState(world, n.id)) : [];
   for (const a of Object.values(world.animals)) {
-    if ((a.species === 'horse' || isVehicle(a)) && riderOf(world, a)) continue;
+    if ((isMount(a) || isVehicle(a)) && riderOf(world, a)) continue;
+    if (world.saga?.mobs[a.id]) continue; // dungeon monsters fight by their own rules (tickSaga)
     if (isVehicle(a)) {
       // city traffic follows its route; a player's own vehicle stays parked
       if (a.route !== undefined) {
@@ -2577,7 +2942,7 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
       } else a.moving = false;
       continue;
     }
-    if (isPetAnimal(a) && tickPet(world, a, dtMs)) continue;
+    if (!a.stay && (isPetAnimal(a) || (isMount(a) && a.follow)) && tickPet(world, a, dtMs)) continue;
     if (tickFlee(world, a, dtMs, ctx)) continue;
     if (isHostile(a) && tickMob(world, a, dtMs, ctx, out)) continue;
     if (a.waitMs > 0) {
@@ -2586,9 +2951,9 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
       continue;
     }
     if (a.tx === undefined || a.ty === undefined) {
-      const c = homeCenter(world, a);
+      const c = a.stay ?? homeCenter(world, a);
       const ang = ctx.rnd() * Math.PI * 2;
-      const r = ctx.rnd() * LEASH;
+      const r = ctx.rnd() * (a.stay ? STAY_LEASH : LEASH);
       a.tx = Math.min(MAP_W * TILE - 8, Math.max(8, c.x + Math.cos(ang) * r));
       a.ty = Math.min(MAP_H * TILE - 8, Math.max(8, c.y + Math.sin(ang) * r));
     }
@@ -2807,10 +3172,12 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
     for (const an of Object.values(a.animals)) an.petted = false;
     if (a.biome) {
       const local: Change[] = [];
-      for (const an of spawnWildAnimals(a, a.biome as Biome, ctx.rnd, true)) local.push({ t: 'animal', id: an.id, animal: an });
+      for (const an of spawnWildAnimals(a, a.biome, ctx.rnd, true)) local.push({ t: 'animal', id: an.id, animal: an });
       out.push(...tagArea(local, k));
     }
   }
+  regrowAreas(world, ctx, out);
+  hatchEggs(world, ctx, out);
 
   // Ordered animals arrive
   for (const p of Object.values(world.players)) {

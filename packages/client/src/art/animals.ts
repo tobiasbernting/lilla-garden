@@ -1,5 +1,6 @@
 // Animals: side view facing right (flip for left), 2 walk frames, adult + baby, optional tomteluva.
 import { Px, shade } from './px.js';
+import { SAGA_AFTER, SAGA_ANIMAL_SIZE, SAGA_DRAW, SAGA_HAT_POS, SAGA_OUTLINE, SAGA_RIDE_LIFT } from './sagaanimals.ts';
 import { OUTLINE } from './world.js';
 
 export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
@@ -31,6 +32,18 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   bat: { w: 16, h: 10 },
   troll: { w: 18, h: 22 },
   boss: { w: 28, h: 32 },
+  // the wider world
+  frog: { w: 14, h: 12 },
+  parrot: { w: 16, h: 15 },
+  monkey: { w: 16, h: 16 },
+  salamander: { w: 18, h: 8 },
+  hedgehog: { w: 14, h: 10 },
+  dino: { w: 20, h: 18 },
+  gummy: { w: 12, h: 12 },
+  alien: { w: 14, h: 17 },
+  dragon: { w: 22, h: 18 },
+  // Sagan om Världsträdet: the dungeons' monsters and bosses, their pets and mounts
+  ...SAGA_ANIMAL_SIZE,
 };
 
 function hen(p: Px, f: number): void {
@@ -239,11 +252,240 @@ function lynx(p: Px, f: number): void {
   p.rect(2 + f, 9, 2, 4, d).rect(6, 9, 2, 4, c).rect(10 - f, 9, 2, 4, d);
 }
 
+// ---- the wider world ----
+
+function frog(p: Px, f: number): void {
+  // bright green frog seen from the front (it reads best that way): two big eyes on top and a wide smile.
+  // Frame 0 squats, frame 1 is mid-hop with the legs stretched out.
+  const c = '#78c841';
+  const pal = { G: c, H: shade(c, 1.25), D: shade(c, 0.74), L: '#eef5b0', W: '#ffffff', K: OUTLINE, M: shade(c, 0.45) };
+  const sit = [
+    '..............',
+    '..............',
+    '..GGG....GGG..',
+    '.GWWKG..GWWKG.',
+    '.GWWKGGGGWWKG.',
+    '.GHGGGGGGGGGG.',
+    '.GGMGGGGGGMGG.',
+    '.DGGMMMMMMGGD.',
+    'DDDGLLLLLLGDDD',
+    'DDDGGLLLLGGDDD',
+    'DDDDGGGGGGDDDD',
+    'DDD..GG.GG.DDD',
+  ];
+  const hop = [
+    '..............',
+    '..GGG....GGG..',
+    '.GWWKG..GWWKG.',
+    '.GWWKGGGGWWKG.',
+    '.GHGGGGGGGGGG.',
+    '.GGMGGGGGGMGG.',
+    '..GGMMMMMMGG..',
+    '..DGLLLLLLGD..',
+    '..DDGLLLLGDD..',
+    '..DD.G..G.DD..',
+    '..DD......DD..',
+    '.DDD......DDD.',
+  ];
+  p.tpl(0, 0, f ? hop : sit, pal);
+}
+
+/** Macaws: scarlet (red with a yellow and blue wing), blue-and-yellow, and great green. */
+const PARROT_COLORS = [
+  { body: '#e0362a', belly: '#e0362a', wing: '#f5c23a', flight: '#3b6fd9', tail: '#d8303a', crown: '#e0362a', beak: '#ecdcb4' },
+  { body: '#3b8fe0', belly: '#f5c23a', wing: '#2f72c4', flight: '#22509a', tail: '#3b8fe0', crown: '#5ac85a', beak: '#4a4542' },
+  { body: '#4fae3a', belly: '#4fae3a', wing: '#3d9230', flight: '#3b6fd9', tail: '#e0662a', crown: '#e0362a', beak: '#5a5450' },
+];
+function parrot(p: Px, f: number, v = 0): void {
+  // macaw walking on the ground: long tail, big hooked beak, white face; the head bobs with each step
+  const k = PARROT_COLORS[v % PARROT_COLORS.length]!;
+  p.line(0, 14, 6, 9, k.tail).line(1, 14, 7, 9, k.tail).line(0, 13, 5, 9, shade(k.tail, 0.8)).px(0, 14, k.flight).px(1, 14, k.flight); // tail
+  p.ellipse(4, 5, 9, 9, k.body); // body
+  p.ellipse(8, 7, 5, 6, k.belly);
+  p.ellipse(4, 6, 7, 6, k.wing).rect(3, 9, 4, 3, k.flight).px(7, 7, shade(k.wing, 1.25)); // folded wing
+  const head = [
+    '..CCC...',
+    '.GGGGG..',
+    'GGGWWBB.',
+    'GGWKWBBB',
+    'GGGWWbBb',
+    '.GGGWbb.',
+    '..GG..b.',
+  ];
+  p.tpl(8, 1 + f, head, { C: k.crown, G: k.body, W: '#f7f3ee', K: OUTLINE, B: k.beak, b: '#2a2624' });
+  p.rect(8 + f, 13, 1, 2, '#8a8a90').rect(10 - f, 13, 1, 2, '#8a8a90').px(9 + f, 14, '#8a8a90').px(11 - f, 14, '#8a8a90'); // feet
+}
+
+function monkey(p: Px, f: number): void {
+  // brown monkey walking upright: a big round head with a pale face and ear, long arms, and a tail curling up behind
+  const c = '#8a5a2e';
+  const d = shade(c, 0.75);
+  const face = '#f0c896';
+  p.tpl(0, 1, ['.TTT.', 'T...T', 'T.TT.', 'T.T..', 'T....', 'T....', 'T....', '.T...', '.T...', '.T...', '..T..', '..TTT'], { T: c }); // tail
+  p.rect(5 + f, 12, 2, 4, d).rect(9 - f, 12, 2, 4, d).rect(5 + f, 15, 3, 1, d).rect(9 - f, 15, 3, 1, d); // legs
+  p.ellipse(4, 8, 8, 6, c).ellipse(7, 9, 4, 4, face); // body, belly
+  p.line(10, 9, 11 - f, 12, d).line(9, 9, 10 - f, 12, d).rect(10 - f, 12, 2, 1, face); // arm and hand
+  p.ellipse(5, 1, 9, 8, c); // head
+  p.ellipse(3, 3, 4, 4, c).rect(4, 4, 1, 2, face); // ear
+  p.ellipse(9, 3, 6, 5, face).ellipse(10, 5, 5, 3, face).rect(9, 3, 2, 1, c); // face and muzzle
+  p.rect(11, 4, 1, 2, OUTLINE); // eye
+  p.px(14, 6, shade(face, 0.6)).line(12, 7, 13, 7, shade(face, 0.5)); // nostril, smile
+}
+
+function salamander(p: Px, f: number): void {
+  // glossy black fire salamander: yellow and orange blotches, a broad head with a shiny eye and a little smile
+  const c = '#3a3344';
+  const sh = '#625a76';
+  const Y = '#f5c82a';
+  const O = '#f0862a';
+  p.rect(0, 5, 2, 1, c).rect(1, 4, 3, 2, c).rect(2, 3, 3, 3, c); // tail tapering to the left
+  p.ellipse(3, 2, 11, 5, c); // body
+  p.ellipse(11, 1, 6, 6, c).rect(14, 4, 3, 2, c); // broad head
+  for (const [x, o] of [[5, f], [11, 1 - f]] as const) p.rect(x + o, 6, 1, 2, c).px(x + o - 1, 7, c).px(x + o + 1, 7, c); // splayed legs
+  p.rect(5, 2, 5, 1, sh).rect(12, 1, 2, 1, sh); // shine
+  p.rect(12, 2, 2, 1, Y).px(13, 3, Y); // yellow patch behind the eye
+  p.rect(4, 4, 2, 1, O).rect(6, 3, 2, 1, Y).px(7, 2, Y).rect(8, 5, 2, 1, O).rect(10, 3, 2, 1, Y).px(11, 5, O).px(2, 4, Y); // blotches
+  p.rect(14, 2, 2, 2, '#0c0a0e').px(14, 2, '#ffffff'); // eye
+  p.px(15, 5, '#8a829a').px(16, 4, '#8a829a'); // smile
+}
+
+function hedgehog(p: Px, f: number): void {
+  // round hedgehog: a dome of brown spines with light tips, a pointy cream face and a black button nose
+  const s = '#6a4a30';
+  const m = '#8a6442';
+  const tip = '#dcc29a';
+  const face = '#e6c89a';
+  p.ellipse(0, 2, 11, 8, s); // spines
+  for (const [x, y] of [[1, 2], [3, 1], [4, 0], [6, 1], [7, 0], [9, 1], [0, 4], [0, 7]] as const) p.px(x, y, s); // spikes poking out
+  for (const [x, y] of [[2, 3], [5, 2], [8, 3], [1, 6], [4, 5], [7, 5], [3, 8], [6, 7]] as const) p.px(x, y, tip).px(x + 1, y + 1, m);
+  p.ellipse(8, 4, 5, 5, face).rect(10, 6, 3, 2, face).px(13, 6, OUTLINE); // face, snout, nose
+  p.px(10, 5, OUTLINE).px(9, 4, '#e8a8a0'); // eye, ear
+  p.rect(4, 9, 5, 1, face); // belly
+  p.rect(3 + f, 9, 2, 1, '#5a3a24').rect(8 - f, 9, 2, 1, '#5a3a24'); // feet
+}
+
+/** Dinos: green with orange spikes, orange with yellow, purple with pink. */
+const DINO_COLORS = [
+  { body: '#5fb84a', belly: '#e2f0a0', spike: '#f08a2a' },
+  { body: '#f08a2a', belly: '#fde2a8', spike: '#f5d03a' },
+  { body: '#9a6ad8', belly: '#f0dcf8', spike: '#f07ab0' },
+];
+function dino(p: Px, f: number, v = 0): void {
+  // small friendly dinosaur on two chunky legs: big head, smile, round belly and spikes down the back
+  const k = DINO_COLORS[v % DINO_COLORS.length]!;
+  const c = k.body;
+  const d = shade(c, 0.75);
+  p.line(0, 12, 6, 9, c).line(0, 11, 6, 8, c).rect(3, 9, 5, 4, c); // tail
+  p.ellipse(4, 6, 11, 10, c); // body
+  p.ellipse(7, 9, 7, 6, k.belly);
+  p.ellipse(10, 1, 9, 8, c).rect(14, 4, 5, 4, c); // head and snout
+  for (const [x, y] of [[2, 10], [5, 8], [7, 6], [10, 3], [12, 1]] as const) p.px(x, y, k.spike).px(x + 1, y, k.spike).px(x, y - 1, k.spike); // spikes
+  p.rect(14, 3, 2, 2, OUTLINE).px(14, 3, '#ffffff'); // eye
+  p.line(15, 6, 17, 6, d).px(18, 5, d); // smile
+  p.px(17, 3, d); // nostril
+  p.px(13, 6, shade(c, 1.35)).px(14, 6, shade(c, 1.35)); // cheek
+  p.rect(13, 10, 2, 1, d).px(14, 11, d); // little arm
+  p.rect(7 + f, 14, 3, 4, d).rect(11 - f, 14, 3, 4, c); // legs
+}
+
+/** Gummy bears: red, yellow, green, orange. */
+const GUMMY_COLORS = ['#e8343a', '#f5c62a', '#58c83a', '#f5822a'];
+const rgba = (hex: string, a: number): string => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+function gummy(p: Px, f: number, v = 0): void {
+  // translucent gummy bear seen from the front: a glowing core, a shine, and it squishes down on frame 1
+  const c = GUMMY_COLORS[v % GUMMY_COLORS.length]!;
+  const pal = { B: rgba(c, 0.8), R: rgba(shade(c, 0.8), 0.9), C: rgba(shade(c, 1.4), 0.9), H: 'rgba(255,255,255,0.85)', E: shade(c, 0.45), M: shade(c, 0.55) };
+  const stand = [
+    '............',
+    '..BB....BB..',
+    '.BBBBBBBBBB.',
+    '.BHBBBBBBBB.',
+    '.BBBBEBBEBB.',
+    '.BBBBBBMBBB.',
+    '..BBBBBBBB..',
+    '.BBBCCCCBBB.',
+    '.BBCCHCCCBB.',
+    '..BBCCCCBB..',
+    '..RBB..BBR..',
+    '..RRR..RRR..',
+  ];
+  const squish = [
+    '............',
+    '............',
+    '..BB....BB..',
+    '.BBBBBBBBBB.',
+    '.BHBBEBBEBB.',
+    '.BBBBBBMBBB.',
+    'BBBBBBBBBBBB',
+    'BBBCCCCCCBBB',
+    '.BBCHCCCCBB.',
+    '.BBBCCCCBBB.',
+    '.RBBB..BBBR.',
+    '.RRRR..RRRR.',
+  ];
+  p.tpl(0, 0, f ? squish : stand, pal);
+}
+
+function alien(p: Px, f: number): void {
+  // cute little green alien from the front: a big bulb head, huge shiny black eyes, antennae with glowing tips
+  const c = '#8ee06a';
+  const pal = { G: c, D: shade(c, 0.72), L: shade(c, 1.3), S: shade(c, 0.6), Y: '#f5e04a', K: '#14121a', W: '#ffffff', M: shade(c, 0.5) };
+  const top = [
+    '..............',
+    '.YY.......YY..',
+    '.YY.......YY..',
+    '...S......S...',
+    '...GGGGGGGG...',
+    '..GGGGGGGGGG..',
+    '.GGGGGGGGGGGG.',
+    '.GKKWGGGGKKWG.',
+    '.GKKKKGGKKKKG.',
+    '.GGKKKGGKKKGG.',
+    '..GGGGGGGGGG..',
+    '...GGGMMGGG...',
+    '....GGGGGG....',
+    '..DGGLLLLGGD..',
+    '..D.GLLLLG.D..',
+  ];
+  p.tpl(0, 0, top, pal);
+  p.tpl(0, 15, f ? ['...DD....DD...', '...DD....DD...'] : ['....DD..DD....', '....DD..DD....'], pal); // legs
+}
+
+function dragon(p: Px, f: number): void {
+  // small purple pet dragon: curved horns, cream belly, spade tail; the little bat wings flap between the frames
+  const c = '#9a5ad8';
+  const d = shade(c, 0.72);
+  const belly = '#f5d890';
+  const wingPal = { B: d, P: '#e89ad8' };
+  if (f === 0)
+    p.tpl(4, 0, ['......BB..', '.....BPB..', '....BPPB..', '...BPPPB..', '..BPPPPB..', '.BPPPPPB..', 'BPPPPPPB..', '.P.PP.PBB.', '.......BB.'], wingPal); // wing raised
+  else p.tpl(0, 5, ['..........BB', '.......BBBPB', '....BBBPPPPB', '.BBBPPPPPPB.', '..PPPPPPPB..', '...P.PP.P...'], wingPal); // wing swept back
+  p.line(1, 9, 5, 12, c).line(1, 10, 5, 13, c).tpl(0, 5, ['.S.', 'SSS', 'SSS', '.S.'], { S: c }); // tail with a spade tip
+  p.ellipse(5, 8, 11, 7, c).rect(13, 8, 3, 3, c); // body, neck
+  p.ellipse(8, 11, 7, 4, belly).rect(9, 12, 5, 1, shade(belly, 0.85)); // striped belly
+  p.ellipse(13, 3, 7, 7, c).rect(18, 6, 3, 3, c); // head and snout
+  p.rect(13, 2, 2, 1, '#f4ead8').px(13, 1, '#f4ead8').rect(16, 2, 2, 1, '#f4ead8').px(16, 1, '#f4ead8'); // little horns
+  p.rect(16, 4, 2, 2, OUTLINE).px(16, 4, '#ffffff'); // eye
+  p.px(20, 7, d).line(17, 8, 19, 8, d).px(15, 7, '#e89ad8'); // nostril, smile, cheek
+  p.rect(6 + f, 14, 2, 4, d).rect(8, 14, 2, 4, c).rect(11, 14, 2, 4, d).rect(13 - f, 14, 2, 4, c); // legs
+}
+
+/** How high a rider sits on a mount, where not as on the horse (7). */
+export const RIDE_LIFT: Record<string, number> = { ...SAGA_RIDE_LIFT };
+
 /** City traffic: drawn with a colour variant and never with a tomteluva. */
 export const VEHICLE_SPECIES = new Set(['car', 'motorcycle', 'bus', 'train']);
 export const VEHICLE_VARIANTS = 3;
-/** Colour variants per species (vehicles only); variant 0 is the default. */
-export const ANIMAL_VARIANTS: Record<string, number> = Object.fromEntries([...VEHICLE_SPECIES].map((s) => [s, VEHICLE_VARIANTS]));
+/** Colour variants per species (vehicles and some wild animals); variant 0 is the default. */
+export const ANIMAL_VARIANTS: Record<string, number> = {
+  ...Object.fromEntries([...VEHICLE_SPECIES].map((s) => [s, VEHICLE_VARIANTS])),
+  parrot: PARROT_COLORS.length,
+  dino: DINO_COLORS.length,
+  gummy: GUMMY_COLORS.length,
+};
 const CAR_COLORS = ['#d9453b', '#3b6fd9', '#f0c030'];
 const MOTO_COLORS = ['#d9453b', '#f08a2a', '#2f7a3a'];
 const wheel = (p: Px, cx: number, cy: number, r: number, f: number) => {
@@ -298,10 +540,12 @@ const DRAW: Record<string, (p: Px, f: number, v?: number) => void> = {
   car,
   motorcycle,
   bus,
-  train, hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, hare, boar, moose, bear, wolf, lynx, slime, bat, troll, boss };
+  train, hen, rabbit, sheep, cow, pig, horse, dog, cat, fox, deer, penguin, crab, goat, lizard, hare, boar, moose, bear, wolf, lynx, slime, bat, troll, boss,
+  frog, parrot, monkey, salamander, hedgehog, dino, gummy, alien, dragon, ...SAGA_DRAW };
 
 /** Head position (x of head centre, top y) for the tomteluva per species. */
-const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], pig: [14, -1], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0], hare: [11, -1], boar: [14, 1], moose: [19, 0], bear: [18, 1], wolf: [16, 0], lynx: [14, 0] };
+const HAT_POS: Record<string, [number, number]> = { hen: [12, 1], rabbit: [12, -1], sheep: [14, 4], cow: [19, 0], pig: [14, -1], horse: [22, -1], dog: [12, 1], cat: [11, 0], fox: [14, 0], deer: [13, 0], penguin: [6, 0], goat: [13, 0], hare: [11, -1], boar: [14, 1], moose: [19, 0], bear: [18, 1], wolf: [16, 0], lynx: [14, 0],
+  frog: [7, 1], parrot: [12, 1], monkey: [10, 1], salamander: [14, 0], hedgehog: [6, 0], dino: [14, 1], gummy: [6, 0], alien: [7, 3], dragon: [16, 2], ...SAGA_HAT_POS };
 
 export function drawAnimal(species: string, frame: number, baby: boolean, jul: boolean, variant = 0): Px {
   const size = ANIMAL_SIZE[species] ?? { w: 16, h: 16 };
@@ -311,7 +555,8 @@ export function drawAnimal(species: string, frame: number, baby: boolean, jul: b
     const [hx, hy] = HAT_POS[species] ?? [8, 0];
     full.rect(hx - 3, hy + 1, 6, 1, '#ffffff').rect(hx - 2, hy - 1, 4, 2, '#d8363a').rect(hx - 1, hy - 3, 2, 2, '#d8363a').px(hx + 1, hy - 3, '#ffffff');
   }
-  full.outline(OUTLINE);
+  full.outline(SAGA_OUTLINE[species] ?? OUTLINE);
+  SAGA_AFTER[species]?.(full, frame, variant);
   if (!baby) return full;
   // baby: 2/3 scale, drawn bottom-aligned in a same-sized canvas
   const bw = Math.round(size.w * 0.66);

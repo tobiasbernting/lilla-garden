@@ -4,13 +4,25 @@ import {
   isVehicle,
   ACHIEVEMENT_TEXT,
   ANIMALS,
-  BIOME_EMOJI,
-  BIOME_NAMES,
   CHEST_SIZE,
+  MOON_KEY,
+  SPACEPORT_KEY,
   areaCoords,
   areaKey,
   biomeAt,
-  type Biome,
+  parseCaveKey,
+  placeEmoji,
+  placeName,
+  villageOfBath,
+  villageOfHall,
+  ARCADE,
+  ARCADE_GAMES,
+  POINTS_PER_TICKET,
+  PRIZES,
+  familyGames,
+  isArcadeGame,
+  isHallKey,
+  isIndoorKey,
   COOKING,
   HELP,
   NPCS,
@@ -32,6 +44,13 @@ import {
   type RecipeDef,
   type SlotRef,
   transportDestinations,
+  DAY_LENGTH_MS,
+  isBathKey,
+  isCallable,
+  localWeather,
+  noWeatherHere,
+  talkNode,
+  type Talk,
 } from '@lilla-garden/shared';
 import { portraitUrl, getArt } from '../art/textures.js';
 import { EMOTE_GLYPH } from '../art/world.js';
@@ -41,8 +60,11 @@ import { clear, h, icon, onTap } from './dom.js';
 import { slotEl } from './hud.js';
 import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
+import { SFX } from '../sound.ts';
+import { familyScores } from './arcade.ts';
+import { hasSagaQuests, sagaQuestRows } from './saga.ts';
 
-export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel';
+export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel' | 'prizes' | 'scores';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}`, vehicles: T.tabVehicles };
 const TABS = ['seeds', 'animals', 'vehicles', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
@@ -58,6 +80,10 @@ export class Menus {
   private picked: SlotRef | null = null;
   private tab: (typeof TABS)[number] = 'seeds';
   private wardrobeTab: ClothingSlot = 'hat';
+  /** Villager conversation in progress (null: the greeting and quests). */
+  private talk: Talk | null = null;
+  /** What you said last, shown above the villager's answer. */
+  private said = '';
   onChange: (open: boolean) => void = () => {};
 
   constructor(private ui: HTMLElement) {
@@ -72,6 +98,8 @@ export class Menus {
       if (c.ui === 'chest') this.open('chest', c.id);
       else if (c.ui === 'travel') this.open('travel', c.id);
       else if (c.ui === 'nameAnimal') this.open('nameAnimal', c.id);
+      else if (c.ui === 'arcade') return; // the minigames open over everything (ui/arcade.ts)
+      else if (c.ui === 'saga' || c.ui === 'sagaClass') return; // the saga's own windows (ui/saga.ts)
       else if (c.ui === 'npc') {
         this.npcId = c.npc ?? null;
         this.open('npc');
@@ -84,6 +112,13 @@ export class Menus {
 
   isOpen(): boolean {
     return this.kind !== null;
+  }
+
+  /** Opens a villager's window straight into a conversation (Völvan's "Prata"). */
+  talkTo(npcId: string): void {
+    this.npcId = npcId;
+    this.open('npc');
+    this.say(npcId, 'start', '');
   }
 
   toggle(kind: MenuKind): void {
@@ -114,6 +149,8 @@ export class Menus {
     this.kind = null;
     this.chestId = null;
     this.animalId = null;
+    this.talk = null;
+    this.said = '';
     this.onChange(false);
   }
 
@@ -137,13 +174,16 @@ export class Menus {
       map: `🗺️ ${T.worldMap}`,
       paint: `🎨 ${T.paint}`,
       pizzeria: `🍕 ${T.pizzeria}`,
+      prizes: `🎁 ${T.prizesTitle}`,
+      scores: `🏆 ${T.scoresTitle}`,
       travel: this.travelVia() === 'train' ? `🚂 ${T.travelTrain}` : `🚌 ${T.travelBus}`,
       npc: this.npcId ? (NPCS[this.npcId]?.name ?? '') : '',
     }[this.kind];
     const closeBtn = h('button', { class: 'close' }, '✕');
     onTap(closeBtn, () => this.close());
     const coins = h('span', { class: 'price' }, `${me.coins} ${T.coins}${this.kind === 'catalogue' ? ` · ⭐ ${me.stars}` : ''}`);
-    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' || this.kind === 'travel' ? coins : null, closeBtn);
+    const tickets = h('span', { class: 'price' }, `🎟️ ${me.arcade?.tickets ?? 0} ${T.tickets}`);
+    const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' || this.kind === 'travel' ? coins : this.kind === 'prizes' ? tickets : null, closeBtn);
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: 'panel' }, head, body);
     switch (this.kind) {
@@ -161,6 +201,12 @@ export class Menus {
         break;
       case 'pizzeria':
         this.renderPizzeria(body);
+        break;
+      case 'prizes':
+        this.renderPrizes(body);
+        break;
+      case 'scores':
+        this.renderScores(body);
         break;
       case 'travel':
         this.renderTravel(body);
@@ -331,6 +377,41 @@ export class Menus {
     body.append(rows);
   }
 
+  // ---- Spelhallen: the prize counter and the score board ----
+
+  private renderPrizes(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const have = familyGames(client.world!);
+    body.append(h('div', { class: 'hint' }, fmt(T.prizesHint, { n: POINTS_PER_TICKET })));
+    const rows = h('div', { class: 'rows' });
+    for (const p of PRIZES) {
+      const game = itemDef(p.item).game;
+      const owned = isArcadeGame(game) && have.includes(game);
+      const name = isArcadeGame(game) ? `${ARCADE[game].emoji} ${ARCADE[game].name} (${T.tvGame})` : itemName(p.item);
+      const row = h('div', { class: `row${owned ? ' off' : ''}` }, icon(getArt().iconUrl[p.item] ?? ''), h('span', { class: 'name' }, name), h('span', { class: 'price' }, owned ? T.alreadyOnTv : `🎟️ ${p.tickets}`));
+      const b = h('button', { disabled: owned || (me.arcade?.tickets ?? 0) < p.tickets }, T.swap);
+      onTap(b, () => net.send({ t: 'prize', item: p.item }));
+      row.append(b);
+      rows.append(row);
+    }
+    body.append(rows);
+  }
+
+  private renderScores(body: HTMLElement): void {
+    body.append(h('div', { class: 'hint' }, T.scoresHint));
+    const grid = h('div', { class: 'scoreboard' });
+    for (const g of ARCADE_GAMES) {
+      const d = ARCADE[g];
+      const lines = familyScores(g).slice(0, 5);
+      const list = h('ol', null);
+      lines.forEach((l, i) => list.append(h('li', { class: l.me ? 'me' : '' }, h('span', null, ['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`), h('span', { class: 'who' }, l.name), h('b', null, l.score.toLocaleString('sv-SE')))));
+      if (!lines.length) list.append(h('li', { class: 'none' }, T.noScores));
+      const card = h('div', { class: 'game' }, h('h3', { style: { color: d.color } }, `${d.emoji} ${d.name}`), list);
+      grid.append(card);
+    }
+    body.append(grid);
+  }
+
   // ---- bus stop / train station ----
   private travelVia(): 'bus' | 'train' {
     const w = activeWorld();
@@ -474,7 +555,10 @@ export class Menus {
 
   private renderMap(body: HTMLElement): void {
     const me = myPlayer()!;
-    const here = me.area === 'dungeon' ? 'farm' : me.area;
+    // in a cave, the bath house or on the moon, the map shows the place you came from
+    const cave = parseCaveKey(me.area);
+    const outside = me.area === 'dungeon' ? 'farm' : cave ? cave.parent : isBathKey(me.area) ? villageOfBath(me.area) : isHallKey(me.area) ? villageOfHall(me.area) : me.area === MOON_KEY ? SPACEPORT_KEY : me.area;
+    const here = parseCaveKey(outside)?.parent ?? (outside === MOON_KEY ? SPACEPORT_KEY : outside);
     const c = areaCoords(here) ?? { ax: 0, ay: 0 };
     const visited = new Set(me.visited ?? ['farm']);
     const R = 3;
@@ -485,9 +569,16 @@ export class Menus {
         const ay = c.ay + dy;
         const k = ax === 0 && ay === 0 ? 'farm' : areaKey(ax, ay);
         const known = visited.has(k);
-        const biome = k === 'farm' ? 'farm' : known ? ((client.areas[k]?.biome as Biome | undefined) ?? biomeAt(ax, ay)) : null;
-        const cell = h('div', { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: known ? BIOME_NAMES[biome!] : T.notVisited }, known ? h('span', { class: 'em' }, BIOME_EMOJI[biome!]) : h('span', { class: 'em' }, '❔'), known ? h('span', { class: 'nm' }, BIOME_NAMES[biome!]) : null);
-        if (known && k !== here && me.area !== 'dungeon') {
+        const biome = k === 'farm' ? 'farm' : known ? (client.biomes[k] ?? client.areas[k]?.biome ?? biomeAt(ax, ay)) : null;
+        // the rocket is rumoured about before anyone finds it
+        const rumour = !known && k === SPACEPORT_KEY;
+        const cell = h(
+          'div',
+          { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: known ? placeName(biome!) : rumour ? T.spaceportRumour : T.notVisited },
+          h('span', { class: 'em' }, known ? placeEmoji(biome!) : rumour ? '🚀' : '❔'),
+          known ? h('span', { class: 'nm' }, placeName(biome!)) : rumour ? h('span', { class: 'nm' }, '?') : null,
+        );
+        if (known && k !== me.area && me.area !== 'dungeon') {
           onTap(cell, () => {
             net.send({ t: 'teleport', to: k });
             this.close();
@@ -500,9 +591,21 @@ export class Menus {
       net.send({ t: 'teleport', to: 'farm' });
       this.close();
     });
+    const buttons = [home];
+    if (visited.has(MOON_KEY) && me.area !== MOON_KEY && me.area !== 'dungeon') {
+      const moon = h('button', {}, `🌙 ${placeName('mane')}`);
+      onTap(moon, () => {
+        net.send({ t: 'teleport', to: MOON_KEY });
+        this.close();
+      });
+      buttons.push(moon);
+    }
     const mini = h('button', { class: 'alt' }, '🧭 Minikarta av/på');
     onTap(mini, () => document.dispatchEvent(new CustomEvent('lilla:minimap')));
-    body.append(h('p', { class: 'help-intro' }, `${T.youAreHere}: ${BIOME_EMOJI[(client.areas[here]?.biome as Biome | undefined) ?? (here === 'farm' ? 'farm' : 'ang')]} ${here === 'farm' ? BIOME_NAMES.farm : BIOME_NAMES[(client.areas[here]?.biome as Biome | undefined) ?? 'ang']} · Norr är uppåt. Kallare norrut, varmare söderut.`), grid, h('div', { class: 'tabs' }, home, mini));
+    buttons.push(mini);
+    const place = me.area === 'farm' ? 'farm' : me.area === 'dungeon' ? 'dungeon' : client.areas[me.area]?.biome;
+    const where = isBathKey(me.area) ? `🏊 ${T.bathhouseName}` : isHallKey(me.area) ? `🕹️ ${T.hallName}` : `${placeEmoji(place)} ${placeName(place)}`;
+    body.append(h('p', { class: 'help-intro' }, `${T.youAreHere}: ${where} · Norr är uppåt. Kallt i norr, varmt i söder, hav i väster och berg i öster.`), grid, h('div', { class: 'tabs' }, ...buttons));
   }
 
   // ---- gårdsbok ----
@@ -539,9 +642,19 @@ export class Menus {
       return;
     }
     const quests = openQuests(client.world!, me, npc.id);
+    const saga = hasSagaQuests(npc.id);
+    if (this.talk) {
+      this.renderTalk(body, npc.id, quests.length > 0 || saga);
+      return;
+    }
     const greeting = npc.greeting[(client.day + npc.name.length) % npc.greeting.length]!;
-    const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length ? greeting : T.questAllDone));
+    const talk = h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, quests.length || saga ? greeting : T.questAllDone));
     body.append(talk);
+    const chat = h('button', null, '💬 Prata!');
+    onTap(chat, () => this.say(npc.id, 'start', ''));
+    body.append(h('div', { class: 'npc-actions' }, chat));
+    // the saga's quests (ui/saga.ts)
+    if (saga) body.append(sagaQuestRows(npc.id));
     const rows = h('div', { class: 'rows' });
     for (const q of quests) {
       const have = countItem(me.inventory, q.want.item);
@@ -563,6 +676,52 @@ export class Menus {
       );
     }
     body.append(rows);
+  }
+
+  // ---- conversations (2D game) ----
+
+  private say(npcId: string, node: string, said: string): void {
+    const me = myPlayer();
+    if (!me) return;
+    if (!node) {
+      this.close();
+      return;
+    }
+    const pets: { name: string; species: string }[] = [];
+    for (const w of [client.world, ...Object.values(client.areas)])
+      for (const a of Object.values(w?.animals ?? {})) if (a.owner === me.id && isCallable(a) && a.name) pets.push({ name: a.name, species: a.species });
+    const outdoors = !noWeatherHere(me.area) && !isIndoorKey(me.area);
+    const weather = client.weather && outdoors ? localWeather(client.weather.kind, activeWorld()?.biome) : null;
+    this.talk = talkNode(npcId, node, { name: me.name, weather, dayFraction: client.timeMs / DAY_LENGTH_MS, season: client.season, pets, rnd: Math.random });
+    this.said = said;
+    SFX.talk();
+    this.rerender();
+  }
+
+  private renderTalk(outer: HTMLElement, npcId: string, hasQuests: boolean): void {
+    const npc = NPCS[npcId]!;
+    const t = this.talk!;
+    // a fixed width, so the window does not jump around between answers
+    const body = h('div', { class: 'talk' });
+    outer.append(body);
+    if (this.said) body.append(h('div', { class: 'talk-said' }, `Du: ${this.said}`));
+    body.append(h('div', { class: 'npc-talk' }, h('img', { class: 'portrait', src: portraitUrl(npc.appearance, npc.outfit, 4) }), h('div', { class: 'bubble-text' }, t.say)));
+    const opts = h('div', { class: 'talk-opts' });
+    for (const o of t.options) {
+      const b = h('button', { class: o.go === '' || o.go === 'bye' ? 'bye' : '' }, o.text);
+      onTap(b, () => this.say(npcId, o.go, o.text));
+      opts.append(b);
+    }
+    body.append(opts);
+    if (hasQuests) {
+      const back = h('button', { class: 'alt' }, '📜 Uppdrag');
+      onTap(back, () => {
+        this.talk = null;
+        this.said = '';
+        this.rerender();
+      });
+      body.append(h('div', { class: 'npc-actions', style: { marginTop: 'calc(2 * var(--u))' } }, back));
+    }
   }
 
   // ---- help ----
@@ -589,7 +748,8 @@ export class Menus {
   private renderHelp(panel: HTMLElement, body: HTMLElement): void {
     const touch = document.body.classList.contains('touch');
     const tabs = h('div', { class: 'tabs' });
-    for (const t of HELP) {
+    const topics = HELP;
+    for (const t of topics) {
       const b = h('button', { class: this.helpTopic === t.id ? 'on' : '' }, `${t.emoji} ${t.title}`);
       onTap(b, () => {
         this.helpTopic = t.id;
@@ -598,7 +758,7 @@ export class Menus {
       tabs.append(b);
     }
     panel.insertBefore(tabs, body);
-    const topic = HELP.find((t) => t.id === this.helpTopic) ?? HELP[0]!;
+    const topic = topics.find((t) => t.id === this.helpTopic) ?? topics[0]!;
     if (topic.intro) body.append(h('p', { class: 'help-intro' }, topic.intro));
     const list = h('ol', { class: 'help-steps' });
     for (const step of topic.steps) {

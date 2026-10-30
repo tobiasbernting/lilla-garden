@@ -4,19 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "node scripts/icons.mjs",
-    "predev": "node scripts/icons.mjs",
-    "dev": "vite --host",
-    "build": "vite build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lilla-garden/shared": "workspace:*",
-    "phaser": "^3.90.0"
+    "@lilla-garden/arcade": "workspace:*",
+    "@lilla-garden/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vite": "^7.1.7",
-    "vite-plugin-pwa": "^1.0.3"
+    "vite": "^7.1.7"
   }
 }

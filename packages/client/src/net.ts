@@ -77,6 +77,10 @@ export class Net {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
+  connected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
   private handle(msg: ServerMsg): void {
     switch (msg.t) {
       case 'welcome':
@@ -86,7 +90,10 @@ export class Net {
         client.season = msg.season;
         client.serverOffset = Date.now() - msg.now;
         client.timeMs = msg.world.timeMs;
+        client.weather = msg.world.weather ?? null;
+        bus.emit('weather', client.weather);
         client.day = msg.world.day;
+        client.biomes = { ...msg.biomes };
         client.snaps.players.clear();
         client.snaps.animals.clear();
         client.snaps.npcs.clear();
@@ -99,10 +106,15 @@ export class Net {
         client.day = msg.day;
         client.lastStateAt = performance.now();
         client.serverOffset = Date.now() - msg.now;
+        if (msg.weather && (msg.weather.kind !== client.weather?.kind || msg.weather.since !== client.weather?.since)) {
+          client.weather = msg.weather;
+          bus.emit('weather', msg.weather);
+        }
         if (msg.season !== client.season) {
           client.season = msg.season;
           bus.emit('season', msg.season);
         }
+        client.saga = msg.saga ?? {};
         const seen = new Set<string>();
         for (const p of msg.players) {
           client.snaps.players.set(p.id, p);
@@ -117,9 +129,14 @@ export class Net {
           }
         }
         for (const id of [...client.snaps.players.keys()]) if (!seen.has(id)) client.snaps.players.delete(id);
+        // animal ids are only unique within one map (a dungeon counts from 1): the one on your map wins
+        const myMap = client.world?.players[client.me]?.area ?? 'farm';
+        const seenAnimals = new Set<number>();
         for (const a of msg.animals) {
+          if (seenAnimals.has(a.id) && (a.area ?? 'farm') !== myMap) continue;
+          seenAnimals.add(a.id);
           client.snaps.animals.set(a.id, a);
-          const rec = client.world?.animals[a.id];
+          const rec = worldFor(a.area ?? 'farm')?.animals[a.id];
           if (rec) {
             rec.facing = a.facing;
             rec.moving = a.moving;

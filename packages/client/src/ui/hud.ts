@@ -1,5 +1,5 @@
 // HUD: top chips, hotbar, toasts, touch controls.
-import { BIOME_EMOJI, BIOME_NAMES, HOTBAR_SIZE, MAX_HEARTS, T, WATERING_CAN_CHARGES, fmt, isBathKey, itemName, type Biome, type ItemStack } from '@lilla-garden/shared';
+import { HOTBAR_SIZE, MAX_HEARTS, SPELLS, T, WATERING_CAN_CHARGES, areaName, fmt, isBathKey, isHallKey, isSagaKey, itemName, placeEmoji, placeName, type ItemStack } from '@lilla-garden/shared';
 import { Minimap } from './minimap.ts';
 import { ART_STYLE, nextArtStyle, setArtStyle } from '../art/style.ts';
 import { getArt } from '../art/textures.js';
@@ -14,6 +14,8 @@ export interface HudTarget {
   joystick: { dx: number; dy: number };
   runHeld: boolean;
   act(): void;
+  /** A quick tap on the joystick's side of the screen (the dungeons aim at a monster tapped there). */
+  tap?(clientX: number, clientY: number): void;
 }
 
 export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; picked?: boolean; key?: string; onTap?: () => void } = {}): HTMLDivElement {
@@ -40,6 +42,8 @@ export class Hud {
   private joy: HTMLElement;
   private joyKnob: HTMLElement;
   minimap!: Minimap;
+  /** Extra chips after the built-in ones (the 2D game adds the weather). */
+  topExtras: (() => HTMLElement | null)[] = [];
 
   constructor(
     private ui: HTMLElement,
@@ -159,7 +163,7 @@ export class Hud {
     this.render();
   }
 
-  private renderTop(): void {
+  renderTop(): void {
     const me = myPlayer();
     clear(this.top);
     const f = client.timeMs / (10 * 60 * 1000);
@@ -167,16 +171,23 @@ export class Hud {
     this.top.append(h('div', { class: 'chip' }, `${clock} ${fmt(T.day, { day: client.day })}`));
     if (me) this.top.append(h('div', { class: 'chip' }, h('span', { class: 'coins' }, `${me.coins} ${T.coins}`)));
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
-    if (me && me.boostUntil !== undefined && me.boostUntil > serverNow()) this.top.append(h('div', { class: 'chip', title: T.pizzaPower }, '🍕💨'));
+    // pizza power, or a berserker's rage in a dungeon
+    if (me && me.boostUntil !== undefined && me.boostUntil > serverNow()) this.top.append(isSagaKey(me.area) ? h('div', { class: 'chip', title: SPELLS.raseri?.name }, '🔥💨') : h('div', { class: 'chip', title: T.pizzaPower }, '🍕💨'));
     if (me && (me.area === 'dungeon' || me.hearts < MAX_HEARTS)) this.top.append(h('div', { class: 'chip hearts' }, '❤️'.repeat(Math.max(0, me.hearts)) + '🖤'.repeat(Math.max(0, MAX_HEARTS - me.hearts))));
     if (me && isBathKey(me.area)) this.top.append(h('div', { class: 'chip' }, `🏊 ${T.bathhouseName}`));
+    else if (me && isHallKey(me.area)) this.top.append(h('div', { class: 'chip' }, `🕹️ ${T.hallName}`), h('div', { class: 'chip', title: T.tickets }, `🎟️ ${me.arcade?.tickets ?? 0}`));
+    else if (me && isSagaKey(me.area)) this.top.append(h('div', { class: 'chip' }, `⚔️ ${areaName(me.area)}`));
     else if (me && me.area !== 'farm' && me.area !== 'dungeon') {
-      const b = (client.areas[me.area]?.biome as Biome | undefined) ?? 'ang';
-      this.top.append(h('div', { class: 'chip' }, `${BIOME_EMOJI[b]} ${BIOME_NAMES[b]}`));
+      const b = client.areas[me.area]?.biome;
+      this.top.append(h('div', { class: 'chip' }, `${placeEmoji(b)} ${placeName(b)}`));
     }
     if (client.season !== 'none') {
       const glyph = { halloween: '🎃', jul: '🎄', pask: '🐣', midsommar: '🌸', none: '' }[client.season];
       this.top.append(h('div', { class: 'chip' }, glyph));
+    }
+    for (const extra of this.topExtras) {
+      const el = extra();
+      if (el) this.top.append(el);
     }
   }
 
@@ -185,6 +196,9 @@ export class Hud {
     let ox = 0;
     let oy = 0;
     let id = -1;
+    /** When and where the finger came down, to tell a tap from a push of the stick. */
+    let downAt = 0;
+    let moved = 0;
     const radius = () => 14 * zoomPx();
     const set = (dx: number, dy: number) => {
       const s = this.scene();
@@ -194,6 +208,8 @@ export class Hud {
       if (active) return;
       active = true;
       id = e.pointerId;
+      downAt = performance.now();
+      moved = 0;
       const r = zone.getBoundingClientRect();
       ox = e.clientX - r.left;
       oy = e.clientY - r.top;
@@ -209,6 +225,7 @@ export class Hud {
       let dx = e.clientX - r.left - ox;
       let dy = e.clientY - r.top - oy;
       const len = Math.hypot(dx, dy);
+      moved = Math.max(moved, len);
       const rad = radius();
       if (len > rad) {
         dx = (dx / len) * rad;
@@ -224,6 +241,7 @@ export class Hud {
       active = false;
       this.joy.style.display = 'none';
       set(0, 0);
+      if (e.type === 'pointerup' && moved < 3 * zoomPx() && performance.now() - downAt < 350) this.scene()?.tap?.(e.clientX, e.clientY);
     };
     zone.addEventListener('pointerup', end);
     zone.addEventListener('pointercancel', end);

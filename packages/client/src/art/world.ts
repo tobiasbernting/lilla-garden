@@ -2,6 +2,11 @@
 import { CROPS, type Terrain } from '@lilla-garden/shared';
 import { Px, hash2, shade } from './px.js';
 import { NEW_ART } from './style.ts';
+import { drawBiomeObjects } from './objects2.ts';
+import { caveWallThemed, drawLandmarks } from './landmarks.ts';
+import { drawArcade } from './arcade.ts';
+import { drawSaga } from './saga.ts';
+import { addBiomeTerrain, edgeGroup } from './terrain2.ts';
 
 export const OUTLINE = '#2b2419';
 const WOOD = '#9a6a3a';
@@ -27,6 +32,8 @@ export interface TerrainTiles {
   count: number;
   /** Whether water/soil need neighbour masks (new style). */
   edges: boolean;
+  /** Which neighbours count as the same ground for a tile's edges (null: it has none). */
+  edgeGroup: (t: Terrain) => ((n: Terrain | undefined) => boolean) | null;
 }
 
 export function drawTerrainTiles(): TerrainTiles {
@@ -220,6 +227,8 @@ export function drawTerrainTiles(): TerrainTiles {
   const rockP = new Px(16, 16).rect(0, 0, 16, 16, '#1d1c22');
   speck(rockP, 900, 4, '#26252c', 2);
   const rockI = add(rockP);
+  // the wider world: cliffs, lava, swamp, moss, candy, the moon…
+  const biome = addBiomeTerrain(add, NEW_ART);
 
   // several rows: a single row would exceed the GPU's texture width limit
   const cols = 32;
@@ -230,9 +239,12 @@ export function drawTerrainTiles(): TerrainTiles {
     count: tiles.length,
     rock: rockI,
     edges: true,
+    edgeGroup,
     waterFrames: [water[0]!, water[1]!],
     index: (t, x, y, snowy, mask = 0, frame = 0) => {
       const h = hash2(x, y);
+      const wider = biome.index(t, x, y, snowy, mask, frame);
+      if (wider !== null) return wider;
       switch (t) {
         case 'grass':
           return snowy ? snow[h % 2]! : grass[h % grass.length]!;
@@ -270,6 +282,8 @@ export function drawTerrainTiles(): TerrainTiles {
           return crossing[mask & 5 ? 0 : 1]!;
         case 'rail':
           return railI;
+        default:
+          return grass[0]!;
       }
     },
   };
@@ -957,10 +971,14 @@ export function drawObjects(): Record<string, ObjectArt> {
   // Cave
   set('cave', [caveMouth()], 0, -8);
   set('cave_exit', [caveExit()]);
-  set('cave_wall', [caveWall(false), caveWall(true)], 0, -8);
+  set('cave_wall', [caveWall(false), caveWall(true), ...Array.from({ length: 11 }, (_, t) => [caveWallThemed(t, false), caveWallThemed(t, true)]).flat()], 0, -8);
   set('cave_torch', [torch(0), torch(1)], 0, 0, true);
   set('cave_rock', [rock(true)]);
   set('treasure', [treasure()]);
+  drawBiomeObjects(set);
+  drawLandmarks(set);
+  drawArcade(set);
+  drawSaga(set);
   return art;
 }
 
@@ -1211,4 +1229,6 @@ export const EMOTE_GLYPH: Record<string, string> = {
   sova: '💤',
   fiske: '🎣',
   napp: '❗',
+  vissla: '🎵',
+  dans: '💃',
 };

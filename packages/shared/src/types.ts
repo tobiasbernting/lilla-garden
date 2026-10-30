@@ -1,5 +1,7 @@
 // Core shared types. Identifiers are English; all player-facing text lives in sv.ts.
 
+import type { SagaInstance, SagaProgress } from './saga.ts';
+
 export const TILE = 16;
 export const MAP_W = 64;
 export const MAP_H = 64;
@@ -34,8 +36,34 @@ export type Terrain =
   | 'sidewalk'
   | 'crossing' // zebra crossing
   | 'rail'
-  | 'dirt' // bare earth (3D game: a dug or placed dirt block on top)
-  | 'stone'; // bare rock (3D game: mountains, dug rock)
+  | 'dirt' // bare earth
+  | 'stone' // bare rock
+  // The wider world (2026-10-29): biome grounds, and ground nobody walks on (see WALL_TERRAIN)
+  | 'rock' // a cliff, or the rock around a cave
+  | 'sandstone' // red cliffs (the desert and Dinodalen)
+  | 'basalt' // black cliffs (the volcano)
+  | 'lava' // the volcano's glowing rivers
+  | 'ash' // volcanic ground
+  | 'mud' // the swamp's soft ground
+  | 'bog' // the swamp's murky water (fish live in it)
+  | 'moss' // the mushroom forest's soft ground
+  | 'redsand' // Dinodalen
+  | 'candy' // Godislandet's sugar ground
+  | 'choco' // Godislandet's chocolate river
+  | 'moon' // moon dust
+  | 'space' // the starry sky around the moon
+  // Minigames (2026-10-30)
+  | 'carpet' // Spelhallen's patterned arcade carpet
+  // Dungeons (2026-10-30)
+  | 'crypt' // Draugkryptan's old flagstones
+  | 'forge'; // Surts smedja: black stone with glowing seams
+
+/** Ground nobody walks on or builds on: water and the like, cliffs, and the sky around the moon. */
+export const WALL_TERRAIN: ReadonlySet<Terrain> = new Set<Terrain>(['water', 'bog', 'lava', 'choco', 'rock', 'sandstone', 'basalt', 'space']);
+/** Cliffs (and the rock around a cave). */
+export const isCliff = (t: Terrain | undefined): boolean => t === 'rock' || t === 'sandstone' || t === 'basalt';
+/** Water you can fish in and fill the watering can from. */
+export const isFishWater = (t: Terrain | undefined): boolean => t === 'water' || t === 'bog';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -83,12 +111,12 @@ export interface ItemDef {
   species?: string;
   /** Vehicles: colour variant of the bought vehicle. */
   variant?: number;
-  /** 3D game: the block placed when building with this item. */
-  block?: 'dirt' | 'sand' | 'gravel' | 'cobble' | 'planks';
   /** For tools. */
   tool?: 'hoe' | 'can' | 'axe' | 'pick' | 'scythe' | 'hammer' | 'brush' | 'rod' | 'sword' | 'shield' | 'bow' | 'bazooka' | 'lasso';
   /** Paint buckets: colour index (1..6) applied to houses and wall pieces. */
   paint?: number;
+  /** Game cartridges: the minigame it adds to the family's TV (never kept in the bag). */
+  game?: string;
   /** Icon reference in the generated atlas. */
   icon: string;
 }
@@ -112,15 +140,17 @@ export interface ObjectDef {
   w: number;
   h: number;
   solid: boolean;
-  /** Item dropped when broken with the hammer/axe/pick (and tool needed). */
-  breakWith?: 'hammer' | 'axe' | 'pick' | 'scythe';
+  /** Item dropped when broken with the hammer/axe/pick (and tool needed). The hoe digs up dig spots. */
+  breakWith?: 'hammer' | 'axe' | 'pick' | 'scythe' | 'hoe';
   drops?: { item: string; min: number; max: number }[];
   /** Resource that regrows: days until it comes back. */
   regrowDays?: number;
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores' | 'saga' | 'sagaclass' | 'rest' | 'sagachest';
+  /** A loot table (LOOT in data.ts) rolled when it is broken, dug up or opened. */
+  loot?: string;
   /** Gives light at night (client). */
   light?: boolean;
   /** Walkable floor-like decoration (rendered under the player). */
@@ -143,6 +173,8 @@ export interface AnimalDef {
   wild?: string;
   /** How many of them an area gets (default 3..5). */
   wildCount?: [number, number];
+  /** Wild animals that come in several colours (AnimalState.variant). */
+  variants?: number;
   /** Chance that a lasso throw tames it (default 0.6). */
   tame?: number;
   /** Predators chase players within aggroRange tiles and bite; hp like a monster, they drop fur. */
@@ -151,6 +183,10 @@ export interface AnimalDef {
   mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
   /** Vehicles: speed multiplier when driven; traffic = AI-driven city vehicles; rideable = players may drive/board it. */
   vehicle?: { speed: number; ride?: number; traffic?: boolean; seats?: number; rideable?: boolean };
+  /** Dungeon monsters and bosses (see saga.ts): they fight by the dungeon's rules. */
+  saga?: boolean;
+  /** Mounts from the dungeons: ridden like a horse, anywhere outdoors, this much faster than walking. */
+  mount?: { speed: number };
 }
 
 export interface RecipeDef {
@@ -211,8 +247,6 @@ export interface PlayerState {
   fishing?: { x: number; y: number; biteAt: number; bite: boolean; until: number };
   /** Lifetime counters for the Gårdsbok (harvest, chop, …). */
   stats: Record<string, number>;
-  /** 3D game: height of the feet in blocks (undefined = standing on the ground). */
-  z?: number;
   /** Which map the player is on: 'farm', 'dungeon' or an area key 'a:x,y'. */
   area: string;
   /** Area keys the player has been to (for the world map and teleport). */
@@ -237,6 +271,24 @@ export interface PlayerState {
   sleeping?: boolean;
   /** Unlocked achievement ids. */
   achievements: string[];
+  /** Minigames: best scores, tickets and the TV games this player found. */
+  arcade?: ArcadeState;
+  /** Dungeons: class, Völvan's story, cleared dungeons, quests, titles. */
+  saga?: SagaProgress;
+}
+
+export interface ArcadeState {
+  /** Best score per game. */
+  best: Record<string, number>;
+  /** Tickets to spend at Spelhallen's prize counter. */
+  tickets: number;
+  /** TV games this player found or won (the family's TV has everyone's). */
+  games: string[];
+  /** Tickets won on `day` (a daily limit keeps the prizes special). */
+  day: number;
+  won: number;
+  /** The TV or machine last opened (wall clock), so scores come from a real game. */
+  open?: { where: 'tv' | 'hall'; game?: string; at: number; last?: number };
 }
 
 export interface Achievement {
@@ -304,6 +356,10 @@ export interface WorldObject {
   variant?: number;
   /** A painted tavla hung up: its pixels. */
   data?: string;
+  /** Loot chests and fairy rings: the day each player last took something. */
+  openedBy?: Record<string, number>;
+  /** A loot chest's own loot table (else the kind's). */
+  loot?: string;
 }
 
 export interface AnimalState {
@@ -327,7 +383,11 @@ export interface AnimalState {
   homeId: number; // object id of its house
   /** Pets: the player they follow. Horses: the player who bought it (only they may ride). */
   owner?: string;
-  /** Vehicles: colour variant. */
+  /** Told to stay (2D game): waits around this spot until the owner whistles. */
+  stay?: { x: number; y: number };
+  /** Horses: whistled for, so it follows its owner around the farm like a pet. */
+  follow?: boolean;
+  /** Vehicles (and some wild animals): colour variant. */
   variant?: number;
   /** Mobs and predators: remaining hit points and next time it may attack. */
   hp?: number;
@@ -389,17 +449,49 @@ export interface WorldState {
   dungeon?: WorldState;
   /** Loaded overworld areas by key (farm world only). */
   areas?: Record<string, WorldState>;
-  /** 3D game: the block layer (see voxel.ts). */
-  voxel?: VoxelData;
+  /** 2D game: today's weather, the same everywhere in the world (not persisted). */
+  weather?: WeatherState;
   /** Dungeon: seed, size, whether the boss is beaten. */
   dungeonInfo?: { seed: number; w: number; h: number; cleared: boolean; level: number; start: { x: number; y: number }; bossRoom: { x: number; y: number; w: number; h: number } };
+  /** A cave out in the world: its look, the box it fills, and the map and tile its mouth is on. */
+  cave?: CaveInfo;
+  /** Version of the area generator that built this map (see AREA_GEN in biomes.ts). */
+  gen?: number;
+  /** How many of each renewable thing (berries, crystals, buried treasure…) grow back here. */
+  renew?: Record<string, number>;
+  /** A dungeon (Sagan om Världsträdet) while the family is in it. */
+  saga?: SagaInstance;
+}
+
+/** The look of a cave out in the world (each biome has its own). */
+export type CaveTheme = 'rot' | 'is' | 'kristall' | 'sjorovare' | 'pyramid' | 'tempel' | 'lava' | 'svamp' | 'fossil' | 'godis' | 'rymd';
+
+export interface CaveInfo {
+  theme: CaveTheme;
+  /** The cave fills the top-left w × h tiles of the map; everything else is rock. */
+  w: number;
+  h: number;
+  /** Where you appear (next to the way out). */
+  start: { x: number; y: number };
+  /** The map the cave mouth is on, and the tile in front of the mouth. */
+  parent: string;
+  out: { x: number; y: number };
+}
+
+/** 2D game: what the sky is doing. */
+export type WeatherKind = 'sun' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'hail' | 'wind' | 'fog';
+
+export interface WeatherState {
+  kind: WeatherKind;
+  /** Wall clock (ms) when this weather began and when it changes. */
+  since: number;
+  until: number;
+  /** The weather before this one (sun after rain shows a rainbow). */
+  prev?: WeatherKind;
+  /** Chosen on the parent page: lasts its time and then the random pattern takes over again. */
+  forced?: boolean;
+  /** When the rain last watered the fields. */
+  rainedAt?: number;
 }
 
 export const key = (x: number, y: number): string => `${x},${y}`;
-
-/** 3D game: generated column heights (MAP_W × MAP_H) and every block players changed ("x,y,h" → block). */
-export interface VoxelData {
-  heights: number[];
-  edits: Record<string, number>;
-  seed: number;
-}

@@ -1,4 +1,4 @@
-import { SEASONS, SEASON_NAMES, T } from '../../shared/src/index.ts';
+import { SEASONS, SEASON_NAMES, T, WEATHER_EMOJI, WEATHER_KINDS, WEATHER_NAMES } from '../../shared/src/index.ts';
 import type { Game } from './game.ts';
 import { esc, layout } from './pages.ts';
 
@@ -23,6 +23,11 @@ ${accessHtml}
 <div class="card">
   <h2>${T.seasonOverride}</h2>
   <form method="post" action="/admin/season"><select name="season">${options}</select> <button>Spara</button></form>
+</div>
+<div class="card">
+  <h2>Väder</h2>
+  <p>Just nu: <strong>${w.weather ? `${WEATHER_EMOJI[w.weather.kind]} ${WEATHER_NAMES[w.weather.kind]}` : '–'}</strong>${w.weather ? ` · byter om ${Math.max(0, Math.round((w.weather.until - Date.now()) / 1000))} s` : ''}</p>
+  <form method="post" action="/admin/weather">${WEATHER_KINDS.map((k) => `<button class="alt" name="weather" value="${k}">${WEATHER_EMOJI[k]} ${WEATHER_NAMES[k]}</button>`).join(' ')}</form>
 </div>
 <div class="card">
   <h2>Världen</h2>

@@ -1,15 +1,17 @@
 // Client-side mirror of the world plus a tiny event bus.
 import {
+  CHAT_BUBBLE_MS,
   objectDef,
   rebuildOccupancy,
-  setBlock,
   key as tileKey,
   type AnimalSnap,
   type NpcSnap,
   type Change,
   type PlayerSnap,
   type PlayerState,
+  type SagaSnap,
   type Season,
+  type WeatherState,
   type WorldObject,
   type WorldState,
 } from '@lilla-garden/shared';
@@ -32,6 +34,12 @@ export interface Events {
   day: number;
   /** The local player moved to another map (key). */
   area: string;
+  /** 2D game: someone wrote in the chat. */
+  chat: Extract<Change, { t: 'chat' }>;
+  /** 2D game: the weather turned. */
+  weather: WeatherState | null;
+  /** Dungeons: the monster or friend you aim at changed. */
+  target: void;
 }
 
 class Bus {
@@ -59,6 +67,8 @@ export const client = {
   world: null as WorldState | null,
   dungeon: null as WorldState | null,
   areas: {} as Record<string, WorldState>,
+  /** The biome of every explored map (from the server at login, kept up to date as maps arrive). */
+  biomes: {} as Record<string, string>,
   me: '',
   season: 'none' as Season,
   /** server clock = Date.now() - offset */
@@ -67,6 +77,11 @@ export const client = {
   timeMs: 0,
   day: 1,
   lastStateAt: 0,
+  weather: null as WeatherState | null,
+  /** 2D game: the latest chat line of each player, for the bubble over their head. */
+  chatBubbles: new Map<string, { text: string; until: number }>(),
+  /** Dungeons: everyone's health and state in each dungeon with someone in it (the server sends it 10 times a second). */
+  saga: {} as Record<string, SagaSnap>,
 };
 
 export const serverNow = (): number => Date.now() - client.serverOffset;
@@ -107,21 +122,22 @@ export function applyChange(c: Change): void {
       for (const id of Object.keys(w.players)) if (farm.players[id]) w.players[id] = farm.players[id]!;
     }
     if (c.key === 'dungeon') client.dungeon = w;
-    else if (w) client.areas[c.key] = w;
-    else delete client.areas[c.key];
+    else if (w) {
+      client.areas[c.key] = w;
+      if (w.biome && c.key.startsWith('a:')) client.biomes[c.key] = w.biome;
+    } else delete client.areas[c.key];
     bus.emit('change', c);
     if (myPlayer()?.area === c.key && w) bus.emit('area', c.key);
     return;
   }
   const areaK = ('area' in c && c.area) || 'farm';
+  // a dungeon's fight is only seen by those inside it
+  if ((c.t === 'spell' || c.t === 'hit' || c.t === 'zone' || c.t === 'yell' || c.t === 'banner') && 'area' in c && c.area && c.area !== myPlayer()?.area) return;
   const world = worldFor(areaK);
   if (!world) return;
   switch (c.t) {
     case 'terrain':
       world.terrain[c.y * 64 + c.x] = c.terrain;
-      break;
-    case 'block':
-      if (world.voxel) setBlock(world, c.x, c.y, c.h, c.b);
       break;
     case 'crop':
       if (c.crop) world.crops[c.k] = c.crop;
@@ -138,7 +154,7 @@ export function applyChange(c: Change): void {
       if (c.animal) world.animals[c.id] = c.animal;
       else {
         delete world.animals[c.id];
-        client.snaps.animals.delete(c.id);
+        if ((client.snaps.animals.get(c.id)?.area ?? 'farm') === areaK) client.snaps.animals.delete(c.id);
       }
       break;
     case 'drop':
@@ -164,6 +180,31 @@ export function applyChange(c: Change): void {
       if (c.id === client.me && areaChanged) bus.emit('area', c.player.area);
       break;
     }
+    case 'warp': {
+      // the server moved someone (blink, charge, getting up): straight there, no sliding, no prediction
+      const p = farm.players[c.id];
+      if (p) {
+        p.x = c.x;
+        p.y = c.y;
+        p.moving = false;
+      }
+      const snap = client.snaps.players.get(c.id);
+      if (snap) {
+        snap.x = c.x;
+        snap.y = c.y;
+      }
+      break;
+    }
+    case 'zone': {
+      const zones = world.saga?.zones;
+      if (!zones) break;
+      const i = zones.findIndex((z) => z.id === c.id);
+      if (c.zone) {
+        if (i >= 0) zones[i] = c.zone;
+        else zones.push(c.zone);
+      } else if (i >= 0) zones.splice(i, 1);
+      break;
+    }
     case 'quests':
       world.quests = c.quests;
       break;
@@ -180,6 +221,10 @@ export function applyChange(c: Change): void {
       break;
     case 'fx':
       bus.emit('fx', c);
+      break;
+    case 'chat':
+      if (!c.old) client.chatBubbles.set(c.from, { text: c.text, until: performance.now() + CHAT_BUBBLE_MS });
+      bus.emit('chat', c);
       break;
   }
   bus.emit('change', c);

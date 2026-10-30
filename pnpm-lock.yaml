@@ -170,26 +170,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  packages/client:
-    dependencies:
-      '@lilla-garden/shared':
-        specifier: workspace:*
-        version: link:../shared
-      phaser:
-        specifier: ^3.90.0
-        version: 3.90.0
-    devDependencies:
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vite:
-        specifier: ^7.1.7
-        version: 7.3.7(@types/node@24.19.2)(terser@5.51.2)(tsx@4.23.15)
-      vite-plugin-pwa:
-        specifier: ^1.0.3
-        version: 1.3.0(vite@7.3.7(@types/node@24.19.2)(terser@5.51.2)(tsx@4.23.15))(workbox-build@7.4.1)(workbox-window@7.4.1)
-
-  packages/client3d:
+  packages/arcade:
     dependencies:
       '@lilla-garden/shared':
         specifier: workspace:*
@@ -201,6 +182,38 @@ importers:
       '@types/three':
         specifier: ^0.186.0
         version: 0.186.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.7
+        version: 7.3.7(@types/node@24.19.2)(terser@5.51.2)(tsx@4.23.15)
+
+  packages/client:
+    dependencies:
+      '@lilla-garden/arcade':
+        specifier: workspace:*
+        version: link:../arcade
+      '@lilla-garden/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.7
+        version: 7.3.7(@types/node@24.19.2)(terser@5.51.2)(tsx@4.23.15)
+
+  packages/clientljs:
+    dependencies:
+      '@lilla-garden/shared':
+        specifier: workspace:*
+        version: link:../shared
+      littlejsengine:
+        specifier: 1.28.0
+        version: 1.28.0
+    devDependencies:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1839,9 +1852,6 @@ packages:
     resolution: {integrity: sha512-lW6is4T1NFOYnmqGZIfvixqj7A7sSvScF+DN8EK6K58xI5MZ5UvYe0GjopxOXQtZvUn4eDdVuZ8XSoYWTMEKwA==}
     engines: {node: '>=20'}
 
-  eventemitter3@5.0.4:
-    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
-
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
@@ -2122,6 +2132,10 @@ packages:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
 
+  littlejsengine@1.28.0:
+    resolution: {integrity: sha512-HTea1Xzn/lwY8i/1BMCojYl7Pfd9GpvMi5hTpMhJtwkzAHI4bfR4o9+nTg+wbMbuAR14xtTEf/hbDVWHkCSkjA==}
+    engines: {node: '>=22.12.0'}
+
   lodash.debounce@4.0.8:
     resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
 
@@ -2205,9 +2219,6 @@ packages:
   pathval@2.0.1:
     resolution: {integrity: sha512-//nshmD55c46FuFw26xV/xFAaB5HF9Xdap7HJBBnrKdAd6/GxDBaNA1870O79+9ueg61cZLSVc+OaFlfmObYVQ==}
     engines: {node: '>= 14.16'}
-
-  phaser@3.90.0:
-    resolution: {integrity: sha512-/cziz/5ZIn02uDkC9RzN8VF9x3Gs3XdFFf9nkiMEQT3p7hQlWuyjy4QWosU802qqno2YSLn2BfqwOKLv/sSVfQ==}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -4204,8 +4215,6 @@ snapshots:
 
   eta@4.6.0: {}
 
-  eventemitter3@5.0.4: {}
-
   expect-type@1.4.0: {}
 
   fast-deep-equal@3.1.3: {}
@@ -4485,6 +4494,8 @@ snapshots:
 
   leven@3.1.0: {}
 
+  littlejsengine@1.28.0: {}
+
   lodash.debounce@4.0.8: {}
 
   loupe@3.2.1: {}
@@ -4553,10 +4564,6 @@ snapshots:
   pathe@2.0.3: {}
 
   pathval@2.0.1: {}
-
-  phaser@3.90.0:
-    dependencies:
-      eventemitter3: 5.0.4
 
   picocolors@1.1.1: {}
 

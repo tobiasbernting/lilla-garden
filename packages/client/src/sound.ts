@@ -10,7 +10,8 @@ let muted = (() => {
   }
 })();
 
-const ensure = (): AudioContext | null => {
+/** The audio context (null while muted or before the first tap). */
+export const ensure = (): AudioContext | null => {
   if (muted) return null;
   try {
     if (!ctx) ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -21,7 +22,7 @@ const ensure = (): AudioContext | null => {
   }
 };
 
-function tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 0.08, slide = 0): void {
+export function tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 0.08, slide = 0): void {
   const c = ensure();
   if (!c) return;
   const o = c.createOscillator();
@@ -36,7 +37,7 @@ function tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 
   o.stop(c.currentTime + dur);
 }
 
-const noise = (dur: number, vol = 0.06): void => {
+export const noise = (dur: number, vol = 0.06): void => {
   const c = ensure();
   if (!c) return;
   const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
@@ -112,15 +113,107 @@ export const SFX = {
   newDay: () => {
     [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.06), i * 110));
   },
+  /** Fiu-fiiiu: calling the pets. */
+  whistle: () => {
+    tone(1400, 0.16, 'sine', 0.07, 500);
+    setTimeout(() => tone(1100, 0.32, 'sine', 0.07, 900), 200);
+  },
+  /** A far-away rumble (never loud: the players are small). */
+  thunder: () => {
+    rumble(1.8, 0.11);
+    tone(55, 1.2, 'triangle', 0.05, -15);
+  },
+  chat: () => {
+    tone(740, 0.05, 'sine', 0.04);
+    setTimeout(() => tone(990, 0.07, 'sine', 0.035), 55);
+  },
+  talk: () => tone(600 + Math.random() * 200, 0.05, 'triangle', 0.03),
 };
+
+/** Low-passed noise that swells and fades, for thunder. */
+function rumble(dur: number, vol: number): void {
+  const c = ensure();
+  if (!c) return;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const f = c.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 160;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.001, c.currentTime);
+  g.gain.exponentialRampToValueAtTime(vol, c.currentTime + 0.15);
+  g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+  src.connect(f).connect(g).connect(c.destination);
+  src.start();
+}
+
+// ---- weather ambience: one looping noise, filtered per kind of weather ----
+
+let amb: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
+let ambKind: string | null = null;
+const AMBIENCE: Record<string, { type: BiquadFilterType; freq: number; q: number; vol: number }> = {
+  rain: { type: 'lowpass', freq: 1800, q: 0.4, vol: 0.035 },
+  storm: { type: 'lowpass', freq: 1200, q: 0.4, vol: 0.06 },
+  hail: { type: 'highpass', freq: 2500, q: 0.6, vol: 0.03 },
+  wind: { type: 'bandpass', freq: 400, q: 0.8, vol: 0.05 },
+};
+
+/** Rain, hail or wind sound in the background (null: quiet). */
+export function setAmbience(kind: string | null): void {
+  ambKind = kind && AMBIENCE[kind] ? kind : null;
+  applyAmbience();
+}
+
+/** A minigame is open: the rain and wind keep quiet until it closes. */
+let hushed = false;
+export function hushAmbience(on: boolean): void {
+  hushed = on;
+  applyAmbience();
+}
+
+function applyAmbience(): void {
+  const want = muted || hushed ? null : ambKind;
+  if (!want) {
+    if (amb && ctx) amb.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.6);
+    return;
+  }
+  const c = ensure();
+  if (!c) return;
+  if (!amb) {
+    const buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const filter = c.createBiquadFilter();
+    const gain = c.createGain();
+    gain.gain.value = 0;
+    src.connect(filter).connect(gain).connect(c.destination);
+    src.start();
+    amb = { src, filter, gain };
+  }
+  const a = AMBIENCE[want]!;
+  amb.filter.type = a.type;
+  amb.filter.frequency.setTargetAtTime(a.freq, c.currentTime, 0.5);
+  amb.filter.Q.value = a.q;
+  amb.gain.gain.setTargetAtTime(a.vol, c.currentTime, 0.8);
+}
 
 export function setMuted(m: boolean): void {
   muted = m;
+  applyAmbience();
 }
 export const isMuted = (): boolean => muted;
 
 export function initSound(): void {
-  const unlock = () => ensure();
+  const unlock = () => {
+    ensure();
+    if (ambKind && !amb) applyAmbience();
+  };
   window.addEventListener('pointerdown', unlock, { passive: true });
   window.addEventListener('keydown', unlock);
   bus.on('fx', (c) => (SFX as Record<string, () => void>)[c.kind]?.());

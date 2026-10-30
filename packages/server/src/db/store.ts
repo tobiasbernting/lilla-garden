@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { CAVE_EXIT_TILE, MAX_HEARTS, TILE, ensureBathhouse, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureVillagers, generateWorld, initVoxel, rebuildOccupancy, voxelMode, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 import { PgAccessStore } from './accessStore.ts';
 
@@ -43,8 +43,6 @@ export class PgStore implements Store {
   private players = new Set<string>();
   private gone = { objects: new Set<number>(), crops: new Set<string>(), animals: new Set<number>(), players: new Set<string>() };
   private flushing: Promise<void> | null = null;
-  /** 3D game: the farm's block layer changed (areas keep theirs in their own row). */
-  private voxelDirty = false;
 
   constructor(url: string) {
     this.sqlc = postgres(url, { max: 4, onnotice: () => {} });
@@ -104,20 +102,22 @@ export class PgStore implements Store {
         world.players[p.id]!.x = CAVE_EXIT_TILE.x * TILE + TILE / 2;
         world.players[p.id]!.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;
       }
+      // inside a dungeon when the server stopped: wait in front of its arch
+      const sagaId = dungeonOfKey(p.data.area ?? '');
+      if (sagaId) {
+        const front = portalFront(DUNGEONS[sagaId].portal);
+        world.players[p.id]!.area = DUNGEONS[sagaId].portal.area;
+        world.players[p.id]!.x = front.x * TILE + TILE / 2;
+        world.players[p.id]!.y = front.y * TILE + TILE / 2;
+      }
       delete world.players[p.id]!.emote;
       delete world.players[p.id]!.fishing;
     }
     rebuildOccupancy(world);
-    // 3D game: the farm's block layer
-    const vrow = (await this.db.select().from(s.settings).where(sql`${s.settings.key} = 'voxel'`))[0];
-    if (vrow) world.voxel = JSON.parse(vrow.value) as WorldState['voxel'];
-    else if (voxelMode()) {
-      initVoxel(world, 1337);
-      this.voxelDirty = true;
-      console.log('built the block layer for the farm');
-    }
     world.areas = {};
     for (const row of await this.db.select().from(s.areas)) {
+      // Spelhallen is rebuilt from its plan each time, so it always has the latest machines; dungeons start over
+      if (isHallKey(row.key) || isSagaKey(row.key)) continue;
       const a = row.data;
       a.players = {};
       a.area = row.key;
@@ -133,6 +133,22 @@ export class PgStore implements Store {
       world.areas[row.key] = a;
     }
     if (Object.keys(world.areas).length) console.log(`loaded ${Object.keys(world.areas).length} explored areas`);
+    // Maps from before the wider world (new biomes, caves, treasure): untouched ones are rebuilt, the rest topped up
+    let rebuilt = 0;
+    let topped = 0;
+    for (const [k, a] of Object.entries(world.areas)) {
+      if ((a.gen ?? 1) >= AREA_GEN) continue;
+      const up = upgradeSavedArea(a, k);
+      this.dirtyAreas.add(k);
+      if (!up.rebuilt) {
+        topped++;
+        continue;
+      }
+      rebuilt++;
+      world.areas[k] = up.area;
+      for (const p of Object.values(world.players)) if (p.area === k) settlePlayer(up.area, p);
+    }
+    if (rebuilt || topped) console.log(`the wider world: rebuilt ${rebuilt} untouched explored areas, topped up ${topped}`);
     // Villages saved before the bath house existed get one
     for (const [k, a] of Object.entries(world.areas)) {
       if (ensureBathhouse(a)) {
@@ -143,10 +159,19 @@ export class PgStore implements Store {
         this.dirtyAreas.add(k);
         console.log(`added the bus stop and station to ${k}`);
       }
+      if (ensureArcadeHall(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`added Spelhallen to ${k}`);
+      }
+      if (ensureSagaPlaces(k, a)) {
+        this.dirtyAreas.add(k);
+        console.log(`added a dungeon's arch or Kämpastenen to ${k}`);
+      }
     }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers
     const before = Object.keys(world.objects).length;
     if (ensureInterior(world)) console.log('added the farmhouse interior to the saved world');
+    if (ensureTv(world)) console.log('put a TV in the farmhouse');
     ensureVillagers(world);
     if (ensureCave(world)) console.log('added the cave to the saved world');
     ensureFarmExits(world);
@@ -174,9 +199,6 @@ export class PgStore implements Store {
       }
       if (c.t === 'areaData' && c.key !== 'dungeon') this.dirtyAreas.add(c.key);
       switch (c.t) {
-        case 'block':
-          this.voxelDirty = true;
-          break;
         case 'terrain':
         case 'day':
           this.worldDirty = true;
@@ -210,7 +232,6 @@ export class PgStore implements Store {
 
   markAllDirty(world: WorldState): void {
     this.worldDirty = true;
-    this.voxelDirty = !!world.voxel;
     for (const id of Object.keys(world.objects)) this.objects.add(Number(id));
     for (const k of Object.keys(world.crops)) this.crops.add(k);
     for (const id of Object.keys(world.animals)) this.animals.add(Number(id));
@@ -243,9 +264,7 @@ export class PgStore implements Store {
       players: [...this.gone.players],
     };
     const worldDirty = this.worldDirty;
-    const voxel = this.voxelDirty && world.voxel ? JSON.stringify(world.voxel) : null;
-    this.voxelDirty = false;
-    const areasToSave = [...this.dirtyAreas];
+    const areasToSave = [...this.dirtyAreas].filter((k) => !isSagaKey(k));
     this.dirtyAreas.clear();
     this.objects.clear();
     this.crops.clear();
@@ -271,7 +290,6 @@ export class PgStore implements Store {
           .values(row)
           .onConflictDoUpdate({ target: s.world.id, set: { ...row, id: undefined } });
       }
-      if (voxel) await tx.insert(s.settings).values({ key: 'voxel', value: voxel }).onConflictDoUpdate({ target: s.settings.key, set: { value: voxel } });
       for (const batch of chunk(objects, 200)) {
         const rows = batch.map((id) => {
           const o = world.objects[id]!;

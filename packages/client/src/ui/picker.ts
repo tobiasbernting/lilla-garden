@@ -70,7 +70,7 @@ export class Picker {
     const refresh = () => {
       preview.src = portraitUrl(appearance, { shirt, pants: 'pants_blue', shoes: 'shoes_boots' }, 6);
       preview.style.width = `calc(48 * var(--u))`;
-      preview.style.height = `calc(72 * var(--u))`;
+      preview.style.height = `calc(96 * var(--u))`;
       swatchesSkin.querySelectorAll('.swatch').forEach((el, i) => el.classList.toggle('on', SKIN_TONES[i] === appearance.skin));
       swatchesHair.querySelectorAll('.swatch').forEach((el, i) => el.classList.toggle('on', HAIR_COLORS[i] === appearance.hair));
       swatchesShirt.querySelectorAll('.swatch').forEach((el, i) => el.classList.toggle('on', STARTER_SHIRTS[i] === shirt));

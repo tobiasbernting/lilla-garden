@@ -3,8 +3,6 @@ dist/
 .env
 *.log
 .DS_Store
-packages/client/dev-dist/
-packages/client/public/icon-*.png
 .claude/
-packages/client3d/dev-dist/
-packages/client3d/public/icon-*.png
+packages/clientljs/dev-dist/
+packages/clientljs/public/icon-*.png

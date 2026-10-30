@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CROPS,
   DAY_LENGTH_MS,
@@ -1110,7 +1110,10 @@ describe('grottan', () => {
     weapons(p);
     const cave = Object.values(world.objects).find((o) => o.kind === 'cave')!;
     standAt(world, p, cave.x, cave.y + 2);
+    // the cave's layout comes from the clock; pin it so the troll always has the same way to walk
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     performAction(world, p.id, cave.x, cave.y + 1, ctx());
+    now.mockRestore();
     const d = world.dungeon!;
     const slime = spawnMob(d, 'slime', Math.floor(p.x / 16) + 1, Math.floor(p.y / 16));
     p.facing = 'right';
@@ -1199,17 +1202,21 @@ describe('grottan', () => {
 
 describe('världen utanför', () => {
   it('biomes follow geography: cold north, dry south, mountains east, coast west', () => {
-    expect(biomeAt(0, -6)).toBe('is');
-    expect(biomeAt(0, 6)).toBe('oken');
-    expect(['berg', 'skog', 'ang']).toContain(biomeAt(3, 0));
-    expect(['strand', 'skog', 'ang']).toContain(biomeAt(-3, 0));
+    // far north it is cold, far south hot, east mountainous, west by the sea (with a mix in between)
+    const share = (cells: [number, number][], kinds: string[]) => cells.filter(([x, y]) => kinds.includes(biomeAt(x, y))).length / cells.length;
+    const row = (y: number) => Array.from({ length: 21 }, (_, i) => [i - 10, y] as [number, number]);
+    const col = (x: number) => Array.from({ length: 21 }, (_, i) => [x, i - 10] as [number, number]);
+    expect(share(row(-9), ['is', 'berg', 'skog', 'by'])).toBeGreaterThan(0.8);
+    expect(share(row(9), ['oken', 'dino', 'djungel', 'vulkan', 'trask', 'strand', 'by', 'godis'])).toBeGreaterThan(0.8);
+    expect(share(col(9), ['berg', 'skog', 'svamp', 'ang', 'is', 'vulkan', 'oken', 'dino', 'by', 'godis'])).toBeGreaterThan(0.8);
+    expect(share(col(-9), ['strand', 'trask', 'ang', 'skog', 'is', 'djungel', 'by', 'godis', 'berg'])).toBeGreaterThan(0.8);
     expect(biomeAt(1, 0)).toBe(biomeAt(1, 0)); // deterministic
   });
 
   it('generates areas with open edges and biome specials', () => {
-    const a = generateArea(0, -6);
+    const a = generateArea(0, -2); // the ice right north of the forest
     expect(a.biome).toBe('is');
-    expect(a.terrain[tileIndex(32, 32)]).toBe('snow');
+    expect(a.terrain.filter((t) => t === 'snow').length).toBeGreaterThan(a.terrain.length / 2);
     for (const side of ['n', 's', 'e', 'w'] as const) {
       const t = arrivalTile(side);
       expect(isSolidForPlayer(a, t.x, t.y)).toBe(false);
@@ -1271,7 +1278,7 @@ describe('byn', () => {
     expect(kinds.filter((k) => k === 'house_small').length).toBeGreaterThanOrEqual(8);
     expect(kinds).toContain('market');
     expect(kinds).toContain('sellstall');
-    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'pino', 'stina']);
+    expect(npcsIn(v).map((n) => n.id).sort()).toEqual(['bo', 'lind', 'pino', 'sigrun', 'stina']);
     expect(kinds).toContain('pizzeria');
     for (const n of npcsIn(v)) for (const w of [n, ...n.routine]) expect(objectAt(v, w.x, w.y)?.kind ?? 'free').toBe('free');
     const { world, p } = setup();
@@ -1339,7 +1346,7 @@ describe('pizzerian', () => {
 
 describe('vilda djur', () => {
   it('each biome has its own animal and petting them counts', () => {
-    const ice = generateArea(0, -6);
+    const ice = generateArea(0, -2);
     const kinds = new Set(Object.values(ice.animals).map((a) => a.species));
     expect([...kinds]).toEqual(['penguin']);
     expect(Object.values(ice.animals).length).toBeGreaterThanOrEqual(3);

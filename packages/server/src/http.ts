@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { isSeason, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
+import { WEATHER_NAMES, isSeason, isWeatherKind, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
 import type { Game, Link } from './game.ts';
 import { adminPage } from './admin.ts';
 import { DEVICE_COOKIE, PARENT_COOKIE, type Access, type AccessMode, type Device } from './access.ts';
@@ -34,9 +34,9 @@ export const CLOSE_NO_ACCESS = 4003;
 
 export function findClientDist(): string | null {
   const env = process.env.CLIENT_DIST;
-  const candidates = [env, path.resolve(here, '../../client/dist'), path.resolve(here, '../../../../client/dist')].filter(
-    (c): c is string => !!c,
-  );
+  // the game's build (from src/ in dev, from dist/server/src/ built)
+  const builds = [path.resolve(here, '../../clientljs/dist'), path.resolve(here, '../../../../clientljs/dist')];
+  const candidates = [env, ...builds].filter((c): c is string => !!c);
   return candidates.find((c) => fs.existsSync(path.join(c, 'index.html'))) ?? null;
 }
 
@@ -379,6 +379,11 @@ export function createServer(game: Game, opts: ServerOptions): http.Server {
         } else if (p === '/admin/morning') {
           game.setTimeOfDay(0.05);
           m = 'God morgon';
+        } else if (p === '/admin/weather') {
+          if (isWeatherKind(form.weather)) {
+            game.setWeather(form.weather);
+            m = `Vädret: ${WEATHER_NAMES[form.weather]}`;
+          }
         } else if (p === '/admin/time') {
           const f = Number(form.fraction);
           if (Number.isFinite(f)) game.setTimeOfDay(f);
