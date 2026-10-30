@@ -40,6 +40,7 @@ import {
   performAction,
   arcadeScore,
   buyPrize,
+  garageAction,
   seasonForDate,
   selectSlot,
   sell,
@@ -64,6 +65,7 @@ import {
   type WorldState,
 } from '../../shared/src/index.ts';
 import type { Store } from './db/store.ts';
+import { Races } from './races.ts';
 
 export interface Link {
   send(msg: ServerMsg): void;
@@ -96,6 +98,17 @@ export class Game {
   private chatLog: Extract<Change, { t: 'chat' }>[] = [];
   private lastChat = new Map<string, number>();
   tickCount = 0;
+  /** Rallyvärlden: the lobby's rooms and the drivers out in free roam. */
+  readonly races = new Races({
+    world: () => this.world,
+    ctx: () => this.ctx(),
+    send: (id, msg) => this.sendTo(id, msg),
+    apply: (changes) => {
+      if (!changes.length) return;
+      this.pending.push(...changes);
+      this.dispatchPending();
+    },
+  });
 
   constructor(
     private store: Store,
@@ -142,6 +155,7 @@ export class Game {
     this.tickCount++;
     const changes = tick(this.world, dt, this.ctx());
     if (changes.length) this.pending.push(...changes);
+    this.races.tick(now);
     this.dispatchPending();
     if (++this.flushCounter % (TICK_HZ * 15) === 0 && 'markMoving' in this.store) {
       (this.store as unknown as { markMoving(w: WorldState): void }).markMoving(this.world);
@@ -277,6 +291,7 @@ export class Game {
       this.clients.delete(c);
       if (c.playerId && ![...this.clients].some((o) => o.playerId === c.playerId)) {
         const p = this.world.players[c.playerId];
+        this.races.drop(c.playerId);
         this.pending.push(...setOnline(this.world, c.playerId, false));
         this.dispatchPending();
         // A flaky tablet connection must not throw you out of the cave: wait a while before carrying you out
@@ -423,6 +438,16 @@ export class Game {
         break;
       case 'jump':
         changes = jumpTo(this.world, pid, String(msg.to ?? ''));
+        break;
+      case 'garage':
+        changes = garageAction(this.world, pid, msg, this.ctx());
+        break;
+      case 'race':
+        if (msg.a === 'solo') this.races.solo(pid, msg);
+        else this.races.race(pid, msg);
+        break;
+      case 'roam':
+        this.races.roam(pid, msg);
         break;
       case 'chat': {
         const text = cleanChat(msg.text);
