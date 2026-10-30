@@ -8,6 +8,7 @@
 import { isCliff, type Terrain } from '@lilla-garden/shared';
 import { Px, hash2, hexToRgb, rgbToHex, shade } from './px.js';
 import { CARPET_TILES, carpetTiles } from './arcade.ts';
+import { cryptTiles, forgeTiles } from './saga.ts';
 
 export interface BiomeTerrain {
   /** Tile index for one of the wider world's grounds, or null for any other ground. */
@@ -993,6 +994,8 @@ export function addBiomeTerrain(add: (p: Px) => number, newArt: boolean): BiomeT
   const candy = n(3, (v) => put(candyTile(v)));
   const space = n(6, (v) => put(spaceTile(v)));
   const carpet = carpetTiles().map(add);
+  const crypt = cryptTiles().map(add);
+  const forge = forgeTiles().map(add);
   // how often each variant shows: the eye-catching ones (embers, puddles, nebulae, big craters) only now and then
   const W = {
     cliff: [5, 3, 1],
@@ -1005,6 +1008,8 @@ export function addBiomeTerrain(add: (p: Px) => number, newArt: boolean): BiomeT
     redsand: [3, 2, 1],
     candy: [2, 2, 1],
     space: [6, 2, 6, 2, 1, 1],
+    crypt: [3, 2, 3, 2, 2, 3, 1, 1],
+    forge: [4, 1, 3, 2, 3, 1],
   };
   return {
     index(t, x, y, snowy, mask, frame) {
@@ -1040,6 +1045,10 @@ export function addBiomeTerrain(add: (p: Px) => number, newArt: boolean): BiomeT
           return weighted(space, W.space, h);
         case 'carpet': // one big pattern over 8×8 tiles
           return carpet[(x % CARPET_TILES) + CARPET_TILES * (y % CARPET_TILES)]!;
+        case 'crypt':
+          return weighted(crypt, W.crypt, h);
+        case 'forge':
+          return weighted(forge, W.forge, h);
         default:
           return null;
       }

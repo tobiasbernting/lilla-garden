@@ -2,7 +2,7 @@
 // the sky's ambient colour and gets every lamp, torch, window and lantern added in. Glows go on top after that, and
 // the things that shine by themselves (lit windows, flames, fireflies, lightning) are drawn last, unlit.
 import { EngineObject, Light, LightSystemPlugin, engineAddPlugin, lightSystem, rgb, vec2 } from 'littlejsengine';
-import { ARCADE, ARCADE_GAMES, TILE } from '@lilla-garden/shared';
+import { ARCADE, ARCADE_GAMES, DUNGEONS, TILE, type DungeonId } from '@lilla-garden/shared';
 
 export interface LampSpec {
   /** Colour of the light, 0..1. */
@@ -118,6 +118,58 @@ const FIRE: [number, number, number] = [1, 0.58, 0.26];
 const NEON_PINK: [number, number, number] = [1, 0.32, 0.85];
 const NEON_CYAN: [number, number, number] = [0.3, 0.88, 1];
 
+/**
+ * How dark each dungeon is and how strongly its lamps shine: the frost castle's snow throws light back, so its
+ * darkness and its lamps are turned down further than the crypt's and the forge's.
+ */
+const DUNGEON_LIGHT: Record<DungeonId, { dark: number; lamps: number }> = {
+  draug: { dark: 0.6, lamps: 1 },
+  frost: { dark: 0.48, lamps: 0.58 },
+  surt: { dark: 0.6, lamps: 0.95 },
+};
+/** A saga dungeon's darkness: its own colour of light, turned down to about a cave's, so torches pool light. */
+export const dungeonAmbient = (id: DungeonId): [number, number, number] => {
+  const [r, g, b] = DUNGEONS[id].ambient;
+  const k = DUNGEON_LIGHT[id].dark;
+  return [r * k, g * k, b * k];
+};
+export const dungeonLamps = (id: DungeonId): number => DUNGEON_LIGHT[id].lamps;
+/** The dungeons' torches in their order: the crypt's green candle, the castle's crystal lantern, the forge's fire. */
+const SAGA_TORCH: LampSpec[] = [
+  { color: [0.62, 1, 0.55], radius: 3.8, strength: 0.9, flicker: 0.8, glow: 1.4 },
+  { color: [0.6, 0.86, 1], radius: 3.8, strength: 0.9, flicker: 0.15, glow: 1.4 },
+  { color: FIRE, radius: 4, strength: 0.95, flicker: 1, glow: 1.6 },
+];
+const SAGA_PORTAL: LampSpec[] = [
+  { color: [0.5, 1, 0.5], radius: 3.4, strength: 0.75, flicker: 0.3, glow: 2.2 },
+  { color: [0.55, 0.85, 1], radius: 3.4, strength: 0.75, flicker: 0.1, glow: 2.2 },
+  { color: FIRE, radius: 4, strength: 0.85, flicker: 0.8, glow: 2.4 },
+];
+
+/** The light a creature gives off, if any: the dungeons' fire monsters and frost spirits, the draug king's sword. */
+export function lampForAnimal(species: string): LampSpec | null {
+  switch (species) {
+    case 'eldimp':
+      return { color: [1, 0.55, 0.25], radius: 2, strength: 0.6, flicker: 0.8, glow: 0.8 };
+    case 'eldhund':
+      return { color: [1, 0.5, 0.2], radius: 2.2, strength: 0.6, flicker: 0.8, glow: 0.8 };
+    case 'lavagolem':
+      return { color: [1, 0.45, 0.18], radius: 2.6, strength: 0.6, flicker: 0.4, glow: 1 };
+    case 'isande':
+      return { color: [0.6, 0.88, 1], radius: 2, strength: 0.45, flicker: 0.2, glow: 0.7 };
+    case 'smeden':
+      return { color: [1, 0.5, 0.22], radius: 3, strength: 0.6, flicker: 0.5, glow: 1.2 };
+    case 'surt':
+      return { color: [1, 0.5, 0.2], radius: 4.5, strength: 0.8, flicker: 0.7, glow: 2 };
+    case 'draugkung':
+      return { color: [0.6, 1, 0.55], radius: 3, strength: 0.5, flicker: 0.3, glow: 1.2 };
+    case 'gullinbursti':
+      return { color: [1, 0.85, 0.4], radius: 2.6, strength: 0.6, flicker: 0.2, glow: 1.2, sparkle: 0.3 };
+    default:
+      return null;
+  }
+}
+
 /** A minigame's colour (ARCADE_GAMES index) as light: a little paler than the paint, so it reads as a glow. */
 const gameLight = (i: number): [number, number, number] => {
   const hex = ARCADE[ARCADE_GAMES[((i % ARCADE_GAMES.length) + ARCADE_GAMES.length) % ARCADE_GAMES.length]!].color;
@@ -213,6 +265,30 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       return { color: [0.92, 0.82, 1], radius: 3.4, strength: 0.8, glow: 1.4, sparkle: 0.8, cycle: [NEON_PINK, NEON_CYAN, [1, 0.9, 0.4], [0.7, 0.5, 1]], cycleSec: 1.2 };
     case 'neon_sign':
       return { color: (variant ?? 0) % 2 === 1 ? NEON_CYAN : NEON_PINK, radius: 2.4, strength: 0.7, flicker: 0.08, glow: 1.2 };
+    // Sagan om Världsträdet: each dungeon's torches, the daylight down the stairs out, a rest stone once it is lit,
+    // candles, ice crystals, braziers and lava cracks; out in the world the arches, Kämpastenen and the keepsakes
+    case 'saga_torch':
+      return SAGA_TORCH[(variant ?? 0) % 3]!;
+    case 'saga_exit':
+      return { color: [1, 0.95, 0.82], radius: 3.6, strength: 0.75, glow: 0.7 };
+    case 'saga_rest':
+      return variant === 1 ? { color: [0.35, 0.92, 1], radius: 4.2, strength: 0.9, flicker: 0.1, glow: 1.1 } : null;
+    case 'saga_portal':
+      return SAGA_PORTAL[(variant ?? 0) % 3]!;
+    case 'saga_stone':
+      return { color: [1, 0.9, 0.62], radius: 2.8, strength: 0.6, flicker: 0.1, glow: 1.2 };
+    case 'saga_candles':
+      return { color: [1, 0.78, 0.45], radius: 2.8, strength: 0.8, flicker: 0.9, glow: 1 };
+    case 'saga_icecrystal':
+      return { color: [0.55, 0.85, 1], radius: 2.8, strength: 0.75, flicker: 0.15, glow: 1.2 };
+    case 'saga_brazier':
+      return { color: FIRE, radius: 3.8, strength: 0.95, flicker: 1, glow: 1.6 };
+    case 'saga_lavacrack':
+      return { color: [1, 0.45, 0.15], radius: 2.4, strength: 0.75, flicker: 0.4, glow: 1 };
+    case 'solruna':
+      return { color: [1, 0.86, 0.45], radius: 3.4, strength: 0.85, flicker: 0.1, glow: 1.8, always: true };
+    case 'yggdrasil':
+      return { color: [0.6, 1, 0.55], radius: 3.2, strength: 0.7, flicker: 0.2, glow: 1.6, sparkle: 0.4, always: true };
     default:
       return null;
   }
