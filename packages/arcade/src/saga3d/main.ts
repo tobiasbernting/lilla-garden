@@ -48,14 +48,23 @@ const canvas = renderer.domElement;
 Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', display: 'block', touchAction: 'none' });
 root.append(canvas);
 
-const ambient = new THREE.Color(def.ambient[0], def.ambient[1], def.ambient[2]);
-// the void and the fog share one colour: the ambient colour a little darker, so the far end melts away
-const fogColor = ambient.clone().multiplyScalar(0.45);
+// `def.ambient` only gives the hue (scaled so its strongest channel is 1); the brightness is set per dungeon below.
+// The "ceiling" is just darkness: fog is a very dark tint of the hue and the void behind it is darker still, so the top
+// of the frame never looks like open sky and the walls (lit by the lights) are always lighter than what is behind them.
+const hue = new THREE.Color(def.ambient[0], def.ambient[1], def.ambient[2]);
+hue.multiplyScalar(1 / Math.max(hue.r, hue.g, hue.b));
+const LOOK: Record<DungeonId, { hemi: number; sun: number; sunColor: number; fog: number; fogNear: number; fogFar: number; ground: number }> = {
+  draug: { hemi: 1.2, sun: 1.0, sunColor: 0xdfe6ff, fog: 0.05, fogNear: 9, fogFar: 26, ground: 0.25 },
+  frost: { hemi: 1.65, sun: 1.0, sunColor: 0xd6e6ff, fog: 0.07, fogNear: 9, fogFar: 26, ground: 0.5 },
+  surt: { hemi: 1.9, sun: 0.9, sunColor: 0xffb68a, fog: 0.05, fogNear: 9, fogFar: 26, ground: 0.2 },
+};
+const look = LOOK[dungeonId];
+const fogColor = hue.clone().multiplyScalar(look.fog);
 const scene = new THREE.Scene();
-scene.background = fogColor;
-scene.fog = new THREE.Fog(fogColor, 12, 30);
-scene.add(new THREE.HemisphereLight(ambient.clone().lerp(new THREE.Color(1, 1, 1), 0.55), ambient.clone().multiplyScalar(0.35), 2.6));
-const sun = new THREE.DirectionalLight(0xfff0dd, 1.5);
+scene.background = fogColor.clone().multiplyScalar(0.4);
+scene.fog = new THREE.Fog(fogColor, look.fogNear, look.fogFar);
+scene.add(new THREE.HemisphereLight(hue.clone().lerp(new THREE.Color(1, 1, 1), 0.4), hue.clone().multiplyScalar(look.ground), look.hemi));
+const sun = new THREE.DirectionalLight(look.sunColor, look.sun);
 sun.position.set(-4, 9, 5);
 scene.add(sun);
 
@@ -67,7 +76,7 @@ scene.add(dungeon.group);
 const LIGHTS = 4;
 const lights: THREE.PointLight[] = [];
 for (let i = 0; i < LIGHTS; i++) {
-  const l = new THREE.PointLight(0xffa850, 9, 11, 2);
+  const l = new THREE.PointLight(0xffa850, 7, 11, 2);
   l.position.set(0, -50, 0);
   scene.add(l);
   lights.push(l);
@@ -89,7 +98,7 @@ function assignLights(px: number, pz: number, t: number): void {
     });
   }
   lights.forEach((l, k) => {
-    l.intensity = l.userData.slot >= 0 ? 9 + Math.sin(t * 9 + k * 2.1) * 0.8 + Math.sin(t * 23 + k) * 0.4 : 0;
+    l.intensity = l.userData.slot >= 0 ? 7 + Math.sin(t * 9 + k * 2.1) * 0.8 + Math.sin(t * 23 + k) * 0.4 : 0;
   });
 }
 

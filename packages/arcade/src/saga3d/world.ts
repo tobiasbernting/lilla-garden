@@ -21,6 +21,8 @@ export interface SagaWorld {
 
 export const WALL_H = 1.6;
 
+type V3 = [number, number, number];
+
 const hex = (n: number): THREE.Color => new THREE.Color(n);
 /** A stable pseudo-random number 0..1 for a tile. */
 const hash = (x: number, y: number, s = 0): number => {
@@ -29,17 +31,28 @@ const hash = (x: number, y: number, s = 0): number => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-/** Floor colours by terrain (sRGB hex): saturated but soft, so the crypt is cosy rather than grim. */
-const FLOOR: Partial<Record<Terrain, number>> = {
-  crypt: 0x8a93b0,
-  floor_stone: 0xb59ad0,
-  snow: 0xcfe0f2,
-  ice: 0x8fd6f5,
-  ash: 0x58474f,
-  forge: 0x4a3a52,
+/**
+ * Floor colours by terrain (sRGB hex). `alt` is the second colour of the checker (default: the same colour a touch darker),
+ * `streak` lightens a few soft diagonal glints (ice). The lights are kept low, so these read as the colour you see.
+ */
+const FLOOR: Partial<Record<Terrain, { base: number; alt?: number; streak?: number }>> = {
+  crypt: { base: 0x8a93b0 },
+  // the throne room: a darker slate with a hint of violet, in the crypt's palette but clearly a grander room
+  floor_stone: { base: 0x6d6a88, alt: 0x5f5c7b },
+  // soft pale blue-white snow with a faint cool checker
+  snow: { base: 0xe2edf8, alt: 0xcddff0 },
+  // glassy blue ice with lighter streaks
+  ice: { base: 0x8ab9e2, alt: 0x7aacd9, streak: 0xd2ecff },
+  ash: { base: 0x58474f },
+  forge: { base: 0x5a4864 },
 };
-const WALL_BASE = [0x8f9bb8, 0xc3e9fb, 0x3d3446];
-const WALL_TOP = [0xb4bfd8, 0xf2fbff, 0x5a4a66];
+const WALL_BASE = [0x8f9bb8, 0xeef7ff, 0x4d4260];
+/** What the dark base row of the wall block is tinted by (multiplies the instance colour), per wall look. */
+const WALL_BAND: V3[] = [
+  [0.62, 0.66, 0.74],
+  [0.5, 0.64, 0.86],
+  [0.55, 0.45, 0.5],
+];
 
 // ---- shared primitive geometries (unit sized; parts scale them) ----
 const prim = {
@@ -56,14 +69,14 @@ const prim = {
 };
 type Prim = keyof typeof prim;
 
-type V3 = [number, number, number];
-
 /** Collects coloured parts of one kind of mesh and merges them into one geometry at the end. */
 class Bake {
   private parts: THREE.BufferGeometry[] = [];
+  /** Per object: where in the flicker cycle its flames are, so no two torches pulse together. */
+  phase = 0;
   constructor(private glow: boolean) {}
-  /** Adds a primitive: size (scale), position, rotation (euler XYZ), colour. */
-  add(p: Prim, color: number | THREE.Color, size: V3 | number, pos: V3, rot: V3 = [0, 0, 0], base?: THREE.Matrix4, tint = 1): void {
+  /** Adds a primitive: size (scale), position, rotation (euler XYZ), colour. A `flame` part flickers (see `flickerMaterial`). */
+  add(p: Prim, color: number | THREE.Color, size: V3 | number, pos: V3, rot: V3 = [0, 0, 0], base?: THREE.Matrix4, tint = 1, flame = false): void {
     const g = prim[p].clone();
     g.deleteAttribute('uv');
     const s: V3 = typeof size === 'number' ? [size, size, size] : size;
@@ -81,6 +94,14 @@ class Bake {
       col[i * 3 + 2] = c.b * k * tint;
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (this.glow) {
+      // x: how much this vertex flickers (0 = not at all), y: the phase, z: the height it grows from (the foot of the flame)
+      g.computeBoundingBox();
+      const footY = g.boundingBox!.min.y;
+      const fl = new Float32Array(n.count * 3);
+      if (flame) for (let i = 0; i < n.count; i++) fl.set([1, this.phase, footY], i * 3);
+      g.setAttribute('flick', new THREE.BufferAttribute(fl, 3));
+    }
     this.parts.push(g);
   }
   get empty(): boolean {
@@ -99,9 +120,11 @@ class Bake {
 interface Ctx {
   s(p: Prim, color: number, size: V3 | number, pos: V3, rot?: V3): void;
   g(p: Prim, color: number, size: V3 | number, pos: V3, rot?: V3): void;
+  /** Like `g`, but the part flickers: it grows and shrinks a little from its foot. */
+  f(p: Prim, color: number, size: V3 | number, pos: V3, rot?: V3): void;
   variant: number;
-  /** A flame position in the local frame, recorded as a point-light candidate. */
-  flame(pos: V3): void;
+  /** A flame position in the local frame, recorded as a point-light candidate. `pool` is where its light lands on the floor (x, z in the local frame; default straight below). */
+  flame(pos: V3, pool?: [number, number]): void;
 }
 
 type Builder = (c: Ctx) => void;
@@ -116,10 +139,11 @@ const DECOR: Record<string, Builder> = {
     c.s('box', WOOD, [0.1, 0.55, 0.1], [0, 0.85, -0.38]);
     c.s('cyl', IRON, [0.11, 0.1, 0.11], [0, 1.16, -0.34]);
     c.s('box', IRON, [0.2, 0.05, 0.05], [0, 0.72, -0.4]);
-    c.g('sphere', 0xff8a2a, [0.1, 0.15, 0.1], [0, 1.34, -0.34]);
-    c.g('cone', 0xff8a2a, [0.08, 0.2, 0.08], [0, 1.5, -0.34]);
-    c.g('sphere', 0xffe27a, [0.06, 0.09, 0.06], [0, 1.32, -0.34]);
-    c.flame([0, 1.42, -0.2]);
+    c.f('sphere', 0xff8a2a, [0.1, 0.15, 0.1], [0, 1.34, -0.34]);
+    c.f('cone', 0xff8a2a, [0.08, 0.2, 0.08], [0, 1.5, -0.34]);
+    c.f('sphere', 0xffe27a, [0.06, 0.09, 0.06], [0, 1.32, -0.34]);
+    // the torch hangs on the wall, so its light falls on the floor half a tile out from it
+    c.flame([0, 1.42, -0.2], [0, 0.55]);
   },
   saga_candles: (c) => {
     c.s('cyl', IRON, [0.28, 0.03, 0.28], [0, 0.03, 0]);
@@ -131,7 +155,7 @@ const DECOR: Record<string, Builder> = {
     ];
     for (const [x, h, z] of spots) {
       c.s('cyl', 0xfff1d0, [0.045, h, 0.045], [x, 0.05 + h / 2, z]);
-      c.g('cone', 0xffc04a, [0.03, 0.09, 0.03], [x, 0.05 + h + 0.05, z]);
+      c.f('cone', 0xffc04a, [0.03, 0.09, 0.03], [x, 0.05 + h + 0.05, z]);
     }
   },
   saga_brazier: (c) => {
@@ -141,9 +165,9 @@ const DECOR: Record<string, Builder> = {
     }
     c.s('cyl', 0x5a5f72, [0.34, 0.2, 0.34], [0, 0.6, 0]);
     c.s('torus', IRON, [0.34, 0.34, 0.34], [0, 0.7, 0], [Math.PI / 2, 0, 0]);
-    c.g('sphere', 0xff7a1e, [0.22, 0.2, 0.22], [0, 0.78, 0]);
-    c.g('cone', 0xff7a1e, [0.17, 0.4, 0.17], [0, 1.0, 0]);
-    c.g('cone', 0xffd45a, [0.1, 0.28, 0.1], [0, 0.94, 0]);
+    c.f('sphere', 0xff7a1e, [0.22, 0.2, 0.22], [0, 0.78, 0]);
+    c.f('cone', 0xff7a1e, [0.17, 0.4, 0.17], [0, 1.0, 0]);
+    c.f('cone', 0xffd45a, [0.1, 0.28, 0.1], [0, 0.94, 0]);
     c.flame([0, 1.1, 0]);
   },
   // flat glowing cracks in the floor
@@ -273,6 +297,65 @@ const GATE: Record<number, Builder> = {
   },
 };
 
+/**
+ * A flat-shaded block (a box, or a tapered one when `w1` differs from `w0`) with no bottom face, since nobody sees it.
+ * Vertex colours are baked: `kFoot` at the bottom edge fading to `kHead` at the top edge, `kTop` on the top face, all times `tint`.
+ */
+function block(w0: number, w1: number, y0: number, h: number, kFoot: number, kHead: number, kTop: number, tint: V3, top = true): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const col: number[] = [];
+  const a = w0 / 2;
+  const b = w1 / 2;
+  const y1 = y0 + h;
+  const put = (p: V3, n: V3, k: number): void => {
+    pos.push(...p);
+    nor.push(...n);
+    col.push(tint[0] * k, tint[1] * k, tint[2] * k);
+  };
+  // each side: two bottom corners, two top corners (counter-clockwise seen from outside), normal tilted by the taper
+  const tilt = (w0 - w1) / 2 / h;
+  for (const [dx, dz] of [
+    [0, 1],
+    [1, 0],
+    [0, -1],
+    [-1, 0],
+  ] as const) {
+    // the side's own axis (to the right when looking at it from outside)
+    const rx = dz;
+    const rz = -dx;
+    const bl: V3 = [dx * a - rx * a, y0, dz * a - rz * a];
+    const br: V3 = [dx * a + rx * a, y0, dz * a + rz * a];
+    const tr: V3 = [dx * b + rx * b, y1, dz * b + rz * b];
+    const tl: V3 = [dx * b - rx * b, y1, dz * b - rz * b];
+    const len = Math.hypot(1, tilt);
+    const n: V3 = [(dx * 1) / len, tilt / len, (dz * 1) / len];
+    put(bl, n, kFoot);
+    put(br, n, kFoot);
+    put(tr, n, kHead);
+    put(bl, n, kFoot);
+    put(tr, n, kHead);
+    put(tl, n, kHead);
+  }
+  if (top) {
+    const up: V3 = [0, 1, 0];
+    for (const p of [
+      [-b, -b],
+      [-b, b],
+      [b, b],
+      [-b, -b],
+      [b, b],
+      [b, -b],
+    ] as const)
+      put([p[0], y1, p[1]], up, kTop);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
 export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
@@ -321,13 +404,15 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     const col: number[] = [];
     const ind: number[] = [];
     const c = new THREE.Color();
+    const streak = new THREE.Color();
     for (let y = minZ; y < maxZ; y++)
       for (let x = minX; x < maxX; x++) {
         if (!isFloorTile(x, y)) continue;
         const terrain = world.terrain[idx(x, y)] ?? 'crypt';
-        c.setHex(FLOOR[terrain] ?? 0x888899);
-        const checker = (x + y) % 2 === 0 ? 1.03 : 0.97;
-        const k = checker * (0.95 + hash(x, y) * 0.1);
+        const look = FLOOR[terrain];
+        const odd = (x + y) % 2 === 0;
+        c.setHex(look ? (odd ? look.base : (look.alt ?? look.base)) : 0x888899);
+        const k = (look?.alt ? 1 : odd ? 1.03 : 0.97) * (0.96 + hash(x, y) * 0.08);
         const base = pos.length / 3;
         for (const [cx, cz] of [
           [0, 0],
@@ -345,9 +430,19 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
             [-1, 0],
             [0, 0],
           ] as const) if (!isFloorTile(vx + ox, vz + oz)) walls++;
-          const ao = 1 - 0.1 * walls;
+          const ao = 1 - 0.14 * walls;
+          // ice: a few soft pale glints on the tile corners, and a diagonal line now and then, like light in glass
+          let glint = 0;
+          if (look?.streak) {
+            streak.setHex(look.streak);
+            glint = (hash(vx, vz, 77) < 0.16 ? 0.4 : 0) + ((vx - vz + 70) % 7 === 0 ? 0.25 : 0);
+          }
           pos.push(vx, 0, vz);
-          col.push(c.r * k * ao, c.g * k * ao, c.b * k * ao);
+          col.push(
+            (c.r + (streak.r - c.r) * glint) * k * ao,
+            (c.g + (streak.g - c.g) * glint) * k * ao,
+            (c.b + (streak.b - c.b) * glint) * k * ao,
+          );
         }
         ind.push(base, base + 2, base + 1, base, base + 3, base + 2);
       }
@@ -364,30 +459,18 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     group.add(floor);
   }
 
-  // ---- walls: one InstancedMesh of chunky blocks (a slightly inset body and a lighter, full-width cap) ----
+  // ---- walls: one InstancedMesh of chunky blocks: a dark, slightly wider base row, an inset body that gets lighter
+  // towards the top, and a bevelled, lighter cap. All painted with vertex colours, so it is still a single draw call ----
   {
-    const body = new THREE.BoxGeometry(0.96, 1.3, 0.96).translate(0, 0.65, 0);
-    const cap = new THREE.BoxGeometry(1, 0.3, 1).translate(0, 1.45, 0);
-    for (const [g, bottom, top] of [
-      [body, 0.58, 0.88],
-      [cap, 0.95, 1.12],
-    ] as const) {
-      g.deleteAttribute('uv');
-      const p = g.getAttribute('position');
-      const n = g.getAttribute('normal');
-      const col = new Float32Array(p.count * 3);
-      const y0 = g === body ? 0 : 1.3;
-      const y1 = g === body ? 1.3 : 1.6;
-      for (let i = 0; i < p.count; i++) {
-        // the top face is the lightest; the sides fade from dark at the foot to light at the top
-        const k = n.getY(i) > 0.5 ? top : bottom + (top - bottom) * ((p.getY(i) - y0) / (y1 - y0));
-        col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k;
-      }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    }
-    const geo = track(mergeGeometries([body, cap], false));
-    body.dispose();
-    cap.dispose();
+    const band = WALL_BAND[Math.min(2, Math.max(0, def.wall))]!;
+    const white: V3 = [1, 1, 1];
+    const parts = [
+      block(1, 1, 0, 0.3, 0.42, 0.55, 0.8, band),
+      block(0.94, 0.94, 0.3, 1.0, 0.7, 0.95, 0, white, false),
+      block(1, 0.9, 1.3, 0.3, 1.02, 1.12, 1.3, white),
+    ];
+    const geo = track(mergeGeometries(parts, false));
+    for (const p of parts) p.dispose();
     const tiles: { x: number; y: number; v: number }[] = [];
     for (let y = minZ; y < maxZ; y++) for (let x = minX; x < maxX; x++) if (wallVariant[idx(x, y)]! >= 0) tiles.push({ x, y, v: wallVariant[idx(x, y)]! });
     const mat = track(new THREE.MeshLambertMaterial({ vertexColors: true }));
@@ -397,6 +480,7 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     const c = new THREE.Color();
     const moss: THREE.Matrix4[] = [];
     const cracks: THREE.Matrix4[] = [];
+    const bricks: { m: THREE.Matrix4; c: THREE.Color }[] = [];
     tiles.forEach((t, i) => {
       m.makeTranslation(t.x + 0.5, 0, t.y + 0.5);
       walls.setMatrixAt(i, m);
@@ -415,6 +499,28 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
           moss.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x + 0.5 + ox, 1.6, t.y + 0.5 + oz), new THREE.Quaternion(), new THREE.Vector3(s * 1.6, s * 0.7, s * 1.6)));
         }
       }
+      if (v === 0) {
+        // a brick or two sticking out of the faces that look into the room, so the stone does not read as a plain box
+        for (const [dx, dz] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const) {
+          if (!isFloorTile(t.x + dx, t.y + dz) || hash(t.x, t.y, 80 + dx * 3 + dz) > 0.38) continue;
+          const yy = 0.42 + hash(t.x, t.y, 90 + dx + dz * 2) * 0.7;
+          const off = (hash(t.x, t.y, 100 + dx + dz * 2) - 0.5) * 0.5;
+          const w = 0.26 + hash(t.x, t.y, 110 + dx + dz * 2) * 0.12;
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(dx, dz));
+          const sideways = new THREE.Vector3(dz !== 0 ? 1 : 0, 0, dx !== 0 ? 1 : 0).multiplyScalar(off);
+          const mx = new THREE.Matrix4().compose(
+            new THREE.Vector3(t.x + 0.5 + dx * 0.485 + sideways.x, yy, t.y + 0.5 + dz * 0.485 + sideways.z),
+            q,
+            new THREE.Vector3(w, 0.15, 0.1),
+          );
+          bricks.push({ m: mx, c: c.clone().multiplyScalar(1.08 + hash(t.x, t.y, 120 + dx + dz * 2) * 0.12) });
+        }
+      }
       if (v === 2) {
         // glowing cracks on the sides that face the floor
         for (const [dx, dz] of [
@@ -429,7 +535,7 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
           const yaw = Math.atan2(dx, dz);
           const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
           const sideways = new THREE.Vector3(dz !== 0 ? 1 : 0, 0, dx !== 0 ? 1 : 0).multiplyScalar(off);
-          cracks.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x + 0.5 + dx * 0.485 + sideways.x, yy, t.y + 0.5 + dz * 0.485 + sideways.z), q, new THREE.Vector3(1, 1, 1)));
+          cracks.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x + 0.5 + dx * 0.47 + sideways.x, yy, t.y + 0.5 + dz * 0.47 + sideways.z), q, new THREE.Vector3(1, 1, 1)));
         }
       }
     });
@@ -441,6 +547,15 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
       const g = track(new THREE.IcosahedronGeometry(1, 0));
       const mm = new THREE.InstancedMesh(g, track(new THREE.MeshLambertMaterial({ color: 0x74b85a })), moss.length);
       moss.forEach((mx, i) => mm.setMatrixAt(i, mx));
+      mm.computeBoundingSphere();
+      group.add(mm);
+    }
+    if (bricks.length) {
+      const mm = new THREE.InstancedMesh(track(new THREE.BoxGeometry(1, 1, 1)), track(new THREE.MeshLambertMaterial({ color: 0xffffff })), bricks.length);
+      bricks.forEach((b, i) => {
+        mm.setMatrixAt(i, b.m);
+        mm.setColorAt(i, b.c);
+      });
       mm.computeBoundingSphere();
       group.add(mm);
     }
@@ -466,8 +581,12 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
     }
   }
 
-  // ---- decor: baked into one lit mesh and one glowing mesh ----
+  // ---- decor: baked into one lit mesh and one glowing mesh (whose flames flicker in the vertex shader) ----
   const torches: THREE.Vector3[] = [];
+  /** Where each flame's light lands on the floor, in world x and z. */
+  const pools: { x: number; z: number; r: number }[] = [];
+  /** Shared by every flickering thing; written once per draw, so nothing is allocated per frame. */
+  const clock = { value: 0 };
   {
     const lit = new Bake(false);
     const glow = new Bake(true);
@@ -479,17 +598,141 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
       const yaw = o.kind === 'saga_torch' ? 0 : (hash(o.x, o.y, 50) - 0.5) * 0.6 + (o.kind === 'saga_coffin' ? (variant % 2) * Math.PI : 0);
       const base = new THREE.Matrix4().compose(new THREE.Vector3(o.x + 0.5, 0, o.y + 0.5), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(1, 1, 1));
       const tint = 0.94 + hash(o.x, o.y, 60) * 0.12;
+      glow.phase = hash(o.x, o.y, 70) * Math.PI * 2;
       build({
         variant,
         s: (p, color, size, pos, rot) => lit.add(p, color, size, pos, rot, base, tint),
         g: (p, color, size, pos, rot) => glow.add(p, color, size, pos, rot, base),
-        flame: (pos) => torches.push(new THREE.Vector3(pos[0], pos[1], pos[2]).applyMatrix4(base)),
+        f: (p, color, size, pos, rot) => glow.add(p, color, size, pos, rot, base, 1, true),
+        flame: (pos, pool) => {
+          const at = new THREE.Vector3(pos[0], pos[1], pos[2]).applyMatrix4(base);
+          torches.push(at);
+          const on = new THREE.Vector3(pool?.[0] ?? pos[0], 0, pool?.[1] ?? pos[2]).applyMatrix4(base);
+          pools.push({ x: on.x, z: on.z, r: o.kind === 'saga_torch' ? 2.7 : 2.3 });
+        },
       });
     }
     const litGeo = lit.build();
     if (litGeo) group.add(new THREE.Mesh(track(litGeo), track(new THREE.MeshLambertMaterial({ vertexColors: true }))));
     const glowGeo = glow.build();
-    if (glowGeo) group.add(new THREE.Mesh(track(glowGeo), track(new THREE.MeshBasicMaterial({ vertexColors: true }))));
+    if (glowGeo) {
+      const mat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
+      // flames grow and shrink a little from their foot; the cost is one sine pair per vertex of a few dozen flames
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = clock;
+        sh.vertexShader = sh.vertexShader
+          .replace('void main() {', 'attribute vec3 flick;\nuniform float uTime;\nvoid main() {')
+          .replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>
+            float fl = sin(uTime * 11.0 + flick.y) * 0.6 + sin(uTime * 27.0 + flick.y * 2.3) * 0.4;
+            transformed.y = flick.z + (transformed.y - flick.z) * (1.0 + 0.2 * fl * flick.x);`,
+          );
+      };
+      const glowMesh = new THREE.Mesh(track(glowGeo), mat);
+      glowMesh.onBeforeRender = () => {
+        clock.value = (performance.now() / 1000) % 1000;
+      };
+      group.add(glowMesh);
+    }
+  }
+
+  // ---- light pools: warm additive patches on the floor tiles around each flame, so torches far from the four real lights
+  // still read as lit. One merged geometry, tiles only (the light never leaks through a wall) ----
+  if (pools.length) {
+    const pos: number[] = [];
+    const col: number[] = [];
+    const ind: number[] = [];
+    for (const pl of pools) {
+      for (let ty = Math.floor(pl.z - pl.r); ty <= Math.ceil(pl.z + pl.r); ty++)
+        for (let tx = Math.floor(pl.x - pl.r); tx <= Math.ceil(pl.x + pl.r); tx++) {
+          if (!isFloorTile(tx, ty)) continue;
+          const base = pos.length / 3;
+          let any = false;
+          for (const [cx, cz] of [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+          ] as const) {
+            const f = Math.max(0, 1 - Math.hypot(tx + cx - pl.x, ty + cz - pl.z) / pl.r);
+            const k = f * f * 0.15;
+            if (k > 0) any = true;
+            pos.push(tx + cx, 0.012, ty + cz);
+            col.push(1.0 * k, 0.5 * k, 0.16 * k);
+          }
+          if (any) {
+            ind.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          } else {
+            pos.length -= 12;
+            col.length -= 12;
+          }
+        }
+    }
+    const g = track(new THREE.BufferGeometry());
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(ind);
+    g.computeBoundingSphere();
+    const mesh = new THREE.Mesh(g, track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+    mesh.matrixAutoUpdate = false;
+    mesh.renderOrder = 1;
+    group.add(mesh);
+  }
+
+  // ---- flame halos: one Points draw for every flame, a soft warm glow that pulses (additive, fades out with distance) ----
+  if (torches.length) {
+    const pts = new Float32Array(torches.length * 3);
+    const info = new Float32Array(torches.length * 2);
+    torches.forEach((t, i) => {
+      pts.set([t.x, t.y - 0.05, t.z], i * 3);
+      info.set([hash(i, 5, 71) * Math.PI * 2, 0.95], i * 2);
+    });
+    const g = track(new THREE.BufferGeometry());
+    g.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    g.setAttribute('halo', new THREE.BufferAttribute(info, 2));
+    g.computeBoundingSphere();
+    const size = new THREE.Vector2();
+    const uniforms = { uTime: clock, uScale: { value: 600 } };
+    const mat = track(
+      new THREE.ShaderMaterial({
+        uniforms,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        vertexShader: `
+          attribute vec2 halo;
+          uniform float uTime;
+          uniform float uScale;
+          varying float vAlpha;
+          void main() {
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            float flick = 1.0 + 0.1 * sin(uTime * 9.0 + halo.x) + 0.06 * sin(uTime * 31.0 + halo.x * 1.7);
+            float d = -mv.z;
+            gl_PointSize = uScale * halo.y * flick / d;
+            vAlpha = (1.0 - smoothstep(12.0, 26.0, d)) * flick;
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `
+          varying float vAlpha;
+          void main() {
+            vec2 p = gl_PointCoord * 2.0 - 1.0;
+            float a = max(0.0, 1.0 - dot(p, p));
+            a *= a;
+            gl_FragColor = vec4(vec3(1.0, 0.56, 0.22) * a * 0.5 * vAlpha, 1.0);
+          }`,
+      }),
+    );
+    const halos = new THREE.Points(g, mat);
+    halos.frustumCulled = false;
+    halos.renderOrder = 2;
+    halos.onBeforeRender = (renderer, _scene, camera) => {
+      clock.value = (performance.now() / 1000) % 1000;
+      // point sizes are in pixels: world size times (half the drawing buffer height over tan(fov/2)) over distance
+      renderer.getDrawingBufferSize(size);
+      uniforms.uScale.value = size.y * 0.5 * (camera as THREE.PerspectiveCamera).projectionMatrix.elements[5]!;
+    };
+    group.add(halos);
   }
 
   // ---- the gate: bars, an ice wall or a lava wall per tile; setGateOpen hides the lot ----
@@ -510,6 +753,7 @@ export function buildWorld(world: WorldState, def: SagaDungeonDef): SagaWorld {
         variant: 0,
         s: (p, color, size, pos, rot) => lit.add(p, color, size, pos, rot, base),
         g: (p, color, size, pos, rot) => glow.add(p, color, size, pos, rot, base),
+        f: (p, color, size, pos, rot) => glow.add(p, color, size, pos, rot, base),
         flame: () => {},
       });
     }
