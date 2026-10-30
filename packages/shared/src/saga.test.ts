@@ -36,6 +36,7 @@ import {
   sagaQuest,
   sagaQuestAct,
   setOnline,
+  setWeather,
   tick,
   type Change,
   type PlayerState,
@@ -148,6 +149,18 @@ describe('dungeon maps', () => {
     });
     const v = getArea(world, VILLAGE_KEY)!;
     expect(objectAt(v, STONE_SPOT.x, STONE_SPOT.y)?.kind).toBe('saga_stone');
+  });
+});
+
+describe('inside a dungeon', () => {
+  it('there is no weather: the news of rain does not reach anyone in the crypt', () => {
+    const { world, players } = family(2);
+    const [down, up] = players as [PlayerState, PlayerState];
+    inside(world, down, 'krigare');
+    setWeather(world, 'sun', ctx(), true);
+    const out = setWeather(world, 'rain', ctx(), true);
+    expect(out.some((c) => c.t === 'toast' && c.to === down.id)).toBe(false);
+    expect(out.some((c) => c.t === 'toast' && c.to === up.id)).toBe(true);
   });
 });
 

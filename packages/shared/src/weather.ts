@@ -6,6 +6,7 @@ import type { Change } from './protocol.ts';
 import { T, WEATHER_NEWS } from './sv.ts';
 import type { SimCtx } from './sim.ts';
 import { isUnderground } from './caves.ts';
+import { isSagaKey } from './saga.ts';
 
 export const WEATHER_KINDS: WeatherKind[] = ['sun', 'cloudy', 'rain', 'storm', 'snow', 'hail', 'wind', 'fog'];
 export const isWeatherKind = (v: unknown): v is WeatherKind => WEATHER_KINDS.includes(v as WeatherKind);
@@ -69,8 +70,8 @@ export function localWeather(kind: WeatherKind, biome: string | undefined): Weat
   return kind;
 }
 
-/** Maps where the sky can't be seen: caves, and the moon (which has no weather). */
-export const noWeatherHere = (area: string | undefined): boolean => isUnderground(area) || area === 'moon';
+/** Maps where the sky can't be seen: caves, the dungeons, and the moon (which has no weather). */
+export const noWeatherHere = (area: string | undefined): boolean => isUnderground(area) || isSagaKey(area) || area === 'moon';
 
 export const isWet = (kind: WeatherKind): boolean => kind === 'rain' || kind === 'storm';
 
