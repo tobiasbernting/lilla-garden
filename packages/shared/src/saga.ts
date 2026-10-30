@@ -218,7 +218,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     moves: [
       { move: 'cleave', name: 'Kungasvärdet', every: 9000, first: 5000, warn: 1300, radius: 3.4, arc: 100, dmg: 34, text: 'Svingar svärdet i en stor båge framför sig. Ställ dig bakom honom!' },
       { move: 'rain', name: 'Gravfrost', every: 12000, first: 8000, warn: 1600, radius: 1.5, count: 2, dmg: 26, phase: 1, text: 'Frost kryper upp ur graven under er. Flytta på er!' },
-      { move: 'nova', name: 'Draugropet', every: 16000, first: 14000, warn: 2600, radius: 7, dmg: 30, interrupt: true, text: 'Han samlar kraft till ett skrik som träffar alla nära. Avbryt med Sköldslag, eller spring långt bort!' },
+      { move: 'nova', name: 'Draugropet', every: 16000, first: 14000, warn: 2600, radius: 7, dmg: 30, interrupt: true, text: 'Han samlar kraft till ett skrik som träffar alla nära. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
     ],
     yells: { pull: 'Vem vågar väcka Draugkungen?!', phase: ['Mina krigare, res er!', 'Solrunan är MIN!'], kill: 'Ännu en till min krypta!', death: 'Solen… den lyser igen…', wipe: 'Kom tillbaka när ni har blivit modigare!' },
     lore: 'Hrolf var en girig hövding för länge sedan. Nu har han vaknat som en draug och stulit Solrunan, som håller vintern borta från Midgård.',
@@ -254,7 +254,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
       { move: 'cleave', name: 'Frostandedräkt', every: 10000, first: 5000, warn: 1500, radius: 4.2, arc: 70, dmg: 34, text: 'Andas iskall luft rakt fram. Gå åt sidan!' },
       { move: 'rain', name: 'Istappar', every: 11000, first: 8000, warn: 1400, radius: 1.3, count: 3, dmg: 24, text: 'Istappar faller från taket där ni står. Flytta på er!' },
       { move: 'freeze', name: 'Isfängelse', every: 16000, first: 11000, warn: 800, radius: 1, dmg: 15, text: 'Fryser in någon i ett isblock. Slå sönder isen för att rädda din vän!' },
-      { move: 'nova', name: 'Snöstorm', every: 15000, first: 6000, warn: 2600, radius: 8, dmg: 32, phase: 1, interrupt: true, text: 'Kallar på en snöstorm runt sig. Avbryt med Sköldslag, eller spring långt bort!' },
+      { move: 'nova', name: 'Snöstorm', every: 15000, first: 6000, warn: 2600, radius: 8, dmg: 32, phase: 1, interrupt: true, text: 'Kallar på en snöstorm runt sig. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
     ],
     yells: { pull: 'Små varma varelser i MIN borg? Ni ska bli istappar!', phase: ['Känn vinterns vrede!'], kill: 'Frys!', death: 'Våren… kommer… ändå…', wipe: 'Vintern vinner alltid.' },
     lore: 'Rimtursen är en frostjätte från Jötunheim. Han vill att det ska vara vinter för alltid, och har frusit alla källor i norr.',
@@ -292,7 +292,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     moves: [
       { move: 'cleave', name: 'Eldsvärdet', every: 8000, first: 5000, warn: 1300, radius: 4.4, arc: 110, dmg: 40, text: 'Svingar det flammande svärdet i en stor båge. Ställ dig bakom honom!' },
       { move: 'pools', name: 'Lavapölar', every: 12000, first: 8000, warn: 1200, radius: 1.6, dmg: 10, linger: 10000, text: 'Lava väller upp under er och brinner kvar. Flytta på er!' },
-      { move: 'nova', name: 'Muspels vrede', every: 14000, first: 4000, warn: 2800, radius: 7, dmg: 45, phase: 2, interrupt: true, text: 'Hela salen fylls av eld. Avbryt med Sköldslag, eller spring långt bort!' },
+      { move: 'nova', name: 'Muspels vrede', every: 14000, first: 4000, warn: 2800, radius: 7, dmg: 45, phase: 2, interrupt: true, text: 'Hela salen fylls av eld. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
     ],
     yells: { pull: 'Med det här svärdet ska jag bränna Världsträdet!', phase: ['Muspelheims eld brinner i mig!', 'NI KAN INTE STOPPA MIG!'], kill: 'Aska till aska!', death: 'Världsträdet… lever…', wipe: 'Ingen kan stå emot elden!' },
     lore: 'Surt är eldjätten från Muspelheim. I sin smedja under vulkanen smider han ett svärd av eld för att bränna Yggdrasil, Världsträdet som håller ihop alla världar.',

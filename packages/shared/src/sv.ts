@@ -995,7 +995,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'emoji:⚔️', text: 'Fängelsehålorna klaras i ordning: Draugkryptan i skogen nordväst om gården, Frostjättens borg två kartor norr om gården och Surts smedja i vulkanen sydost om gården.' },
       { icon: 'emoji:🔢', text: 'Inne i en fängelsehåla är knapparna 1–4 dina besvärjelser och 5 en läkedryck. Klicka på ett monster för att sikta på det.' },
       { icon: 'emoji:🛡️', text: 'Väktaren håller monstren borta från de andra, helaren läker, och krigaren och magikern gör skada. Det går att spela ensam, men det är roligare tillsammans!' },
-      { icon: 'emoji:🔴', text: 'Bossarnas stora attacker syns på marken innan de träffar. Spring ut ur det röda! Vissa kan avbrytas med Sköldslag eller Stormsteg.' },
+      { icon: 'emoji:🔴', text: 'Bossarnas stora attacker syns på marken innan de träffar. Spring ut ur det röda! Vissa kan avbrytas med Sköldslag, Stormsteg eller Isspjut.' },
       { icon: 'emoji:🪨', text: 'Vilostenar läker er, och där vaknar ni om ni faller. En helare kan också väcka den som har fallit.' },
       { icon: 'emoji:✨', text: 'Hoppa till någon i familjen från familjelistan, så hamnar du bredvid dem, även inne i en fängelsehåla.' },
       { icon: 'runsvard', text: 'Varje boss lämnar en kista med egen skatt åt alla: lysande vapen, nordiska kläder, och med lite tur Odens korpar, Fenrisvalpen, Sleipner eller Gullinbursti.' },
