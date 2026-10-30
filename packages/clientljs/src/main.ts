@@ -34,6 +34,7 @@ import { HD } from '@v1/art/style.ts';
 import { net } from '@v1/net.ts';
 import { bus, client, helpSeen, markHelpSeen, rememberPlayer } from '@v1/state.ts';
 import { h } from '@v1/ui/dom.ts';
+import { initGamepad } from '@v1/ui/gamepad.ts';
 import { Hud } from '@v1/ui/hud.ts';
 import { Menus } from '@v1/ui/menus.ts';
 import { Picker } from '@v1/ui/picker.ts';
@@ -113,6 +114,7 @@ function syncUiOpen(): void {
 }
 menus.onChange = syncUiOpen;
 saga.onChange = syncUiOpen;
+initGamepad({ ui, target: () => (started ? view : null), menus, windows: [menus, saga], hud, paused: () => arcadeOpen });
 
 const status = h('div', { class: 'status', style: { display: 'none' } }, T.disconnected);
 ui.append(status);
