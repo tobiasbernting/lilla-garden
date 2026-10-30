@@ -467,6 +467,7 @@ export const T = {
   horseBusy: 'Någon rider redan på {name}.',
   vehicleHonk: 'Tut tut! {name} väntar snällt tills du har gått över gatan.',
   notYourHorse: '{name} tillhör {owner}.',
+  notYourBuild: '{owner} byggde den – bara {owner} kan riva den.',
   drive: 'Du kör {name}! Gasen i botten. Använd igen för att parkera.',
   parked: 'Du parkerar {name}.',
   vehicleBought: 'Din nya {name} står parkerad bredvid dig!',

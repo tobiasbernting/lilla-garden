@@ -55,7 +55,10 @@ Agreed design (2026-10-24). A 2D pixel top-down farm game in Swedish for one par
 3. Homelab PR (`~/repos/homelab/server`): `roles/postgres` (postgres:17, DB + user per project, vault creds, nightly `pg_dumpall`, 14 days kept) and `roles/lilla-garden` at `garden.moderskepp.lan`, following the meal-planner role pattern.
 
 ## Later
-NPCs, in-game seasons, ownership locks, processing machines, more areas.
+NPCs, in-game seasons, processing machines, more areas.
+
+## Ownership (2026-10-30)
+Whatever a player places remembers who placed it (`WorldObject.by`). Only that player can take it down: the hammer (or any tool, or a rocket blast) on someone else's build gives "X byggde den – bara X kan riva den." and leaves it standing. Builds whose builder no longer exists on the farm, and everything that grew by itself, can be taken down by anyone. Chests can still be opened by everyone.
 
 ## v2: 3D (2026-10-25, retired 2026-10-30)
 A Minecraft-looking version of the same game (`packages/client3d`, Three.js, deployed as `lilla-garden-v2` at `gard2`), with a block layer in the shared sim (`WORLD_MODE=voxel`) to dig and build in. Retired on 2026-10-30 to keep one game: the client, the block layer, the dig/place messages and the `WORLD_MODE` switch were removed; the last `lilla-garden-v2` image stays in the registry.
