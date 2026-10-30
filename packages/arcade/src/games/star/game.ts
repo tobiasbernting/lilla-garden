@@ -12,13 +12,13 @@ export const CHAIN_TIME = 3.2;
 export const SCORE = {
   /** Times the sector's number. */
   sector: 250,
-  noHit: 300,
+  noHit: 500,
   miniBoss: 400,
-  boss: 2000,
-  life: 500,
-  bomb: 100,
+  boss: 3500,
+  life: 1000,
+  bomb: 150,
   maxedPower: 200,
-  star: 3,
+  star: 2,
   mini: 1,
 };
 
@@ -125,7 +125,7 @@ export interface GameOpts {
   god?: boolean;
 }
 
-const multFor = (chain: number): number => (chain >= 100 ? 5 : chain >= 60 ? 4 : chain >= 32 ? 3 : chain >= 12 ? 2 : 1);
+const multFor = (chain: number): number => (chain >= 60 ? 4 : chain >= 32 ? 3 : chain >= 12 ? 2 : 1);
 
 /** Removes dead things in place. */
 function sweep<T extends { dead: boolean }>(arr: T[]): void {
@@ -261,6 +261,7 @@ export class Game {
     this.sectorHits = 0;
     this.bossCall = 0;
     this.pendingBoss = null;
+    this.tallies = [];
     this.setPhase('waves');
     this.sound.section(def.music);
     if (i > 0) {
@@ -428,7 +429,15 @@ export class Game {
       this.setPhase('win');
       this.sound.section('win');
       this.showBanner('STORMEN ÄR ÖVER!', 'RYMDBASEN ÄR RÄDDAD!', C.yellow, 7.5);
-      this.player.inv = 99;
+      const p = this.player;
+      p.inv = 99;
+      if (!p.alive) {
+        // the rocket comes back for the party
+        p.alive = true;
+        p.x = FW / 2;
+        p.y = FH + 40;
+        p.enter = 0.8;
+      }
       this.fireworkT = 0.6;
       for (const p of this.pickups) p.magnet = true;
     } else {
@@ -491,7 +500,6 @@ export class Game {
       if (this.banner.t > this.banner.dur) this.banner = null;
     }
     for (const t of this.tallies) t.t += dt;
-    if (this.phase === 'waves' && this.tallies.length && this.phaseT > 1) this.tallies = [];
     this.shake = Math.max(0, this.shake - dt * 1.3);
     this.flashA = Math.max(0, this.flashA - dt * 2.6);
     this.sound.laser(this.player.laser);
@@ -525,7 +533,7 @@ export class Game {
       p.laser = false;
       p.deadT += dt;
       if (this.lives > 0 && p.deadT > 1.4 && this.phase !== 'over') this.respawn();
-      if (this.lives <= 0 && p.deadT > 1.6 && this.phase !== 'over') {
+      if (this.lives <= 0 && p.deadT > 1.6 && this.phase !== 'over' && this.phase !== 'win' && this.boss?.state !== 'dying') {
         this.setPhase('over');
         this.showBanner('BRA KÄMPAT!', this.sector >= 3 ? 'BOSSEN VANN DEN HÄR GÅNGEN' : `DU KOM TILL SEKTOR ${this.sector + 1}`, C.cyan, 4);
         this.sound.section('over');
@@ -699,7 +707,7 @@ export class Game {
   /** The rocket is hit (bullet, beam or bump): the shield takes it, or the rocket pops. */
   hurtPlayer(): void {
     const p = this.player;
-    if (!p.alive || p.inv > 0 || p.enter > 0 || p.parked || this.god || this.phase === 'win') return;
+    if (!p.alive || p.inv > 0 || p.enter > 0 || p.parked || this.god || this.phase === 'win' || this.boss?.state === 'dying') return;
     if (p.shield > 0) {
       p.shield = 0;
       p.inv = 1.4;

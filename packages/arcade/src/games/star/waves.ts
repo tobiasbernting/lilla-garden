@@ -48,7 +48,7 @@ interface FormOpts {
 }
 
 function formation(g: Game, path: PathFn, o: FormOpts): void {
-  const group = new Group(100 + o.n * 10, 'FORMATION');
+  const group = new Group(80 + o.n * 8, 'FORMATION');
   const dur = o.dur ?? 4.6;
   const shoot = new Set<number>();
   while (shoot.size < Math.min(o.n, o.shooters ?? 0)) shoot.add(Math.floor(Math.random() * o.n));
@@ -77,7 +77,7 @@ const sweep = (y: number, dir: 1 | -1): PathFn =>
 const zig = (dir: 1 | -1): PathFn => (dir > 0 ? bez(70, -50, 640, 260, -40, 420, 520, 880) : bez(530, -50, -40, 260, 640, 420, 80, 880));
 
 function snake(g: Game, cx: number, n: number, amp = 140, freq = 1.6, speed = 95, dir = 1): void {
-  const group = new Group(100 + n * 10, 'ORMEN');
+  const group = new Group(80 + n * 8, 'ORMEN');
   for (let i = 0; i < n; i++) g.spawn(new SnakeSeg(cx, amp, freq, speed, i * 0.19, group, dir));
 }
 

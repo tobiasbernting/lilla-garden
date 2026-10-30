@@ -198,7 +198,7 @@ export class Spinjatte extends Boss {
     if (c < 2.6) {
       this.emitCd -= dt;
       if (this.emitCd <= 0) {
-        this.emitCd = angry ? 0.26 : 0.21;
+        this.emitCd = (angry ? 0.36 : 0.24) / g.fireRate;
         const arms = angry ? [0, 1, 2, 3, 4, 5] : [0, 2, 4];
         for (const k of arms) {
           const a = this.spin + (k * TAU) / 6 - Math.PI / 2;
@@ -245,7 +245,7 @@ class FortTurret extends Part {
     super(parent);
     this.r = 17;
     this.setHp(big ? 55 : 45);
-    this.points = 25;
+    this.points = 20;
     this.stars = 3;
     this.size = 0.55;
     this.color = C.cyan;
@@ -336,7 +336,7 @@ export class Fortress extends Boss {
     if (c > 1.6 && c < 3.2) {
       this.emitCd -= dt;
       if (this.emitCd <= 0) {
-        this.emitCd = 0.2;
+        this.emitCd = 0.2 / g.fireRate;
         this.spiralA += 0.33;
         for (const k of [0, Math.PI]) g.shoot(this.x, this.coreY(), this.spiralA + k, 125, 'orb', true);
       }
@@ -384,7 +384,7 @@ class Pod extends Part {
     super(parent);
     this.r = 17;
     this.setHp(45);
-    this.points = 25;
+    this.points = 20;
     this.stars = 3;
     this.size = 0.5;
     this.color = C.cyan;
@@ -576,7 +576,7 @@ class Shard extends Part {
     super(parent);
     this.r = 19;
     this.setHp(32);
-    this.points = 30;
+    this.points = 25;
     this.stars = 3;
     this.size = 0.55;
     this.color = C.yellow;
@@ -764,7 +764,7 @@ export class StormCrystal extends Boss {
     if (c > 0.8 && c < 3.8) {
       this.emitCd -= dt;
       if (this.emitCd <= 0) {
-        this.emitCd = 0.15;
+        this.emitCd = 0.15 / g.fireRate;
         this.spiralA += 0.21;
         for (const k of [0, Math.PI]) g.shoot(this.x, this.y + 10, this.spiralA + k, 118, 'orb', true);
         g.sound.play('enemyShot');
@@ -814,7 +814,7 @@ export class StormCrystal extends Boss {
     if (c > 4.4 && c < 6.6) {
       this.rainT -= dt;
       if (this.rainT <= 0) {
-        this.rainT = desperate ? 0.16 : 0.2;
+        this.rainT = (desperate ? 0.16 : 0.2) / g.fireRate;
         const x = rand(20, FW - 20);
         if (Math.abs(x - g.player.x) > 30) g.shoot(x, -10, Math.PI / 2 + rand(-0.1, 0.1), 125, 'orb', true);
       }

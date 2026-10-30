@@ -57,7 +57,7 @@ export abstract class Enemy {
   killed = false;
   /** > 0: drawn white after a hit; it can blink again once it is below -0.07. */
   flash = -1;
-  points = 5;
+  points = 4;
   stars = 1;
   color: string = C.cyan;
   /** Shots spark off it (a boss on its way in, a closed core). */
@@ -172,7 +172,7 @@ export class Diamond extends Enemy {
     this.vy = vy;
     this.r = 17;
     this.setHp(2);
-    this.points = 5;
+    this.points = 4;
     this.color = C.cyan;
     this.fireAt = rand(130, 330);
   }
@@ -224,7 +224,7 @@ export class Chevron extends Enemy {
     group.total++;
     this.r = 15;
     this.setHp(2);
-    this.points = 5;
+    this.points = 4;
     this.color = color;
     this.shotAt = shoots ? rand(0.3, 0.55) : 99;
     const [x, y] = path(0);
@@ -282,7 +282,7 @@ export class Spinner extends Enemy {
     this.y = this.y0 = -40;
     this.r = 20;
     this.setHp(7);
-    this.points = 15;
+    this.points = 12;
     this.stars = 2;
     this.size = 0.4;
     this.color = C.magenta;
@@ -347,7 +347,7 @@ export class Splitter extends Enemy {
     this.vy = vy;
     this.r = gen === 0 ? 27 : gen === 1 ? 17 : 10;
     this.setHp(gen === 0 ? 9 : gen === 1 ? 3 : 1);
-    this.points = gen === 0 ? 12 : gen === 1 ? 5 : 2;
+    this.points = gen === 0 ? 10 : gen === 1 ? 4 : 2;
     this.stars = gen === 0 ? 2 : gen === 1 ? 1 : 0;
     this.size = gen === 0 ? 0.45 : gen === 1 ? 0.25 : 0.1;
     this.color = C.magenta;
@@ -401,7 +401,7 @@ export class SnakeSeg extends Enemy {
     group.total++;
     this.r = 11;
     this.setHp(2);
-    this.points = 4;
+    this.points = 3;
     this.stars = 1;
     this.size = 0.15;
     this.color = C.yellow;
@@ -449,7 +449,7 @@ export function updateSnakeHeads(enemies: Enemy[]): void {
       seen.add(e.group);
       if (!e.head) {
         e.head = true;
-        e.points = 12;
+        e.points = 10;
         e.stars = 2;
         e.r = 13;
         e.hp = Math.max(e.hp, 4);
@@ -487,7 +487,7 @@ export class Rock extends Enemy {
     this.cd = rand(0.8, 1.8);
     if (turret !== 'none') {
       this.setHp(12);
-      this.points = 20;
+      this.points = 16;
       this.stars = 3;
       this.size = 0.55;
     } else if (pebble) {
@@ -497,7 +497,7 @@ export class Rock extends Enemy {
       this.size = 0.1;
     } else {
       this.setHp(6);
-      this.points = 8;
+      this.points = 6;
       this.stars = 1;
       this.size = 0.35;
     }
@@ -559,7 +559,7 @@ export class Carrier extends Enemy {
     this.vy = 62;
     this.r = 22;
     this.setHp(6);
-    this.points = 12;
+    this.points = 10;
     this.stars = 2;
     this.size = 0.4;
     this.color = C.white;
