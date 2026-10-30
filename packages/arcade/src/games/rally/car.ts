@@ -1,7 +1,8 @@
 // Arcade-sim car handling: a bicycle model with grip-limited tyres, weight transfer, a rear-wheel-drive
 // power curve with an automatic six-speed box, handbrake slides, countersteer help, jumps over crests,
-// and gentle bounces off the fences. Plain maths, no Three.js.
-import { Surf, type Proj, type Track } from './track.ts';
+// and gentle bounces off the fences. Surfaces: asphalt, gravel, kerbs, grass, snow, sand and ice. In free
+// roam only the real walls (stone walls, bridge rails) stop the car. Plain maths, no Three.js.
+import { Fence, Surf, type Proj, type Track } from './track.ts';
 import { clamp, damp, lerp, smooth, wrapAngle } from './util.ts';
 
 export interface Controls {
@@ -18,7 +19,13 @@ export interface Ground {
   height(x: number, z: number): number;
 }
 
-export const Ground_ = { Asphalt: 0, Gravel: 1, Kerb: 2, Grass: 3 } as const;
+export const Ground_ = { Asphalt: 0, Gravel: 1, Kerb: 2, Grass: 3, Snow: 4, Sand: 5, Ice: 6, DeepSnow: 7, SoftSand: 8 } as const;
+
+/** Grip and rolling resistance per ground (index = Ground_ value). Rolling resistance grows with speed off the road. */
+const MU = [1.2, 0.86, 1.08, 0.74, 0.55, 0.8, 0.4, 0.5, 0.7];
+const ROLL = [0.15, 0.55, 0.3, 2.6, 0.5, 1.4, 0.1, 1.9, 2.2];
+const ROLL_V = [0, 0, 0, 0.05, 0, 0.012, 0, 0.04, 0.05];
+const ROAD_GROUND = [Ground_.Asphalt, Ground_.Gravel, Ground_.Snow, Ground_.Sand, Ground_.Ice];
 
 const MASS = 1200;
 const IZ = 2100;
@@ -94,6 +101,17 @@ export class Car {
   ghost = 0;
   braking = false;
   throttleIn = 0;
+  /** Engine boost on top of the power (nitro, a drift boost): 1 = none. */
+  boost = 1;
+  /** Brake force multiplier (the brakes part). */
+  brakeMul = 1;
+  /** Collision size (the bigger bodies). */
+  size = 1;
+  /** Free roam: no run-off fences, only the real walls; the grass rolls a little easier. */
+  roam = false;
+  /** What the ground off the road is at a point (grass when not set): snow, sand, ice on the lake. */
+  offroadAt: ((x: number, z: number) => number) | null = null;
+  private prevD = 0;
 
   constructor(private track: Track) {}
 
@@ -143,15 +161,15 @@ export class Car {
     const hw = t.hw[p.i]!;
     const ad = Math.abs(p.d);
     const kerbSide = p.d > 0 ? t.kerbL[p.i] : t.kerbR[p.i];
-    let surf: number = t.surf[p.i] === Surf.Gravel ? Ground_.Gravel : Ground_.Asphalt;
+    let surf: number = ROAD_GROUND[t.surf[p.i] ?? Surf.Asphalt] ?? Ground_.Asphalt;
     this.onKerb = false;
     if (kerbSide && ad > hw - 0.55 && ad < hw + 0.9) {
       surf = Ground_.Kerb;
       this.onKerb = true;
-    } else if (ad > hw + 0.45) surf = Ground_.Grass;
+    } else if (ad > hw + 0.45) surf = this.offroadAt ? this.offroadAt(this.x, this.z) : Ground_.Grass;
     this.surface = surf;
-    const mu = (surf === Ground_.Grass ? 0.74 : surf === Ground_.Gravel ? 0.86 : surf === Ground_.Kerb ? 1.08 : 1.2) * this.grip;
-    const rollDecel = surf === Ground_.Grass ? 2.6 + Math.abs(vLong) * 0.05 : surf === Ground_.Gravel ? 0.55 : surf === Ground_.Kerb ? 0.3 : 0.15;
+    const mu = MU[surf]! * this.grip;
+    const rollDecel = (ROLL[surf]! + Math.abs(vLong) * ROLL_V[surf]!) * (this.roam && surf >= Ground_.Grass && surf !== Ground_.Ice ? 0.55 : 1);
 
     // ---- steering: fewer degrees at speed, plus a hand catching slides ----
     const maxSteer = 0.62 / (1 + Math.abs(vLong) / 11);
@@ -228,10 +246,10 @@ export class Car {
         drive = -c.brake * 3800 * (vLong > -9 ? 1 : 0.15);
         brake = c.throttle * 9000;
       } else {
-        drive = c.throttle * Math.min(7600, this.power / Math.max(4, va));
+        drive = c.throttle * Math.min(7600 * this.boost, (this.power * this.boost) / Math.max(4, va));
         if (this.shiftT > 0) drive *= 0.3;
         if (this.launch > 0) drive *= 1.4;
-        brake = c.brake * 13500;
+        brake = c.brake * 13500 * this.brakeMul;
         // engine braking when lifting
         if (c.throttle < 0.05 && va > 1) brake += 650;
       }
@@ -352,13 +370,44 @@ export class Car {
     const p = this.proj;
     const th = Math.atan2(t.tx[p.i]!, t.tz[p.i]!);
     const rel = wrapAngle(this.heading - th);
-    const reach = 0.95 + 1.05 * Math.abs(Math.sin(rel));
+    const reach = (0.95 + 1.05 * Math.abs(Math.sin(rel))) * this.size;
+    if (this.roam) {
+      this.roamWalls(th, reach);
+      return;
+    }
     const wl = t.at(t.wallL, p.s) - reach;
     const wr = t.at(t.wallR, p.s) - reach;
     let over = 0;
     if (p.d > wl) over = p.d - wl;
     else if (p.d < -wr) over = p.d + wr;
     if (over === 0) return;
+    this.bounce(over, th, over > 0 ? t.fenceL[p.i]! : t.fenceR[p.i]!);
+  }
+
+  /** Free roam: stone walls and bridge rails are thin walls the car bumps into from either side. */
+  private roamWalls(th: number, reach: number): void {
+    const t = this.track;
+    const p = this.proj;
+    const side = p.d > 0 ? 1 : -1;
+    const kind = side > 0 ? t.fenceL[p.i]! : t.fenceR[p.i]!;
+    const prev = this.prevD;
+    this.prevD = p.d;
+    if (kind !== Fence.Stone && kind !== Fence.Rail) return;
+    // the bridge deck is the road: only its rails count, and only near the deck
+    const w = side > 0 ? t.at(t.wallL, p.s) : t.at(t.wallR, p.s);
+    const ad = Math.abs(p.d);
+    if (ad < w - reach || ad > w + reach) return;
+    const inside = Math.sign(prev) !== side || Math.abs(prev) < w;
+    const target = inside ? w - reach : w + reach;
+    const over = (ad - target) * side;
+    if (inside ? ad <= target : ad >= target) return;
+    this.bounce(over, th, kind);
+  }
+
+  /** Push the car `over` metres back towards the centre line (negative: away from it) and bounce. */
+  private bounce(over: number, th: number, kind: number): void {
+    const t = this.track;
+    const p = this.proj;
     const lx = t.tz[p.i]!;
     const lz = -t.tx[p.i]!;
     this.x -= lx * over;
@@ -377,7 +426,7 @@ export class Car {
       this.yawRate = this.yawRate * 0.35 + dh * Math.min(3, vn * 0.4);
       if (vn > this.wallHit) {
         this.wallHit = vn;
-        this.wallKind = over > 0 ? t.fenceL[p.i]! : t.fenceR[p.i]!;
+        this.wallKind = kind;
       }
     }
   }
@@ -423,10 +472,14 @@ export function collideCars(cars: Car[], onHit: (a: number, b: number, j: number
       if (a.ghost > 0 || b.ghost > 0) continue;
       const dx0 = b.x - a.x;
       const dz0 = b.z - a.z;
-      if (dx0 * dx0 + dz0 * dz0 > 25 || Math.abs(a.y - b.y) > 2.5) continue;
+      const reach = 25 * Math.max(a.size, b.size) ** 2;
+      if (dx0 * dx0 + dz0 * dz0 > reach || Math.abs(a.y - b.y) > 2.5) continue;
+      const rr = R * a.size + R * b.size;
       let hit = 0;
-      for (const oa of [-1.05, 1.05])
-        for (const ob of [-1.05, 1.05]) {
+      for (const oa0 of [-1.05, 1.05])
+        for (const ob0 of [-1.05, 1.05]) {
+          const oa = oa0 * a.size;
+          const ob = ob0 * b.size;
           const ax = a.x + Math.sin(a.heading) * oa;
           const az = a.z + Math.cos(a.heading) * oa;
           const bx = b.x + Math.sin(b.heading) * ob;
@@ -434,10 +487,10 @@ export function collideCars(cars: Car[], onHit: (a: number, b: number, j: number
           let nx = bx - ax;
           let nz = bz - az;
           const dist = Math.hypot(nx, nz);
-          if (dist >= 2 * R || dist < 1e-4) continue;
+          if (dist >= rr || dist < 1e-4) continue;
           nx /= dist;
           nz /= dist;
-          const depth = 2 * R - dist;
+          const depth = rr - dist;
           a.x -= nx * depth * 0.5;
           a.z -= nz * depth * 0.5;
           b.x += nx * depth * 0.5;

@@ -1,18 +1,30 @@
 // Where things are round the circuit: the lake and the stream, fields, forests, farms and pastures.
+// The constants are the farm course's; the other courses bring their own Layout (courses.ts), and the
+// helpers take the layout to look in (the farm's when left out).
 import { fbm, smooth } from './util.ts';
 
 export const WATER_Y = 0.55;
 
-export const LAKE = { cx: -150, cz: 26, rx: 58, rz: 33, rot: 0.25 };
+export interface Lake {
+  cx: number;
+  cz: number;
+  rx: number;
+  rz: number;
+  rot: number;
+}
 
-/** 1 at the lake's edge, less inside. */
-export function lakeDist(x: number, z: number): number {
-  const c = Math.cos(LAKE.rot);
-  const s = Math.sin(LAKE.rot);
-  const dx = x - LAKE.cx;
-  const dz = z - LAKE.cz;
-  const u = (dx * c + dz * s) / LAKE.rx;
-  const v = (-dx * s + dz * c) / LAKE.rz;
+export const LAKE: Lake = { cx: -150, cz: 26, rx: 58, rz: 33, rot: 0.25 };
+
+/** 1 at the lake's edge, less inside (999 when the course has no lake). */
+export function lakeDist(x: number, z: number, l: Layout = FARM): number {
+  const lake = l.lake;
+  if (!lake) return 999;
+  const c = Math.cos(lake.rot);
+  const s = Math.sin(lake.rot);
+  const dx = x - lake.cx;
+  const dz = z - lake.cz;
+  const u = (dx * c + dz * s) / lake.rx;
+  const v = (-dx * s + dz * c) / lake.rz;
   // a slightly wobbly shore
   return Math.hypot(u, v) * (1 + 0.06 * Math.sin(Math.atan2(v, u) * 3 + 1.2));
 }
@@ -30,7 +42,9 @@ export const STREAM: [number, number][] = [
 ];
 
 /** Distance to the stream and how far along it (0 at the source, 1 at the lake). */
-export function streamDist(x: number, z: number): { d: number; t: number } {
+export function streamDist(x: number, z: number, l: Layout = FARM): { d: number; t: number } {
+  const STREAM = l.stream;
+  if (!STREAM) return { d: 999, t: 0 };
   let best = Infinity;
   let bt = 0;
   let acc = 0;
@@ -55,7 +69,7 @@ export function streamDist(x: number, z: number): { d: number; t: number } {
 }
 
 /** The water level of the stream, higher up in the hills. */
-export const streamLevel = (t: number): number => WATER_Y + (1 - t) * 1.6;
+export const streamLevel = (t: number, l: Layout = FARM): number => l.waterY + (1 - t) * 1.6;
 
 export type FieldKind = 'raps' | 'vete' | 'gron' | 'plog';
 
@@ -89,8 +103,8 @@ export const FIELDS: Field[] = [
 ];
 
 /** Inside a field (with a margin in metres)? */
-export function inField(x: number, z: number, margin = 0): Field | null {
-  for (const f of FIELDS) {
+export function inField(x: number, z: number, margin = 0, l: Layout = FARM): Field | null {
+  for (const f of l.fields) {
     const c = Math.cos(f.rot);
     const s = Math.sin(f.rot);
     const dx = x - f.x;
@@ -102,7 +116,7 @@ export function inField(x: number, z: number, margin = 0): Field | null {
   return null;
 }
 
-interface Blob {
+export interface Blob {
   x: number;
   z: number;
   rx: number;
@@ -125,10 +139,10 @@ const FORESTS: Blob[] = [
 const blob = (b: Blob, x: number, z: number): number => 1 - smooth(0.55, 1.0, Math.hypot((x - b.x) / b.rx, (z - b.z) / b.rz));
 
 /** How wooded a spot is (0..1) and what share of the trees there are birches. */
-export function forest(x: number, z: number): { d: number; birch: number } {
+export function forest(x: number, z: number, l: Layout = FARM): { d: number; birch: number } {
   let d = 0;
   let birch = 0.5;
-  for (const b of FORESTS) {
+  for (const b of l.forests) {
     const v = blob(b, x, z);
     if (v > d) {
       d = v;
@@ -138,24 +152,24 @@ export function forest(x: number, z: number): { d: number; birch: number } {
   // ragged edges and clearings
   d *= smooth(-0.35, 0.15, fbm(x / 90 + 4.2, z / 90 - 1.3, 3));
   // far away: forest patches on the hills
-  const r = Math.hypot(x + 10, z + 30);
-  const far = smooth(430, 650, r) * smooth(-0.05, 0.25, fbm(x / 260 + 17, z / 260 - 5, 3));
+  const r = Math.hypot(x - l.farCx, z - l.farCz);
+  const far = smooth(430, 650, r) * smooth(-0.05, 0.25, fbm(x / 260 + 17, z / 260 - 5, 3)) * l.farForest;
   if (far > d) {
     d = far;
-    birch = 0.3;
+    birch = l.farBirch;
   }
   // birches like the water
-  const ld = lakeDist(x, z);
-  if (ld > 1.05 && ld < 1.7) {
+  const ld = lakeDist(x, z, l);
+  if (l.shoreTrees && ld > 1.05 && ld < 1.7) {
     d = Math.max(d, 0.35 * (1 - smooth(1.3, 1.7, ld)));
     birch = 0.95;
   }
-  const sd = streamDist(x, z);
+  const sd = streamDist(x, z, l);
   if (sd.d > 8 && sd.d < 26 && sd.t < 0.9) {
     d = Math.max(d, 0.5 * (1 - smooth(14, 26, sd.d)));
     birch = 0.85;
   }
-  if (inField(x, z, 4)) d = 0;
+  if (inField(x, z, 4, l)) d = 0;
   return { d, birch };
 }
 
@@ -206,3 +220,47 @@ export const PASTURES: { x: number; z: number; hw: number; hd: number; animal: '
   { x: 232, z: 192, hw: 18, hd: 12, animal: 'horse', n: 2 },
   { x: 300, z: 176, hw: 26, hd: 14, animal: 'cow', n: 4 },
 ];
+
+/** Everything that decides the lie of the land round one course. */
+export interface Layout {
+  waterY: number;
+  lake: Lake | null;
+  /** The lake is ice (a flat frozen sheet you can drive on) or the open sea (beach). */
+  lakeKind: 'water' | 'ice' | 'sea';
+  stream: [number, number][] | null;
+  fields: Field[];
+  forests: Blob[];
+  /** Far-off forest patches on the hills: how dense (0..1), the birch share, and their centre. */
+  farForest: number;
+  farBirch: number;
+  farCx: number;
+  farCz: number;
+  /** Trees along the lake shore. */
+  shoreTrees: boolean;
+  /** The ground without the road (cx, cz, ex, ez: the course's centre and half extents). */
+  natural(x: number, z: number, cx: number, cz: number, ex: number, ez: number): number;
+}
+
+export const FARM: Layout = {
+  waterY: WATER_Y,
+  lake: LAKE,
+  lakeKind: 'water',
+  stream: STREAM,
+  fields: FIELDS,
+  forests: FORESTS,
+  farForest: 1,
+  farBirch: 0.3,
+  farCx: -10,
+  farCz: -30,
+  shoreTrees: true,
+  natural(x, z, cx, cz, ex, ez) {
+    // gentle swells near the farm, big hills far off
+    let h = 2.0 + 3.0 * fbm(x / 190 + 3.1, z / 190 - 1.7, 4) + 1.1 * fbm(x / 55, z / 55, 2);
+    h += 15 * Math.exp(-(((x - 300) / 150) ** 2) - ((z + 130) / 170) ** 2);
+    h += 6 * Math.exp(-(((x + 330) / 55) ** 2) - ((z - 214) / 55) ** 2);
+    const r = Math.hypot((x - cx) / (ex + 150), (z - cz) / (ez + 150));
+    h += smooth(1.0, 3.4, r) * (26 + 44 * (fbm(x / 520 + 9, z / 520 - 4, 3) + 0.5));
+    h += smooth(2.6, 7, r) * 70 * (fbm(x / 1100 - 3, z / 1100 + 6, 3) + 0.6);
+    return h;
+  },
+};
