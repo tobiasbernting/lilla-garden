@@ -232,10 +232,10 @@ export class SnowGame implements GameInstance, Arena {
       (dt) => this.update(dt),
       () => this.render(),
     );
-    if (typeof location !== 'undefined' && location.search.includes('snowdebug')) this.debugHook();
+    if (import.meta.env.DEV && typeof location !== 'undefined' && location.search.includes('snowdebug')) this.debugHook();
   }
 
-  /** Test hook for the lab (only with ?snowdebug): read the state, aim, fast-forward. */
+  /** Test hook for the lab (only in the dev build, with ?snowdebug): read the state, aim, fast-forward. */
   private debugHook(): void {
     const w = window as unknown as Record<string, unknown>;
     w.__snow = {
