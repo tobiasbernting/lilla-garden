@@ -187,6 +187,8 @@ export class Hud {
   readonly camBtn: HTMLButtonElement;
   readonly homeBtn: HTMLButtonElement;
   private roamMode = false;
+  /** The last values shown, so a frame with no change touches no DOM. */
+  private last: Record<string, string> = {};
 
   constructor(
     parent: HTMLElement,
@@ -297,6 +299,7 @@ export class Hud {
 
   /** The damage bar (null hides it). */
   setDamage(d: number | null): void {
+    if (this.same('dmg', d === null ? '-' : Math.round(d))) return;
     this.dmgChip.classList.toggle('show', d !== null);
     if (d === null) return;
     this.dmgBar.style.width = `${Math.round(clamp(d, 0, 100))}%`;
@@ -316,6 +319,7 @@ export class Hud {
 
   /** The drift meter: 0..1 charge and the tier colour (0 hides it). */
   setDrift(k: number, tier: number): void {
+    if (this.same('drift', `${Math.round(k * 50)}/${tier}`)) return;
     this.driftChip.classList.toggle('show', k > 0);
     this.driftBar.style.width = `${Math.round(clamp(k, 0, 1) * 100)}%`;
     this.driftBar.style.background = ['#9aa0b0', '#4fb3ff', '#ff9a2a', '#c070ff'][tier] ?? '#9aa0b0';
@@ -336,6 +340,7 @@ export class Hud {
 
   /** Speed lines round the edge (nitro): 0..1. */
   speedLines(k: number): void {
+    if (this.same('speed', k.toFixed(2))) return;
     this.speedEl.style.opacity = k.toFixed(2);
   }
 
@@ -580,6 +585,13 @@ export class Hud {
     this.toastEl.textContent = text;
     this.toastEl.classList.add('show');
     this.toastTimer = setTimeout(() => this.toastEl.classList.remove('show'), 1300);
+  }
+
+  private same(key: string, v: string | number): boolean {
+    const t = String(v);
+    if (this.last[key] === t) return true;
+    this.last[key] = t;
+    return false;
   }
 
   /** Where the minimap is drawn (for a racer list that changes size). */

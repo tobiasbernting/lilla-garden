@@ -1342,7 +1342,7 @@ const rally = (ctx: GameContext): GameInstance => {
     water.update(timeU.value);
     pickupMeshes?.update(timeU.value);
     scenery.update(timeU.value, tmpV.set(mc.x, mc.y, mc.z), phase === 'finish' || phase === 'over' ? 1 : phase === 'count' || (phase === 'race' && phaseT < 3 && !roam) ? 0.8 : 0);
-    if (phase === 'finish' && phaseT < 3.2 && finishPlace > 0) {
+    if (phase === 'finish' && phaseT < 3.2) {
       const k = Math.floor(phaseT / 0.8);
       if (k !== Math.floor((phaseT - dt) / 0.8)) {
         const g = track.point(0, 0);
