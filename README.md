@@ -14,6 +14,7 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - Fiska i dammen med fiskespöet du får av Sven.
 - Byt kläder i garderoben. Halloween, jul, påsk och midsommar följer kalendern.
 - Allt tillsammans med upp till åtta spelare på samma gård. Inget dör, inget går sönder.
+- Det du bygger är ditt: bara den som byggde något kan riva det (staket, väggar, kistor, möbler, djurhus…).
 - 2D: chatta med alla som spelar (Enter/T eller 💬, färdiga ord för den som inte vill skriva).
 - 2D: säg åt hund, katt och häst att stanna (✋, X) och vissla så kommer de igen (🎵, V) – även från en annan karta.
 - 2D: prata med alla bybor (Prata! i bybons fönster): frågor, berättelser, skämt, gåtor och sten, sax, påse med Elsa.

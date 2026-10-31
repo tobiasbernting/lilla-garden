@@ -982,7 +982,16 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
   }
 }
 
+/** Someone else built it (and still lives on the farm): only they may take it down. */
+const builtByOther = (world: WorldState, p: PlayerState, obj: WorldObject): PlayerState | undefined =>
+  obj.by && obj.by !== p.id ? farmOf(world).players[obj.by] : undefined;
+
 function breakObject(world: WorldState, p: PlayerState, obj: WorldObject, ctx: SimCtx, out: Change[]): void {
+  const builder = builtByOther(world, p, obj);
+  if (builder) {
+    out.push(toast(p.id, fmt(T.notYourBuild, { owner: builder.name })));
+    return;
+  }
   const def = objectDef(obj.kind);
   removeObject(world, obj.id);
   out.push({ t: 'object', id: obj.id, obj: null });
@@ -2148,6 +2157,7 @@ function explode(world: WorldState, p: PlayerState, cx: number, cy: number, ctx:
   for (const obj of Object.values(world.objects)) {
     const def = objectDef(obj.kind);
     if (!def.breakWith || def.breakWith === 'hammer' || obj.kind.startsWith('tree') || obj.kind === 'palm') continue; // only rocks, stumps, weeds and the like
+    if (builtByOther(world, p, obj)) continue;
     const dx = obj.x - cx;
     const dy = obj.y - cy;
     if (dx * dx + dy * dy <= r2) breakObject(world, p, obj, ctx, out);

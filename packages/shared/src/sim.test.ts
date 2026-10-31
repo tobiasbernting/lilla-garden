@@ -292,6 +292,27 @@ describe('resources and building', () => {
     expect(countItem(p.inventory, 'fence')).toBe(4);
   });
 
+  it('only the one who built something may take it down', () => {
+    const { world, p } = setup();
+    const q = createPlayer(world, 'Syster', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
+    setOnline(world, q.id, true);
+    addItem(p.inventory, 'fence', 1);
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    select(p, 'fence');
+    performAction(world, p.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)?.by).toBe(p.id);
+    standAt(world, q, 20, 20);
+    select(q, 'hammer');
+    const ch = performAction(world, q.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)?.kind).toBe('fence');
+    expect(toasts(ch)).toContain('Test byggde den – bara Test kan riva den.');
+    expect(countItem(q.inventory, 'fence')).toBe(0);
+    select(p, 'hammer');
+    performAction(world, p.id, 21, 20, ctx());
+    expect(objectAt(world, 21, 20)).toBeUndefined();
+  });
+
   it('paths set terrain and cannot be placed on water; hammer refunds', () => {
     const { world, p } = setup();
     addItem(p.inventory, 'path_stone', 2);
