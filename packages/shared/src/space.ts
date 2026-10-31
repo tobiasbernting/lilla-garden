@@ -3,7 +3,7 @@
 // star crystals, moon cheese, friendly aliens, a crashed UFO with a chest, and a cave of its own.
 import { spawnWildAnimals } from './biomes.ts';
 import { CAVE_THEMES, countRenewables } from './caves.ts';
-import { addObject, emptyWorld, objectAt, removeObject } from './map.ts';
+import { addObject, emptyWorld, objectAt, removeObject, tileIndex } from './map.ts';
 import { hashString, mulberry32 } from './rng.ts';
 import { Painter, connect } from './worldgen.ts';
 import { MAP_H, MAP_W, key, type WorldState } from './types.ts';
@@ -32,7 +32,7 @@ export function buildLaunchSite(world: WorldState): void {
       if (o) removeObject(world, o.id);
       delete world.crops[key(x, y)];
       const edge = x === x0 || x === x0 + 9 || y === y0 || y === y0 + 8;
-      world.terrain[y * MAP_W + x] = edge ? 'path_stone' : 'floor_stone';
+      world.terrain[tileIndex(world, x, y)] = edge ? 'path_stone' : 'floor_stone';
     }
   addObject(world, 'rocket', r.x, r.y);
   addObject(world, 'satellite_dish', r.x + 4, r.y);
@@ -43,7 +43,7 @@ export function buildLaunchSite(world: WorldState): void {
   ] as const)
     addObject(world, 'lantern', r.x + dx, r.y + dy);
   // a road south from the pad
-  for (let y = y0 + 9; y < y0 + 13; y++) for (let x = r.x; x <= r.x + 1; x++) if (!objectAt(world, x, y)) world.terrain[y * MAP_W + x] = 'path_stone';
+  for (let y = y0 + 9; y < y0 + 13; y++) for (let x = r.x; x <= r.x + 1; x++) if (!objectAt(world, x, y)) world.terrain[tileIndex(world, x, y)] = 'path_stone';
 }
 
 /** Adds the launch site to a saved space-base map that was built before it existed. */

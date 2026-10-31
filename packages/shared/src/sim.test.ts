@@ -69,6 +69,9 @@ import {
   objectAt,
   performAction,
   resolveMove,
+  mapH,
+  mapW,
+  WILD_MAP,
   seasonForDate,
   sell,
   setOnline,
@@ -112,7 +115,7 @@ function clearTile(world: WorldState, tx: number, ty: number): void {
     delete world.objects[o.id];
     for (const [k, id] of Object.entries(world.occupancy)) if (id === o.id) delete world.occupancy[k];
   }
-  world.terrain[tileIndex(tx, ty)] = 'grass';
+  world.terrain[tileIndex(world, tx, ty)] = 'grass';
   delete world.crops[key(tx, ty)];
 }
 
@@ -178,7 +181,7 @@ describe('farming', () => {
     clearTile(world, 21, 20);
     select(p, 'hoe');
     performAction(world, p.id, 21, 20, ctx());
-    expect(world.terrain[tileIndex(21, 20)]).toBe('soil');
+    expect(world.terrain[tileIndex(world, 21, 20)]).toBe('soil');
     select(p, 'carrot_seed');
     const seedsBefore = countItem(p.inventory, 'carrot_seed');
     performAction(world, p.id, 21, 20, ctx());
@@ -190,11 +193,11 @@ describe('farming', () => {
     performAction(world, p.id, 21, 20, ctx());
     expect(can.charges).toBe(19);
     expect(world.crops['21,20']?.watered).toBe(true);
-    expect(world.terrain[tileIndex(21, 20)]).toBe('soil_wet');
+    expect(world.terrain[tileIndex(world, 21, 20)]).toBe('soil_wet');
     const days = CROPS.carrot!.stages.length;
     for (let d = 0; d < days; d++) {
       newDay(world, ctx());
-      expect(world.terrain[tileIndex(21, 20)]).toBe('soil');
+      expect(world.terrain[tileIndex(world, 21, 20)]).toBe('soil');
       if (d < days - 1) {
         world.crops['21,20']!.watered = true;
       }
@@ -212,7 +215,7 @@ describe('farming', () => {
     const { world, p } = setup();
     standAt(world, p, 20, 20);
     clearTile(world, 21, 20);
-    world.terrain[tileIndex(21, 20)] = 'soil';
+    world.terrain[tileIndex(world, 21, 20)] = 'soil';
     addItem(p.inventory, 'strawberry_seed', 1);
     select(p, 'strawberry_seed');
     performAction(world, p.id, 21, 20, ctx());
@@ -240,7 +243,7 @@ describe('farming', () => {
     can.charges = 0;
     standAt(world, p, 20, 20);
     clearTile(world, 21, 20);
-    world.terrain[tileIndex(21, 20)] = 'soil';
+    world.terrain[tileIndex(world, 21, 20)] = 'soil';
     expect(toasts(performAction(world, p.id, 21, 20, ctx()))).toContain('Vattenkannan är tom – fyll på vid vatten');
     standAt(world, p, wx - 1, wy);
     performAction(world, p.id, wx, wy, ctx());
@@ -251,10 +254,10 @@ describe('farming', () => {
     const { world, p } = setup();
     standAt(world, p, 20, 20);
     clearTile(world, 21, 20);
-    world.terrain[tileIndex(21, 20)] = 'soil';
+    world.terrain[tileIndex(world, 21, 20)] = 'soil';
     select(p, 'scythe');
     performAction(world, p.id, 21, 20, ctx());
-    expect(world.terrain[tileIndex(21, 20)]).toBe('grass');
+    expect(world.terrain[tileIndex(world, 21, 20)]).toBe('grass');
   });
 });
 
@@ -326,15 +329,15 @@ describe('resources and building', () => {
     clearTile(world, 21, 20);
     select(p, 'path_stone');
     performAction(world, p.id, 21, 20, ctx());
-    expect(world.terrain[tileIndex(21, 20)]).toBe('path_stone');
+    expect(world.terrain[tileIndex(world, 21, 20)]).toBe('path_stone');
     expect(objectAt(world, 21, 20)).toBeUndefined();
-    world.terrain[tileIndex(21, 21)] = 'water';
+    world.terrain[tileIndex(world, 21, 21)] = 'water';
     performAction(world, p.id, 21, 21, ctx());
-    expect(world.terrain[tileIndex(21, 21)]).toBe('water');
+    expect(world.terrain[tileIndex(world, 21, 21)]).toBe('water');
     expect(countItem(p.inventory, 'path_stone')).toBe(1);
     select(p, 'hammer');
     performAction(world, p.id, 21, 20, ctx());
-    expect(world.terrain[tileIndex(21, 20)]).toBe('grass');
+    expect(world.terrain[tileIndex(world, 21, 20)]).toBe('grass');
     expect(countItem(p.inventory, 'path_stone')).toBe(2);
   });
 
@@ -405,11 +408,11 @@ describe('own house and paint', () => {
     addItem(p.inventory, 'floor_wood', 2);
     select(p, 'floor_wood');
     performAction(world, p.id, 19, 20, ctx());
-    expect(world.terrain[tileIndex(19, 20)]).toBe('floor_wood');
+    expect(world.terrain[tileIndex(world, 19, 20)]).toBe('floor_wood');
     expect(countItem(p.inventory, 'floor_wood')).toBe(1);
     select(p, 'hammer');
     performAction(world, p.id, 19, 20, ctx());
-    expect(world.terrain[tileIndex(19, 20)]).toBe('grass');
+    expect(world.terrain[tileIndex(world, 19, 20)]).toBe('grass');
     expect(countItem(p.inventory, 'floor_wood')).toBe(2);
   });
 
@@ -418,8 +421,8 @@ describe('own house and paint', () => {
     standAt(world, p, 20, 20);
     clearTile(world, 21, 20);
     clearTile(world, 21, 21);
-    world.terrain[tileIndex(21, 20)] = 'floor_wood';
-    world.terrain[tileIndex(21, 21)] = 'floor_wood';
+    world.terrain[tileIndex(world, 21, 20)] = 'floor_wood';
+    world.terrain[tileIndex(world, 21, 21)] = 'floor_wood';
     addItem(p.inventory, 'bed', 1);
     select(p, 'bed');
     performAction(world, p.id, 21, 20, ctx());
@@ -480,9 +483,9 @@ describe('own house and paint', () => {
     expect(findRooms(world)).toHaveLength(0);
     addObject(world, 'grass_tuft', 21, 21);
     addObject(world, 'chest', 22, 21, { items: [] });
-    world.terrain[tileIndex(22, 22)] = 'soil';
+    world.terrain[tileIndex(world, 22, 22)] = 'soil';
     world.crops[key(22, 22)] = { crop: 'carrot', stage: 0, progress: 0, watered: false };
-    world.terrain[tileIndex(21, 22)] = 'path_dirt';
+    world.terrain[tileIndex(world, 21, 22)] = 'path_dirt';
     standAt(world, p, 24, 22);
     const seeds = countItem(p.inventory, 'carrot_seed');
     addItem(p.inventory, 'door', 1);
@@ -490,8 +493,8 @@ describe('own house and paint', () => {
     const ch = performAction(world, p.id, 23, 22, ctx());
     const rooms = findRooms(world);
     expect(rooms).toHaveLength(1);
-    expect(rooms[0]!.tiles.sort()).toEqual([tileIndex(21, 21), tileIndex(22, 21), tileIndex(21, 22), tileIndex(22, 22)].sort());
-    for (const [x, y] of [[21, 21], [22, 21], [21, 22], [22, 22]] as const) expect(world.terrain[tileIndex(x, y)]).toBe('floor_wood');
+    expect(rooms[0]!.tiles.sort()).toEqual([tileIndex(world, 21, 21), tileIndex(world, 22, 21), tileIndex(world, 21, 22), tileIndex(world, 22, 22)].sort());
+    for (const [x, y] of [[21, 21], [22, 21], [21, 22], [22, 22]] as const) expect(world.terrain[tileIndex(world, x, y)]).toBe('floor_wood');
     expect(objectAt(world, 21, 21)).toBeUndefined();
     expect(objectAt(world, 22, 21)?.kind).toBe('chest');
     expect(world.crops[key(22, 22)]).toBeUndefined();
@@ -515,12 +518,12 @@ describe('own house and paint', () => {
     addItem(p.inventory, 'wall_stone', 1);
     select(p, 'wall_stone');
     performAction(world, p.id, 23, 22, ctx());
-    expect(world.terrain[tileIndex(21, 21)]).toBe('floor_stone');
+    expect(world.terrain[tileIndex(world, 21, 21)]).toBe('floor_stone');
 
     const w2 = setup().world;
     ringBut(w2, 'wall_wood', [23, 23]); // missing corner: the walls only meet diagonally
     expect(findRooms(w2)).toHaveLength(0);
-    expect(w2.terrain[tileIndex(22, 22)]).toBe('grass');
+    expect(w2.terrain[tileIndex(w2, 22, 22)]).toBe('grass');
   });
 });
 
@@ -1117,7 +1120,7 @@ describe('grottan', () => {
     const rock = addObject(world, 'rock', 33, 30)!;
     const fence = addObject(world, 'fence', 33, 31)!;
     const chest = addObject(world, 'chest', 32, 29)!;
-    world.terrain[tileIndex(34, 30)] = 'soil';
+    world.terrain[tileIndex(world, 34, 30)] = 'soil';
     world.crops[key(34, 30)] = { crop: 'carrot', stage: 1, progress: 0, watered: false };
     const hen = addAnimal(world, 'hen', 0);
     hen.x = 34 * TILE + 8;
@@ -1248,7 +1251,7 @@ describe('världen utanför', () => {
     expect(a.biome).toBe('is');
     expect(a.terrain.filter((t) => t === 'snow').length).toBeGreaterThan(a.terrain.length / 2);
     for (const side of ['n', 's', 'e', 'w'] as const) {
-      const t = arrivalTile(side);
+      const t = arrivalTile(a, side);
       expect(isSolidForPlayer(a, t.x, t.y)).toBe(false);
     }
     expect(Object.values(a.objects).some((o) => o.kind === 'iceberry')).toBe(true);
@@ -1268,13 +1271,15 @@ describe('världen utanför', () => {
     expect(p.visited).toContain('a:0,-1');
     const north = areaOf(world, p);
     expect(north.area).toBe('a:0,-1');
-    expect(Math.floor(p.y / 16)).toBe(62);
+    expect(mapW(north)).toBe(WILD_MAP); // the wild is bigger than the farm
+    expect(Math.floor(p.y / 16)).toBe(mapH(north) - 2);
+    expect(Math.floor(p.x / 16)).toBe(mapW(north) / 2);
     expect(() => JSON.stringify(ch)).not.toThrow();
     // acting in the new area hits that area's objects
     const tree = Object.values(north.objects).find((o) => o.kind.startsWith('tree'))!;
     expect(tree).toBeDefined();
     // walk back south
-    standAt(world, p, 32, 63);
+    standAt(world, p, mapW(north) / 2, mapH(north) - 1);
     travel(world, p.id, 's');
     expect(p.area).toBe('farm');
     expect(Math.floor(p.y / 16)).toBe(1);
@@ -1452,7 +1457,7 @@ describe('hästar', () => {
     const ch = performAction(world, p.id, ftx, 34, ctx());
     expect(toasts(ch).some((t) => t.includes('hoppar av'))).toBe(true);
     expect(p.riding).toBeUndefined();
-    expect(world.terrain[tileIndex(ftx, 34)]).toBe('grass');
+    expect(world.terrain[tileIndex(world, ftx, 34)]).toBe('grass');
     expect(Math.hypot(horse.x - p.x, horse.y - p.y)).toBeLessThan(2 * TILE);
   });
 
@@ -1722,7 +1727,7 @@ describe('lasso och rovdjur', () => {
     const { world, p, area, a } = outdoors('wolf');
     performAction(area, p.id, 31, 30, at(1_000_000, 0.1));
     expect(a.owner).toBe(p.id);
-    standAt(world, p, 32, 63);
+    standAt(world, p, mapW(area) / 2, mapH(area) - 1);
     const ch = travel(world, p.id, 's');
     expect(p.area).toBe('farm');
     expect(Object.values(area.animals).some((x) => x.species === 'wolf')).toBe(false);
@@ -1821,7 +1826,7 @@ describe('fordon', () => {
     expect(p.achievements).toContain('drive_1');
     expect(toasts(drive).some((t) => t.includes('kör'))).toBe(true);
     // road is fast, mud is slow
-    const idx = tileIndex(tileOf(p.x), tileOf(p.y));
+    const idx = tileIndex(world, tileOf(p.x), tileOf(p.y));
     expect(rideSpeedMul(world, p)).toBeCloseTo(2.6);
     (world.terrain as string[])[idx] = 'road';
     expect(rideSpeedMul(world, p)).toBeCloseTo(2.6 * 1.3);
@@ -1842,7 +1847,7 @@ describe('fordon', () => {
     const off = performAction(world, p.id, ftx, tileOf(p.y), ctx());
     expect(p.riding).toBeUndefined();
     expect(toasts(off).some((t) => t.includes('vägkanten'))).toBe(true);
-    expect(world.terrain[tileIndex(ftx, tileOf(p.y))]).toBe('grass');
+    expect(world.terrain[tileIndex(world, ftx, tileOf(p.y))]).toBe('grass');
     expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThan(2 * TILE);
     // parked cars stay where they are
     const cx = car.x;
@@ -1858,7 +1863,7 @@ describe('fordon', () => {
     performAction(world, p.id, tileOf(moped.x), tileOf(moped.y), ctx());
     expect(p.riding).toBe(moped.id);
     expect(rideSpeedMul(world, p)).toBeCloseTo(2.2);
-    const ahead = tileIndex(tileOf(p.x) + 1, tileOf(p.y));
+    const ahead = tileIndex(world, tileOf(p.x) + 1, tileOf(p.y));
     world.terrain[ahead] = 'water';
     const x0 = p.x;
     for (let i = 0; i < 20; i++) stepPlayer(world, p, 1, 0, 50, rideSpeedMul(world, p));
@@ -1997,16 +2002,16 @@ describe('staden', () => {
     expect(species.filter((s) => s === 'motorcycle')).toHaveLength(2);
     expect(species.filter((s) => s === 'bus')).toHaveLength(2);
     expect(species.filter((s) => s === 'train')).toHaveLength(1);
-    for (const a of Object.values(city.animals)) if (isVehicle(a)) expect(['road', 'crossing', 'rail']).toContain(T[tileIndex(tileOfPx(a.x), tileOfPx(a.y))]);
+    for (const a of Object.values(city.animals)) if (isVehicle(a)) expect(['road', 'crossing', 'rail']).toContain(T[tileIndex(city, tileOfPx(a.x), tileOfPx(a.y))]);
     // the openings in the edges lead straight onto the main streets
-    expect(T[tileIndex(32, 1)]).toBe('road');
-    expect(T[tileIndex(1, 33)]).toBe('road');
-    expect(T[tileIndex(62, 34)]).toBe('road');
+    expect(T[tileIndex(city, 32, 1)]).toBe('road');
+    expect(T[tileIndex(city, 1, 33)]).toBe('road');
+    expect(T[tileIndex(city, 62, 34)]).toBe('road');
     // the villagers' spots are on walkable ground, off the streets
     for (const n of npcsIn(city))
       for (const w of [n, ...n.routine]) {
         expect(objectAt(city, w.x, w.y)).toBeUndefined();
-        expect(['road', 'crossing']).not.toContain(T[tileIndex(w.x, w.y)]);
+        expect(['road', 'crossing']).not.toContain(T[tileIndex(city, w.x, w.y)]);
       }
   });
 
@@ -2026,7 +2031,7 @@ describe('staden', () => {
     for (let i = 0; i < 40; i++) step();
     expect(Math.hypot(car.x - start.x, car.y - start.y)).toBeGreaterThan(TILE);
     expect(car.moving).toBe(true);
-    expect(['road', 'crossing']).toContain(city.terrain[tileIndex(tileOfPx(car.x), tileOfPx(car.y))]);
+    expect(['road', 'crossing']).toContain(city.terrain[tileIndex(city, tileOfPx(car.x), tileOfPx(car.y))]);
     // stand right in front of it: it stops, and after a while it honks (kindly)
     const [dx, dy] = DIRS[car.facing]!;
     p.x = car.x + dx * TILE * 1.3;
@@ -2054,13 +2059,13 @@ describe('staden', () => {
     const DRESS = ['banner_pole', 'barrel_stack', 'runestone', 'hay_cart'];
     const counts = (w: WorldState): Record<string, number> => Object.fromEntries(DRESS.map((k) => [k, Object.values(w.objects).filter((o) => o.kind === k).length]));
     const walkable = (w: WorldState): void => {
-      const reach = reachableFrom(w, arrivalTile('w'));
-      for (const side of ['n', 's', 'e'] as const) expect(reach[tileIndex(arrivalTile(side).x, arrivalTile(side).y)], side).toBe(1);
+      const reach = reachableFrom(w, arrivalTile(w, 'w'));
+      for (const side of ['n', 's', 'e'] as const) expect(reach[tileIndex(w, arrivalTile(w, side).x, arrivalTile(w, side).y)], side).toBe(1);
       // the villagers' spots, the doors, and every open tile of the square
-      for (const n of npcsIn(w)) for (const wp of [n, ...n.routine]) expect(reach[tileIndex(wp.x, wp.y)], `${n.id} ${wp.x},${wp.y}`).toBe(1);
+      for (const n of npcsIn(w)) for (const wp of [n, ...n.routine]) expect(reach[tileIndex(w, wp.x, wp.y)], `${n.id} ${wp.x},${wp.y}`).toBe(1);
       for (const o of Object.values(w.objects))
-        if (['pizzeria', 'bathhouse', 'arcade_hall', 'train_station'].includes(o.kind)) expect(reach[tileIndex(o.x + 1, o.y + 2)], o.kind).toBe(1);
-      for (let y = 20; y <= 31; y++) for (let x = 34; x <= 47; x++) if (!isSolidForPlayer(w, x, y)) expect(reach[tileIndex(x, y)], `square ${x},${y}`).toBe(1);
+        if (['pizzeria', 'bathhouse', 'arcade_hall', 'train_station'].includes(o.kind)) expect(reach[tileIndex(w, o.x + 1, o.y + 2)], o.kind).toBe(1);
+      for (let y = 20; y <= 31; y++) for (let x = 34; x <= 47; x++) if (!isSolidForPlayer(w, x, y)) expect(reach[tileIndex(w, x, y)], `square ${x},${y}`).toBe(1);
     };
     const city = generateArea(1, 0);
     expect(counts(city)).toEqual({ banner_pole: 2, barrel_stack: 3, runestone: 1, hay_cart: 1 });

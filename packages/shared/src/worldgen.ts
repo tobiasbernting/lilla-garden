@@ -1,58 +1,63 @@
 // Tools the area painters share: noise, blobs, scattering, and keeping every way in and out walkable.
 import { objectDef } from './data.ts';
-import { addObject, inBounds, objectAt, removeObject } from './map.ts';
+import { addObject, inBounds, mapH, mapW, objectAt, removeObject, tileIndex } from './map.ts';
 import { randInt, valueNoise } from './rng.ts';
-import { MAP_H, MAP_W, WALL_TERRAIN, isCliff, key, type Terrain, type WorldObject, type WorldState } from './types.ts';
+import { MAP_H, MAP_W, WALL_TERRAIN, isCliff, key, type MapSize, type Terrain, type WorldObject, type WorldState } from './types.ts';
 
-/** Tile where a traveller arrives when entering from a side. */
-export const EDGE_GAP = 3; // openings at the middle of each edge are 2*EDGE_GAP wide
-export const arrivalTile = (from: 'n' | 's' | 'e' | 'w'): { x: number; y: number } => {
-  const mid = MAP_W / 2;
+/**
+ * Openings are in the middle of each edge of every map, 2*EDGE_GAP wide, so maps of different sizes
+ * (a 96 forest beside a 64 city) still line up: you always come out in the middle of the side you enter.
+ */
+export const EDGE_GAP = 3;
+/** Tile where a traveller arrives in map `m` when entering from a side. */
+export const arrivalTile = (m: MapSize, from: 'n' | 's' | 'e' | 'w'): { x: number; y: number } => {
+  const W = mapW(m);
+  const H = mapH(m);
   switch (from) {
     case 'n':
-      return { x: mid, y: 1 };
+      return { x: W / 2, y: 1 };
     case 's':
-      return { x: mid, y: MAP_H - 2 };
+      return { x: W / 2, y: H - 2 };
     case 'w':
-      return { x: 1, y: mid };
+      return { x: 1, y: H / 2 };
     case 'e':
-      return { x: MAP_W - 2, y: mid };
+      return { x: W - 2, y: H / 2 };
   }
 };
-/** Is this tile inside one of the four edge openings? */
-export const inEdgeGap = (x: number, y: number): boolean => {
-  const mid = MAP_W / 2;
-  return (Math.abs(x - mid) < EDGE_GAP && (y < 4 || y >= MAP_H - 4)) || (Math.abs(y - mid) < EDGE_GAP && (x < 4 || x >= MAP_W - 4));
+/** Is this tile inside one of the four edge openings of map `m`? */
+export const inEdgeGap = (m: MapSize, x: number, y: number): boolean => {
+  const W = mapW(m);
+  const H = mapH(m);
+  return (Math.abs(x - W / 2) < EDGE_GAP && (y < 4 || y >= H - 4)) || (Math.abs(y - H / 2) < EDGE_GAP && (x < 4 || x >= W - 4));
 };
-
-const idx = (x: number, y: number): number => y * MAP_W + x;
 
 /** Ground the painters lay down as the base of a biome (trails may be painted over these). */
 const BASE_GROUND = new Set<Terrain>(['grass', 'sand', 'snow', 'gravel', 'mud', 'moss', 'redsand', 'candy', 'ash', 'moon']);
 
 /** Is the tile open to walk on: inside the map, walkable ground, nothing solid on it? */
 export function walkableTile(world: WorldState, x: number, y: number): boolean {
-  if (!inBounds(x, y)) return false;
-  if (WALL_TERRAIN.has(world.terrain[idx(x, y)]!)) return false;
+  if (!inBounds(world, x, y)) return false;
+  if (WALL_TERRAIN.has(world.terrain[tileIndex(world, x, y)]!)) return false;
   const o = objectAt(world, x, y);
   return !o || !objectDef(o.kind).solid;
 }
 
 /** Every tile you can walk to from `start` (indices into the terrain array). */
 export function reachableFrom(world: WorldState, start: { x: number; y: number }): Uint8Array {
-  const seen = new Uint8Array(MAP_W * MAP_H);
-  if (!inBounds(start.x, start.y)) return seen;
-  const queue = [idx(start.x, start.y)];
+  const W = mapW(world);
+  const seen = new Uint8Array(W * mapH(world));
+  if (!inBounds(world, start.x, start.y)) return seen;
+  const queue = [tileIndex(world, start.x, start.y)];
   seen[queue[0]!] = 1;
   while (queue.length) {
     const i = queue.pop()!;
-    const x = i % MAP_W;
-    const y = (i - x) / MAP_W;
+    const x = i % W;
+    const y = (i - x) / W;
     for (const [dx, dy] of DIRS4) {
       const nx = x + dx;
       const ny = y + dy;
-      if (!inBounds(nx, ny)) continue;
-      const n = idx(nx, ny);
+      if (!inBounds(world, nx, ny)) continue;
+      const n = tileIndex(world, nx, ny);
       if (seen[n] || !walkableTile(world, nx, ny)) continue;
       seen[n] = 1;
       queue.push(n);
@@ -111,7 +116,7 @@ export function landmarkFronts(world: WorldState): { x: number; y: number }[] {
     if (!def.interact || o.kind === 'signpost') continue;
     const fx = o.x + Math.floor((def.w - 1) / 2);
     const fy = o.y + def.h;
-    if (inBounds(fx, fy)) out.push({ x: fx, y: fy });
+    if (inBounds(world, fx, fy)) out.push({ x: fx, y: fy });
   }
   return out;
 }
@@ -133,6 +138,13 @@ export class Painter {
   readonly T: Terrain[];
   /** Tiles kept free of scattered things (plazas in front of landmarks, paths). */
   readonly reserved = new Set<number>();
+  /** The map's size, its middle, and how much bigger it is than a 64×64 map (by side and by area). */
+  readonly W: number;
+  readonly H: number;
+  readonly midX: number;
+  readonly midY: number;
+  readonly span: number;
+  readonly density: number;
 
   constructor(
     readonly world: WorldState,
@@ -140,13 +152,40 @@ export class Painter {
     readonly seed: number,
   ) {
     this.T = world.terrain;
+    this.W = mapW(world);
+    this.H = mapH(world);
+    this.midX = this.W / 2;
+    this.midY = this.H / 2;
+    this.span = this.W / MAP_W;
+    this.density = (this.W * this.H) / (MAP_W * MAP_H);
   }
 
+  idx(x: number, y: number): number {
+    return y * this.W + x;
+  }
   at(x: number, y: number): Terrain | undefined {
-    return inBounds(x, y) ? this.T[idx(x, y)] : undefined;
+    return inBounds(this.world, x, y) ? this.T[this.idx(x, y)] : undefined;
   }
   set(x: number, y: number, t: Terrain): void {
-    if (inBounds(x, y)) this.T[idx(x, y)] = t;
+    if (inBounds(this.world, x, y)) this.T[this.idx(x, y)] = t;
+  }
+  /** A count meant for a 64×64 map, grown with the map's area so a big map is as full as a small one. */
+  many(n: number): number {
+    return this.density === 1 ? n : Math.round(n * this.density);
+  }
+  /**
+   * How many more of something a bigger map gets, for a thing a 64×64 map has with chance `p` (a cave, a
+   * pond, a stream): none on a 64 map (and no number drawn, so those stay exactly as they were).
+   */
+  extra(p: number, grow = this.density): number {
+    if (grow <= 1) return 0;
+    const want = p * (grow - 1);
+    const whole = Math.floor(want);
+    return whole + (this.chance(want - whole) ? 1 : 0);
+  }
+  /** Is (x, y) in one of this map's openings? */
+  gap(x: number, y: number): boolean {
+    return inEdgeGap(this.world, x, y);
   }
   fill(t: Terrain): void {
     this.T.fill(t);
@@ -176,13 +215,13 @@ export class Painter {
   }
   /** Distance to the nearest map edge. */
   edge(x: number, y: number): number {
-    return Math.min(x, y, MAP_W - 1 - x, MAP_H - 1 - y);
+    return Math.min(x, y, this.W - 1 - x, this.H - 1 - y);
   }
   each(fn: (x: number, y: number) => void): void {
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) fn(x, y);
+    for (let y = 0; y < this.H; y++) for (let x = 0; x < this.W; x++) fn(x, y);
   }
   reserve(x: number, y: number, w: number, h: number): void {
-    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) if (inBounds(x + dx, y + dy)) this.reserved.add(idx(x + dx, y + dy));
+    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) if (inBounds(this.world, x + dx, y + dy)) this.reserved.add(this.idx(x + dx, y + dy));
   }
   walkable(x: number, y: number): boolean {
     return walkableTile(this.world, x, y);
@@ -193,8 +232,8 @@ export class Painter {
       for (let dx = 0; dx < w; dx++) {
         const tx = x + dx;
         const ty = y + dy;
-        if (!inBounds(tx, ty) || inEdgeGap(tx, ty) || this.reserved.has(idx(tx, ty))) return false;
-        const t = this.T[idx(tx, ty)]!;
+        if (!inBounds(this.world, tx, ty) || this.gap(tx, ty) || this.reserved.has(this.idx(tx, ty))) return false;
+        const t = this.T[this.idx(tx, ty)]!;
         if (ground ? !ground(t) : WALL_TERRAIN.has(t)) return false;
         if (this.world.occupancy[key(tx, ty)] !== undefined) return false;
       }
@@ -210,19 +249,23 @@ export class Painter {
   blob(cx: number, cy: number, rx: number, ry: number, paint: (x: number, y: number) => void, rough = 0.35, salt = 0): void {
     for (let y = Math.floor(cy - ry - 2); y <= Math.ceil(cy + ry + 2); y++)
       for (let x = Math.floor(cx - rx - 2); x <= Math.ceil(cx + rx + 2); x++) {
-        if (!inBounds(x, y)) continue;
+        if (!inBounds(this.world, x, y)) continue;
         const dx = (x + 0.5 - cx) / rx;
         const dy = (y + 0.5 - cy) / ry;
         const wobble = 1 + rough * (this.noise(x, y, 3, 500 + salt) - 0.5) * 2;
         if (dx * dx + dy * dy <= wobble) paint(x, y);
       }
   }
-  /** Scatters up to `count` things where `where` allows; returns how many landed. */
+  /**
+   * Scatters up to `count` things where `where` allows; returns how many landed. The count is for a 64×64
+   * map: a bigger map gets more, so it is just as full.
+   */
   scatter(kind: string, count: number, where: (x: number, y: number) => boolean, extra?: () => Partial<WorldObject>): number {
+    count = this.many(count);
     let placed = 0;
     for (let tries = count * 30; tries > 0 && placed < count; tries--) {
-      const x = this.int(2, MAP_W - 3);
-      const y = this.int(2, MAP_H - 3);
+      const x = this.int(2, this.W - 3);
+      const y = this.int(2, this.H - 3);
       if (!where(x, y)) continue;
       if (objectDef(kind).solid && wouldBlock(this.world, x, y)) continue;
       if (this.put(kind, x, y, extra?.())) placed++;
@@ -234,7 +277,7 @@ export class Painter {
     const rx = 3 + size + this.rnd() * 1.5;
     const ry = 2 + size * 0.7 + this.rnd();
     this.blob(cx, cy, rx, ry, (x, y) => {
-      if (this.edge(x, y) < 3 || inEdgeGap(x, y)) return;
+      if (this.edge(x, y) < 3 || this.gap(x, y)) return;
       const o = objectAt(this.world, x, y);
       if (o && objectDef(o.kind).breakWith) removeObject(this.world, o.id);
       else if (o) return;
@@ -243,7 +286,7 @@ export class Painter {
     // the mouth sits in the bottom of the hill: rock around it, open ground in front
     const mx = Math.round(cx) - 1;
     let bottom = Math.round(cy);
-    while (bottom < MAP_H - 4 && (isCliff(this.at(mx, bottom + 1)) || isCliff(this.at(mx + 1, bottom + 1)))) bottom++;
+    while (bottom < this.H - 4 && (isCliff(this.at(mx, bottom + 1)) || isCliff(this.at(mx + 1, bottom + 1)))) bottom++;
     const my = bottom - 1;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 2; dx++) this.clearTo(mx + dx, my + dy, cliff);
     for (let dx = -1; dx <= 2; dx++) this.clearTo(mx + dx, my + 2, null);
@@ -253,7 +296,7 @@ export class Painter {
   }
   /** Empties a tile: removes what stands there and sets cliff ground, or (null) open ground. */
   clearTo(x: number, y: number, t: Terrain | null): void {
-    if (!inBounds(x, y)) return;
+    if (!inBounds(this.world, x, y)) return;
     const o = objectAt(this.world, x, y);
     if (o) removeObject(this.world, o.id);
     if (t) this.set(x, y, t);
@@ -271,7 +314,9 @@ const removable = (o: WorldObject): boolean => {
 
 /** Cheapest way from `from` to `to`, preferring open ground, then breakable things, then water or cliffs. */
 function cheapestPath(g: Painter, from: { x: number; y: number }, to: { x: number; y: number }, wiggle: boolean): number[] | null {
-  const N = MAP_W * MAP_H;
+  const W = g.W;
+  const idx = (x: number, y: number): number => g.idx(x, y);
+  const N = g.W * g.H;
   const cost = new Float64Array(N).fill(Infinity);
   const prev = new Int32Array(N).fill(-1);
   const done = new Uint8Array(N);
@@ -310,7 +355,7 @@ function cheapestPath(g: Painter, from: { x: number; y: number }, to: { x: numbe
     return top;
   };
   const stepCost = (x: number, y: number): number => {
-    if (g.edge(x, y) <= 1 && !inEdgeGap(x, y) && idx(x, y) !== goal) return Infinity;
+    if (g.edge(x, y) <= 1 && !g.gap(x, y) && idx(x, y) !== goal) return Infinity;
     const t = g.T[idx(x, y)]!;
     let c = 1;
     if (t === 'space') return Infinity;
@@ -328,12 +373,12 @@ function cheapestPath(g: Painter, from: { x: number; y: number }, to: { x: numbe
     if (done[i]) continue;
     done[i] = 1;
     if (i === goal) break;
-    const x = i % MAP_W;
-    const y = (i - x) / MAP_W;
+    const x = i % W;
+    const y = (i - x) / W;
     for (const [dx, dy] of DIRS4) {
       const nx = x + dx;
       const ny = y + dy;
-      if (!inBounds(nx, ny)) continue;
+      if (!inBounds(g.world, nx, ny)) continue;
       const n = idx(nx, ny);
       if (done[n]) continue;
       const sc = stepCost(nx, ny);
@@ -353,10 +398,11 @@ function cheapestPath(g: Painter, from: { x: number; y: number }, to: { x: numbe
 
 /** Opens a way along a path: breaks what is in the way, bridges water, cuts passes, and paints trails. */
 function carve(g: Painter, path: number[], style: PathStyle, paint: boolean): void {
+  const W = g.W;
   for (let k = 0; k < path.length; k++) {
     const i = path[k]!;
-    const x = i % MAP_W;
-    const y = (i - x) / MAP_W;
+    const x = i % W;
+    const y = (i - x) / W;
     const o = objectAt(g.world, x, y);
     if (o && removable(o) && (objectDef(o.kind).solid || (paint && style.trail))) removeObject(g.world, o.id);
     const t = g.T[i]!;
@@ -366,11 +412,11 @@ function carve(g: Painter, path: number[], style: PathStyle, paint: boolean): vo
       // two tiles wide: also the tile beside the path (to the right of the way it runs)
       const next = style.narrow ? undefined : (path[k + 1] ?? path[k - 1]);
       if (next !== undefined) {
-        const nx = next % MAP_W;
-        const ny = (next - nx) / MAP_W;
+        const nx = next % W;
+        const ny = (next - nx) / W;
         const sx = x + (ny !== y ? 1 : 0);
         const sy = y + (nx !== x ? 1 : 0);
-        if (inBounds(sx, sy) && BASE_GROUND.has(g.T[idx(sx, sy)]!) && !objectAt(g.world, sx, sy) && g.edge(sx, sy) > 1) g.T[idx(sx, sy)] = style.trail;
+        if (inBounds(g.world, sx, sy) && BASE_GROUND.has(g.T[g.idx(sx, sy)]!) && !objectAt(g.world, sx, sy) && g.edge(sx, sy) > 1) g.T[g.idx(sx, sy)] = style.trail;
       }
     }
     g.reserved.add(i);
@@ -384,24 +430,24 @@ function carve(g: Painter, path: number[], style: PathStyle, paint: boolean): vo
 export function connect(g: Painter, style: PathStyle, opts: { openings?: boolean; from?: { x: number; y: number } } = {}): void {
   const openings = opts.openings ?? true;
   if (openings)
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
-        if (!inEdgeGap(x, y)) continue;
+    for (let y = 0; y < g.H; y++)
+      for (let x = 0; x < g.W; x++) {
+        if (!g.gap(x, y)) continue;
         const o = objectAt(g.world, x, y);
         if (o && removable(o)) removeObject(g.world, o.id);
         const t = g.at(x, y)!;
         if (WALL_TERRAIN.has(t)) g.set(x, y, isCliff(t) ? style.pass : style.bridge(t));
-        g.reserved.add(idx(x, y));
+        g.reserved.add(g.idx(x, y));
       }
-  const arrivals = openings ? (['n', 's', 'w', 'e'] as const).map(arrivalTile) : [opts.from ?? { x: MAP_W / 2, y: MAP_H / 2 }];
+  const arrivals = openings ? (['n', 's', 'w', 'e'] as const).map((side) => arrivalTile(g.world, side)) : [opts.from ?? { x: g.midX, y: g.midY }];
   if (style.trails && openings) {
     // meet at the open tile nearest the middle
-    let hub = { x: MAP_W / 2, y: MAP_H / 2 };
+    let hub = { x: g.midX, y: g.midY };
     search: for (let r = 0; r <= 8; r++)
       for (let dy = -r; dy <= r; dy++)
         for (let dx = -r; dx <= r; dx++)
-          if ((Math.abs(dx) === r || Math.abs(dy) === r) && g.walkable(MAP_W / 2 + dx, MAP_H / 2 + dy)) {
-            hub = { x: MAP_W / 2 + dx, y: MAP_H / 2 + dy };
+          if ((Math.abs(dx) === r || Math.abs(dy) === r) && g.walkable(g.midX + dx, g.midY + dy)) {
+            hub = { x: g.midX + dx, y: g.midY + dy };
             break search;
           }
     for (const a of arrivals) {
@@ -411,13 +457,13 @@ export function connect(g: Painter, style: PathStyle, opts: { openings?: boolean
   }
   const wanted = [...arrivals, ...landmarkFronts(g.world)];
   for (const t of wanted) {
-    if (!inBounds(t.x, t.y)) continue;
+    if (!inBounds(g.world, t.x, t.y)) continue;
     // the tile itself must be open
     const o = objectAt(g.world, t.x, t.y);
     if (o && objectDef(o.kind).solid && removable(o)) removeObject(g.world, o.id);
     if (WALL_TERRAIN.has(g.at(t.x, t.y)!)) g.set(t.x, t.y, isCliff(g.at(t.x, t.y)) ? style.pass : style.bridge(g.at(t.x, t.y)!));
     const seen = reachableFrom(g.world, arrivals[0]!);
-    if (seen[idx(t.x, t.y)]) continue;
+    if (seen[g.idx(t.x, t.y)]) continue;
     const path = cheapestPath(g, arrivals[0]!, t, false);
     if (path) carve(g, path, style, false);
   }

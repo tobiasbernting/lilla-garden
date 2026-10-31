@@ -1,11 +1,16 @@
 import { NPCS, objectDef } from './data.ts';
 import { ensureFarmBusStop, ensureFarmExits } from './biomes.ts';
 import { mulberry32, randInt } from './rng.ts';
-import type { Terrain, WorldObject, WorldState } from './types.ts';
+import type { MapSize, Terrain, WorldObject, WorldState } from './types.ts';
 import { MAP_H, MAP_W, key } from './types.ts';
 
-export const inBounds = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H;
-export const tileIndex = (x: number, y: number): number => y * MAP_W + x;
+/** A map's width and height in tiles (64 unless the map says otherwise). */
+export const mapW = (m: MapSize): number => m.w ?? MAP_W;
+export const mapH = (m: MapSize): number => m.h ?? MAP_H;
+/** Is (x, y) a tile of this map? */
+export const inBounds = (m: MapSize, x: number, y: number): boolean => x >= 0 && y >= 0 && x < mapW(m) && y < mapH(m);
+/** Index of tile (x, y) in this map's terrain array (rows of mapW tiles). */
+export const tileIndex = (m: MapSize, x: number, y: number): number => y * mapW(m) + x;
 
 /** The spot new characters appear at (tile coords). */
 export const SPAWN = { x: 15, y: 11 };
@@ -23,9 +28,9 @@ export function addObject(
     for (let dx = 0; dx < def.w; dx++) {
       const tx = x + dx;
       const ty = y + dy;
-      if (!inBounds(tx, ty)) return null;
+      if (!inBounds(world, tx, ty)) return null;
       if (world.occupancy[key(tx, ty)] !== undefined) return null;
-      if (world.terrain[tileIndex(tx, ty)] === 'water') return null;
+      if (world.terrain[tileIndex(world, tx, ty)] === 'water') return null;
       if (world.crops[key(tx, ty)]) return null;
     }
   const id = world.nextId++;
@@ -90,7 +95,7 @@ export function ensureInterior(world: WorldState): boolean {
       if (o) removeObject(world, o.id);
       delete world.crops[key(x, y)];
       const wall = x === x0 || x === x1 || y === y0 || y === y1;
-      world.terrain[tileIndex(x, y)] = wall ? 'floor_stone' : 'floor_wood';
+      world.terrain[tileIndex(world, x, y)] = wall ? 'floor_stone' : 'floor_wood';
       if (wall) {
         if (x === 57 && y === y1) addObject(world, 'door_out', x, y);
         else addObject(world, 'wall_wood', x, y);
@@ -118,11 +123,11 @@ export function ensureCave(world: WorldState): boolean {
     for (let dx = -1; dx <= 2; dx++) {
       const tx = x + dx;
       const ty = y + dy;
-      if (!inBounds(tx, ty)) continue;
+      if (!inBounds(world, tx, ty)) continue;
       const o = objectAt(world, tx, ty);
       if (o && o.kind !== 'cave') removeObject(world, o.id);
-      if (world.terrain[tileIndex(tx, ty)] === 'water') world.terrain[tileIndex(tx, ty)] = 'grass';
-      if (dy >= 2) world.terrain[tileIndex(tx, ty)] = 'path_dirt';
+      if (world.terrain[tileIndex(world, tx, ty)] === 'water') world.terrain[tileIndex(world, tx, ty)] = 'grass';
+      if (dy >= 2) world.terrain[tileIndex(world, tx, ty)] = 'path_dirt';
     }
   if (exists) return false;
   addObject(world, 'cave', x, y);
@@ -138,22 +143,23 @@ export function ensureVillagers(world: WorldState): void {
       for (let dx = -1; dx <= 1; dx++) {
         const x = w.x + dx;
         const y = w.y + dy;
-        if (!inBounds(x, y)) continue;
+        if (!inBounds(world, x, y)) continue;
         const o = objectAt(world, x, y);
         if (o && objectDef(o.kind).solid && !objectDef(o.kind).houses && o.kind !== 'house') removeObject(world, o.id);
-        if (world.terrain[tileIndex(x, y)] === 'water') world.terrain[tileIndex(x, y)] = 'sand';
+        if (world.terrain[tileIndex(world, x, y)] === 'water') world.terrain[tileIndex(world, x, y)] = 'sand';
       }
   }
 }
 
-export function emptyWorld(): WorldState {
-  return {
+/** A blank map of grass; any size other than 64×64 is written on the map. */
+export function emptyWorld(w = MAP_W, h = MAP_H): WorldState {
+  const world: WorldState = {
     quests: [],
     questsDay: 0,
     npcs: {},
     day: 1,
     timeMs: 2 * 60 * 1000, // start mid-morning
-    terrain: new Array<Terrain>(MAP_W * MAP_H).fill('grass'),
+    terrain: new Array<Terrain>(w * h).fill('grass'),
     crops: {},
     objects: {},
     occupancy: {},
@@ -163,6 +169,11 @@ export function emptyWorld(): WorldState {
     nextId: 1,
     seasonOverride: null,
   };
+  if (w !== MAP_W || h !== MAP_H) {
+    world.w = w;
+    world.h = h;
+  }
+  return world;
 }
 
 /** Builds the handmade farm map. Deterministic for a given seed. */
@@ -171,7 +182,7 @@ export function generateWorld(seed = 1337): WorldState {
   const rnd = mulberry32(seed);
   const T = world.terrain;
   const set = (x: number, y: number, t: Terrain) => {
-    if (inBounds(x, y)) T[tileIndex(x, y)] = t;
+    if (inBounds(world, x, y)) T[tileIndex(world, x, y)] = t;
   };
 
   // Pond (ellipse) with sand ring
@@ -202,8 +213,8 @@ export function generateWorld(seed = 1337): WorldState {
 
   // Forest border and patches
   const tryTree = (x: number, y: number, kind?: string) => {
-    if (!inBounds(x, y) || nearHouse(x, y)) return;
-    if (T[tileIndex(x, y)] !== 'grass') return;
+    if (!inBounds(world, x, y) || nearHouse(x, y)) return;
+    if (T[tileIndex(world, x, y)] !== 'grass') return;
     const k = kind ?? (rnd() < 0.3 ? 'tree_pine' : rnd() < 0.15 ? 'tree_apple' : 'tree');
     addObject(world, k, x, y);
   };
@@ -220,14 +231,14 @@ export function generateWorld(seed = 1337): WorldState {
   for (let i = 0; i < 70; i++) {
     const x = randInt(rnd, 46, 60);
     const y = randInt(rnd, 6, 34);
-    if (T[tileIndex(x, y)] === 'grass' && !objectAt(world, x, y))
+    if (T[tileIndex(world, x, y)] === 'grass' && !objectAt(world, x, y))
       addObject(world, rnd() < 0.5 ? 'rock' : 'rock_small', x, y);
   }
   for (let i = 0; i < 25; i++) {
     const x = randInt(rnd, 4, 60);
     const y = randInt(rnd, 4, 60);
     if (nearHouse(x, y)) continue;
-    if (T[tileIndex(x, y)] === 'grass' && !objectAt(world, x, y)) addObject(world, 'rock_small', x, y);
+    if (T[tileIndex(world, x, y)] === 'grass' && !objectAt(world, x, y)) addObject(world, 'rock_small', x, y);
   }
 
   ensureInterior(world);
@@ -239,7 +250,7 @@ export function generateWorld(seed = 1337): WorldState {
   // Grass tufts, flowers, bushes everywhere
   for (let y = 2; y < MAP_H - 2; y++)
     for (let x = 2; x < MAP_W - 2; x++) {
-      if (T[tileIndex(x, y)] !== 'grass' || objectAt(world, x, y)) continue;
+      if (T[tileIndex(world, x, y)] !== 'grass' || objectAt(world, x, y)) continue;
       if (nearHouse(x, y) && rnd() < 0.9) continue;
       const r = rnd();
       if (r < 0.07) addObject(world, 'grass_tuft', x, y, { variant: randInt(rnd, 0, 2) });

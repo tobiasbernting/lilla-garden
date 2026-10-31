@@ -5,7 +5,7 @@
 import { ANIMALS, NPCS } from './data.ts';
 import { addObject, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
 import { SPECIES_NAMES } from './sv.ts';
-import { MAP_H, MAP_W, TILE, key, type AnimalState, type Facing, type Terrain, type WorldState } from './types.ts';
+import { MAP_H, MAP_W, STANDARD_MAP, TILE, key, type AnimalState, type Facing, type Terrain, type WorldState } from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Layout (tiles). Roads are two tiles wide; a sidewalk runs along each side.
@@ -35,7 +35,7 @@ const isRoadRow = (y: number): boolean => CITY_HY.some((h) => y === h || y === h
 const isRoadCol = (x: number): boolean => CITY_VX.some((v) => x === v || x === v + 1);
 /** Is (x,y) on a street? The middle streets cross the whole map, the others stay inside the ring. */
 export function isRoadTile(x: number, y: number): boolean {
-  if (!inBounds(x, y)) return false;
+  if (!inBounds(STANDARD_MAP, x, y)) return false;
   if (isRoadRow(y) && (y === 33 || y === 34 || (x >= CITY_VX[0] && x <= CITY_VX[2] + 1))) return true;
   if (isRoadCol(x) && (x === 31 || x === 32 || (y >= CITY_HY[0] && y <= CITY_HY[2] + 1))) return true;
   return false;
@@ -192,8 +192,8 @@ export function ensureTownDress(world: WorldState): boolean {
   const spots = new Set<string>();
   for (const n of Object.values(NPCS)) if (n.area === world.area) for (const w of [n, ...n.routine]) spots.add(key(w.x, w.y));
   const free = (x: number, y: number): boolean => {
-    const t = world.terrain[tileIndex(x, y)];
-    if (!inBounds(x, y) || objectAt(world, x, y) || spots.has(key(x, y))) return false;
+    const t = world.terrain[tileIndex(world, x, y)];
+    if (!inBounds(world, x, y) || objectAt(world, x, y) || spots.has(key(x, y))) return false;
     if (t === 'road' || t === 'crossing' || t === 'rail' || t === 'water') return false;
     return !Object.values(world.players).some((p) => p.area === world.area && Math.floor(p.x / TILE) === x && Math.floor(p.y / TILE) === y);
   };
@@ -211,7 +211,7 @@ export function ensureTownDress(world: WorldState): boolean {
 export function buildCity(world: WorldState): void {
   const T = world.terrain;
   const set = (x: number, y: number, t: Terrain) => {
-    if (inBounds(x, y)) T[tileIndex(x, y)] = t;
+    if (inBounds(world, x, y)) T[tileIndex(world, x, y)] = t;
   };
   const clear = (x: number, y: number) => {
     const o = objectAt(world, x, y);
@@ -245,7 +245,7 @@ export function buildCity(world: WorldState): void {
       ] as const) {
         const sx = x + dx;
         const sy = y + dy;
-        if (inBounds(sx, sy) && !isRoadTile(sx, sy)) {
+        if (inBounds(world, sx, sy) && !isRoadTile(sx, sy)) {
           clear(sx, sy);
           set(sx, sy, 'sidewalk');
         }
@@ -334,7 +334,7 @@ export function buildCity(world: WorldState): void {
     [30, 10],
     [33, 10],
   ] as const) {
-    if (world.terrain[tileIndex(x, y)] !== 'sidewalk') continue;
+    if (world.terrain[tileIndex(world, x, y)] !== 'sidewalk') continue;
     clear(x, y);
     addObject(world, 'street_lamp', x, y);
   }
@@ -388,7 +388,7 @@ export function ensureCity(world: WorldState, farm?: WorldState): boolean {
       const tx = Math.floor(p.x / TILE);
       const ty = Math.floor(p.y / TILE);
       const o = objectAt(world, tx, ty);
-      if (o || world.terrain[tileIndex(tx, ty)] === 'water') {
+      if (o || world.terrain[tileIndex(world, tx, ty)] === 'water') {
         p.x = center(1);
         p.y = center(MAP_H / 2);
       }

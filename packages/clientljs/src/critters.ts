@@ -1,6 +1,6 @@
 // Small life in the fields: butterflies dancing between the flowers on warm days, and sparrows hopping and pecking
 // in the grass that take off when someone comes close.
-import { MAP_H, MAP_W, TILE, type WorldObject } from '@lilla-garden/shared';
+import { TILE, mapH, mapW, tileIndex, type WorldObject } from '@lilla-garden/shared';
 import { on } from './features.ts';
 import { alpha, type DrawQueue } from './gfx.ts';
 import { inView, type Scene } from './scene.ts';
@@ -149,8 +149,8 @@ export class Critters {
       for (let tries = 0; tries < 20; tries++) {
         const tx = Math.floor((sc.vx + rnd(0.15, 0.85) * sc.vw) / TILE);
         const ty = Math.floor((sc.vy + rnd(0.15, 0.85) * sc.vh) / TILE);
-        if (tx < 1 || ty < 1 || tx >= MAP_W - 1 || ty >= MAP_H - 1) continue;
-        if (sc.world.terrain[ty * MAP_W + tx] !== 'grass' || sc.world.occupancy[`${tx},${ty}`] !== undefined) continue;
+        if (tx < 1 || ty < 1 || tx >= mapW(sc.world) - 1 || ty >= mapH(sc.world) - 1) continue;
+        if (sc.world.terrain[tileIndex(sc.world, tx, ty)] !== 'grass' || sc.world.occupancy[`${tx},${ty}`] !== undefined) continue;
         const x = tx * TILE + 8;
         const y = ty * TILE + 8;
         if (sc.movers.some((m) => Math.hypot(m.x - x, m.y - y) < 80)) continue;

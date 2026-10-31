@@ -3,13 +3,12 @@
 import { CAVE_THEMES } from './caves.ts';
 import { addObject, objectAt } from './map.ts';
 import { BASE_ROCKET, buildLaunchSite } from './space.ts';
-import { Painter, connect, inEdgeGap, plankBridge } from './worldgen.ts';
-import { MAP_H, MAP_W, WALL_TERRAIN, isCliff, type CaveTheme, type Terrain } from './types.ts';
+import { Painter, connect, plankBridge } from './worldgen.ts';
+import { MAP_W, WALL_TERRAIN, isCliff, type CaveTheme, type Terrain } from './types.ts';
 
 export type PaintFn = (g: Painter) => void;
 
 const theme = (t: CaveTheme): number => CAVE_THEMES.indexOf(t);
-const MID = MAP_W / 2;
 
 /** A ring of `kinds` around the map (thick at the very edge), leaving the openings free. */
 function belt(g: Painter, kind: () => string, inner: number, ground?: (t: Terrain) => boolean): void {
@@ -22,7 +21,7 @@ function belt(g: Painter, kind: () => string, inner: number, ground?: (t: Terrai
 /** Cliffs around the map instead of trees (mountains, Dinodalen, the volcano). */
 function cliffBelt(g: Painter, cliff: Terrain, salt: number): void {
   g.each((x, y) => {
-    if (inEdgeGap(x, y)) return;
+    if (g.gap(x, y)) return;
     const e = g.edge(x, y);
     const n = g.noise(x, y, 4, salt);
     if (e <= 1 || (e === 2 && n > 0.3) || (e === 3 && n > 0.65)) g.set(x, y, cliff);
@@ -32,24 +31,44 @@ function cliffBelt(g: Painter, cliff: Terrain, salt: number): void {
 /** A winding stream (or river of lava, or chocolate) across the map, away from the middle openings. */
 function stream(g: Painter, t: Terrain, width: number, salt: number): void {
   const vertical = g.chance(0.5);
+  const len = vertical ? g.H : g.W;
+  const across = vertical ? g.W : g.H;
+  const mid = across / 2;
+  // a third of the way in from either side (12–22 or 42–52 on a 64 map)
   let pos = g.chance(0.5) ? g.int(12, 22) : g.int(42, 52);
-  for (let s = 0; s < MAP_W; s++) {
+  if (across !== MAP_W) pos = Math.round((pos * across) / MAP_W);
+  for (let s = 0; s < len; s++) {
     pos += (g.noise(s, 0, 6, salt) - 0.5) * 1.8;
-    pos = Math.max(6, Math.min(MAP_W - 7 - width, pos));
-    if (Math.abs(pos + width / 2 - MID) < 6) pos += pos < MID ? -1 : 1;
+    pos = Math.max(6, Math.min(across - 7 - width, pos));
+    if (Math.abs(pos + width / 2 - mid) < 6) pos += pos < mid ? -1 : 1;
     const p = Math.round(pos);
     for (let w = 0; w < width; w++) {
       const x = vertical ? p + w : s;
       const y = vertical ? s : p + w;
-      if (!inEdgeGap(x, y)) g.set(x, y, t);
+      if (!g.gap(x, y)) g.set(x, y, t);
     }
   }
+}
+
+/**
+ * The biome's streams: one with chance `p` (as on a 64 map), and on a bigger map now and then a second
+ * one, so there is as much stream per tile as before (the streams are longer there, too).
+ */
+function streams(g: Painter, p: number, t: Terrain, width: () => number, salt: number): void {
+  if (g.chance(p)) stream(g, t, width(), salt);
+  for (let k = g.extra(p, g.density / g.span); k > 0; k--) stream(g, t, width(), salt + 50 * k);
+}
+
+/** Something a 64 map has with chance `p` (a cave, a pond): a bigger map rolls for more of them. */
+function some(g: Painter, p: number, make: () => void, lucky = false): void {
+  if (lucky ? g.lucky(p) : g.chance(p)) make();
+  for (let k = g.extra(p); k > 0; k--) make();
 }
 
 /** Ponds (or bog pools, lava lakes…) wherever a noise field is high. */
 function pools(g: Painter, t: Terrain, scale: number, above: number, salt: number, keepEdge = 4): void {
   g.each((x, y) => {
-    if (g.edge(x, y) < keepEdge || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < keepEdge || g.gap(x, y)) return;
     if (g.fbm(x, y, scale, salt) > above) g.set(x, y, t);
   });
 }
@@ -76,9 +95,9 @@ function smoothPatches(g: Painter, patch: Terrain, base: Terrain, passes = 2): v
 /** A spot for a landmark: open ground, away from the edges and the openings' paths. */
 function spot(g: Painter, w: number, h: number, ok: (t: Terrain) => boolean = (t) => !WALL_TERRAIN.has(t)): { x: number; y: number } | null {
   for (let tries = 0; tries < 200; tries++) {
-    const x = g.int(8, MAP_W - 9 - w);
-    const y = g.int(8, MAP_H - 10 - h);
-    if (Math.abs(x + w / 2 - MID) < 4 + w / 2 || Math.abs(y + h / 2 - MID) < 3 + h / 2) continue; // keep the crossroads open
+    const x = g.int(8, g.W - 9 - w);
+    const y = g.int(8, g.H - 10 - h);
+    if (Math.abs(x + w / 2 - g.midX) < 4 + w / 2 || Math.abs(y + h / 2 - g.midY) < 3 + h / 2) continue; // keep the crossroads open
     let good = true;
     for (let dy = -1; dy <= h + 2 && good; dy++) for (let dx = -1; dx <= w && good; dx++) if (!ok(g.at(x + dx, y + dy)!)) good = false;
     if (good) return { x, y };
@@ -95,9 +114,9 @@ function caveSomewhere(g: Painter, cliff: Terrain, t: CaveTheme, size = 1): void
 /** A cave mouth cut into the foot of an existing cliff, if there is a good face; else a hill of its own. */
 function caveInCliff(g: Painter, cliff: Terrain, t: CaveTheme): void {
   for (let tries = 0; tries < 400; tries++) {
-    const x = g.int(6, MAP_W - 8);
-    const y = g.int(6, MAP_H - 9);
-    if (inEdgeGap(x, y + 2) || inEdgeGap(x + 1, y + 2)) continue;
+    const x = g.int(6, g.W - 8);
+    const y = g.int(6, g.H - 9);
+    if (g.gap(x, y + 2) || g.gap(x + 1, y + 2)) continue;
     let face = true;
     for (let dy = -1; dy <= 1 && face; dy++) for (let dx = 0; dx <= 1 && face; dx++) if (!isCliff(g.at(x + dx, y + dy))) face = false;
     for (let dx = 0; dx <= 1 && face; dx++) if (WALL_TERRAIN.has(g.at(x + dx, y + 2)!) || objectAt(g.world, x + dx, y + 2) || WALL_TERRAIN.has(g.at(x + dx, y + 3)!)) face = false;
@@ -119,8 +138,8 @@ const open = (g: Painter, x: number, y: number, ...ground: Terrain[]) => g.edge(
 const skog: PaintFn = (g) => {
   g.ground = 'grass';
   g.fill('grass');
-  if (g.chance(0.5)) stream(g, 'water', g.int(1, 2), 11);
-  if (g.lucky(0.55)) caveSomewhere(g, 'rock', 'rot');
+  streams(g, 0.5, 'water', () => g.int(1, 2), 11);
+  some(g, 0.55, () => caveSomewhere(g, 'rock', 'rot'), true);
   const tree = () => g.pick(['tree', 'tree', 'tree', 'tree_pine', 'tree_pine', 'tree_apple']);
   belt(g, tree, 0.85);
   g.each((x, y) => {
@@ -144,7 +163,7 @@ const skog: PaintFn = (g) => {
 const ang: PaintFn = (g) => {
   g.ground = 'grass';
   g.fill('grass');
-  const ponds = g.int(1, 2);
+  const ponds = g.many(g.int(1, 2));
   for (let i = 0; i < ponds; i++) {
     const s = spot(g, 10, 7);
     if (!s) continue;
@@ -156,7 +175,7 @@ const ang: PaintFn = (g) => {
     if (sandy) g.blob(cx, cy, rx + 1.2, ry + 1.2, (x, y) => g.set(x, y, 'sand'), 0.3, i);
     g.blob(cx, cy, rx, ry, (x, y) => g.set(x, y, 'water'), 0.3, i);
   }
-  if (g.chance(0.3)) caveSomewhere(g, 'rock', 'rot', 0);
+  some(g, 0.3, () => caveSomewhere(g, 'rock', 'rot', 0));
   belt(g, () => g.pick(['tree', 'tree', 'tree_apple', 'tree_pine']), 0.55);
   g.each((x, y) => {
     if (g.edge(x, y) <= 3 || objectAt(g.world, x, y) || g.at(x, y) !== 'grass') return;
@@ -177,10 +196,10 @@ const is: PaintFn = (g) => {
   g.fill('snow');
   pools(g, 'ice', 12, 0.66, 3);
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y) || g.at(x, y) === 'ice') return;
+    if (g.edge(x, y) < 4 || g.gap(x, y) || g.at(x, y) === 'ice') return;
     if (g.fbm(x, y, 9, 4) > 0.68) g.set(x, y, 'rock');
   });
-  if (g.lucky(0.7)) caveInCliff(g, 'rock', 'is');
+  some(g, 0.7, () => caveInCliff(g, 'rock', 'is'), true);
   belt(g, () => g.pick(['tree_pine', 'tree_pine', 'rock']), 0.65);
   g.each((x, y) => {
     if (g.edge(x, y) <= 3 || objectAt(g.world, x, y) || g.at(x, y) !== 'snow') return;
@@ -204,16 +223,17 @@ const berg: PaintFn = (g) => {
   smoothPatches(g, 'grass', 'gravel');
   cliffBelt(g, 'rock', 7);
   g.each((x, y) => {
-    if (g.edge(x, y) < 3 || inEdgeGap(x, y)) return;
-    if (Math.hypot(x - MID, y - MID) < 7) return; // a valley in the middle
+    if (g.edge(x, y) < 3 || g.gap(x, y)) return;
+    if (Math.hypot(x - g.midX, y - g.midY) < 7 * g.span) return; // a valley in the middle
     if (g.fbm(x, y, 11, 8) > 0.58) g.set(x, y, 'rock');
   });
-  if (g.chance(0.5)) {
+  some(g, 0.5, () => {
     const s = spot(g, 8, 6, (t) => t === 'gravel' || t === 'grass');
     if (s) g.blob(s.x + 4, s.y + 3, g.int(2, 4), g.int(2, 3), (x, y) => g.set(x, y, 'water'), 0.3, 9);
-  }
+  });
   caveInCliff(g, 'rock', 'kristall');
-  if (g.chance(0.45)) caveInCliff(g, 'rock', 'kristall');
+  some(g, 0.45, () => caveInCliff(g, 'rock', 'kristall'));
+  for (let k = g.extra(1); k > 0; k--) caveInCliff(g, 'rock', 'kristall');
   g.each((x, y) => {
     if (g.edge(x, y) <= 2 || objectAt(g.world, x, y)) return;
     const t = g.at(x, y);
@@ -234,24 +254,24 @@ const strand: PaintFn = (g) => {
   g.fill('sand');
   // the sea to the west, with a wavy shore
   const shoreAt: number[] = [];
-  for (let y = 0; y < MAP_H; y++) {
-    const shore = 11 + Math.round(Math.sin(y / 6) * 2.5 + (g.noise(0, y, 5, 12) - 0.5) * 4);
+  for (let y = 0; y < g.H; y++) {
+    const shore = Math.round(11 * g.span) + Math.round(Math.sin(y / 6) * 2.5 + (g.noise(0, y, 5, 12) - 0.5) * 4);
     shoreAt.push(shore);
-    for (let x = 0; x < shore; x++) if (!inEdgeGap(x, y)) g.set(x, y, 'water');
+    for (let x = 0; x < shore; x++) if (!g.gap(x, y)) g.set(x, y, 'water');
   }
   g.each((x, y) => {
     if (x > shoreAt[y]! + 10 && g.fbm(x, y, 9, 13) > 0.58) g.set(x, y, 'grass');
   });
   smoothPatches(g, 'grass', 'sand');
   // a sea cave in the cliffs by the shore, and a wreck on the beach
-  if (g.lucky(0.55)) {
-    const y = g.int(10, 22) + (g.chance(0.5) ? 28 : 0);
+  some(g, 0.55, () => {
+    const y = Math.round((g.int(10, 22) + (g.chance(0.5) ? 28 : 0)) * g.span);
     g.caveHill(shoreAt[y]! + 5, y, 'rock', theme('sjorovare'), 1);
-  }
+  }, true);
   if (g.lucky(0.5)) {
     for (let tries = 0; tries < 60; tries++) {
-      const y = g.int(8, MAP_H - 12);
-      if (Math.abs(y - MID) < 5) continue;
+      const y = g.int(8, g.H - 12);
+      if (Math.abs(y - g.midY) < 5) continue;
       const x = shoreAt[y]! + 1;
       const wreck = g.put('shipwreck', x, y);
       if (!wreck) continue;
@@ -278,10 +298,10 @@ const oken: PaintFn = (g) => {
   g.ground = 'sand';
   g.fill('sand');
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (g.fbm(x, y, 12, 14) > 0.7) g.set(x, y, 'sandstone');
   });
-  if (g.chance(0.5)) {
+  some(g, 0.5, () => {
     const s = spot(g, 10, 8, (t) => t === 'sand');
     if (s) {
       const cx = s.x + 5;
@@ -290,7 +310,7 @@ const oken: PaintFn = (g) => {
       g.blob(cx, cy, 3, 2, (x, y) => g.set(x, y, 'water'), 0.3, 16);
       for (let k = 0; k < 6; k++) g.put('palm', cx + g.int(-5, 5), cy + g.int(-4, 4));
     }
-  }
+  });
   if (g.lucky(0.5)) {
     const s = spot(g, 6, 4, (t) => t === 'sand');
     if (s) {
@@ -298,6 +318,7 @@ const oken: PaintFn = (g) => {
       g.reserve(s.x - 1, s.y + 4, 8, 2);
     }
   } else if (g.chance(0.4)) caveInCliff(g, 'sandstone', 'pyramid');
+  for (let k = g.extra(0.4); k > 0; k--) caveInCliff(g, 'sandstone', 'pyramid');
   belt(g, () => g.pick(['cactus', 'rock', 'rock_small', 'palm']), 0.2);
   g.scatter('cactus', g.int(8, 14), (x, y) => open(g, x, y, 'sand'));
   g.scatter('rock', g.int(2, 4), (x, y) => open(g, x, y, 'sand'));
@@ -315,7 +336,7 @@ const trask: PaintFn = (g) => {
   });
   smoothPatches(g, 'grass', 'mud');
   pools(g, 'bog', 6, 0.6, 18, 3);
-  if (g.lucky(0.3)) caveSomewhere(g, 'rock', 'rot', 0);
+  some(g, 0.3, () => caveSomewhere(g, 'rock', 'rot', 0), true);
   belt(g, () => g.pick(['dead_tree', 'tree_pine', 'dead_tree', 'bush']), 0.6);
   const byBog = (x: number, y: number) => [g.at(x + 1, y), g.at(x - 1, y), g.at(x, y + 1), g.at(x, y - 1)].includes('bog');
   g.each((x, y) => {
@@ -338,7 +359,7 @@ const trask: PaintFn = (g) => {
 const djungel: PaintFn = (g) => {
   g.ground = 'grass';
   g.fill('grass');
-  if (g.chance(0.6)) stream(g, 'water', 2, 19);
+  streams(g, 0.6, 'water', () => 2, 19);
   if (g.lucky(0.65)) {
     const s = spot(g, 8, 7, (t) => t === 'grass');
     if (s) {
@@ -376,10 +397,10 @@ const vulkan: PaintFn = (g) => {
   g.fill('ash');
   cliffBelt(g, 'basalt', 21);
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (g.fbm(x, y, 9, 22) > 0.66) g.set(x, y, 'basalt');
   });
-  if (g.chance(0.7)) stream(g, 'lava', 2, 23);
+  streams(g, 0.7, 'lava', () => 2, 23);
   if (g.lucky(0.85)) {
     const s = spot(g, 6, 5, (t) => t === 'ash');
     if (s) {
@@ -393,6 +414,7 @@ const vulkan: PaintFn = (g) => {
     }
   }
   caveInCliff(g, 'basalt', 'lava');
+  for (let k = g.extra(1); k > 0; k--) caveInCliff(g, 'basalt', 'lava');
   pools(g, 'lava', 7, 0.76, 26, 5);
   belt(g, () => g.pick(['dead_tree', 'obsidian_rock']), 0.15, (t) => t === 'ash');
   g.each((x, y) => {
@@ -415,7 +437,7 @@ const svamp: PaintFn = (g) => {
     if (g.fbm(x, y, 8, 27) < 0.33) g.set(x, y, 'grass');
   });
   smoothPatches(g, 'grass', 'moss');
-  if (g.lucky(0.5)) caveSomewhere(g, 'rock', 'svamp');
+  some(g, 0.5, () => caveSomewhere(g, 'rock', 'svamp'), true);
   const big = () => g.pick(['giant_mushroom', 'giant_mushroom', 'giant_glowshroom', 'tree', 'tree_pine']);
   belt(g, big, 0.8);
   g.each((x, y) => {
@@ -440,13 +462,13 @@ const dino: PaintFn = (g) => {
   g.fill('redsand');
   cliffBelt(g, 'sandstone', 29);
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (g.fbm(x, y, 10, 30) > 0.65) g.set(x, y, 'sandstone');
     else if (g.fbm(x, y, 8, 31) < 0.3) g.set(x, y, 'grass');
   });
   smoothPatches(g, 'grass', 'redsand');
-  if (g.lucky(0.6)) caveInCliff(g, 'sandstone', 'fossil');
-  const bones = g.int(1, 2);
+  some(g, 0.6, () => caveInCliff(g, 'sandstone', 'fossil'), true);
+  const bones = g.many(g.int(1, 2));
   for (let i = 0; i < bones; i++) {
     const s = spot(g, 3, 2, (t) => t === 'redsand');
     if (s) g.put('dino_bones', s.x, s.y);
@@ -468,7 +490,7 @@ const dino: PaintFn = (g) => {
 const godis: PaintFn = (g) => {
   g.ground = 'candy';
   g.fill('candy');
-  if (g.chance(0.8)) stream(g, 'choco', g.int(2, 3), 32);
+  streams(g, 0.8, 'choco', () => g.int(2, 3), 32);
   pools(g, 'choco', 8, 0.74, 33, 5);
   if (g.lucky(0.85)) {
     const s = spot(g, 3, 3, (t) => t === 'candy');
@@ -493,7 +515,7 @@ const rymdbas: PaintFn = (g) => {
   g.ground = 'sand';
   g.fill('sand');
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (Math.hypot(x - BASE_ROCKET.x, y - BASE_ROCKET.y) < 12) return;
     if (g.fbm(x, y, 12, 35) > 0.72) g.set(x, y, 'sandstone');
   });

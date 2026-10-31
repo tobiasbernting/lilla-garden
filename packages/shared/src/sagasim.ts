@@ -8,7 +8,7 @@ import { ANIMALS, ITEMS, NPCS, VILLAGE_KEY, objectDef } from './data.ts';
 import { MAX_HEARTS } from './dungeon.ts';
 import { isIndoorKey } from './hall.ts';
 import { addItem, countItem, removeItem } from './inventory.ts';
-import { addObject, inBounds, inInterior, objectAt, removeObject, tileIndex } from './map.ts';
+import { addObject, inBounds, inInterior, mapH, mapW, objectAt, removeObject, tileIndex } from './map.ts';
 import type { Change } from './protocol.ts';
 import { randInt } from './rng.ts';
 import {
@@ -211,12 +211,21 @@ export function leaveSaga(world: WorldState, p: PlayerState): Change[] {
   return out;
 }
 
-/** The tile in front of a dungeon's arch out in the world. */
-function archFront(farm: WorldState, id: DungeonId): { x: number; y: number } {
+/** The tile in front of a dungeon's arch out in the world (wherever it ended up). */
+export function archFront(farm: WorldState, id: DungeonId): { x: number; y: number } {
   const plan = DUNGEONS[id].portal;
   const a = getArea(farm, plan.area);
   const arch = a ? Object.values(a.objects).find((o) => o.kind === 'saga_portal' && (o.variant ?? 0) === DUNGEON_IDS.indexOf(id)) : undefined;
-  return portalFront(arch ?? plan);
+  return portalFront(arch ?? (a ? archPlan(a, plan) : plan));
+}
+
+/**
+ * Where an arch is planned in its map. The plans are drawn for 64×64 maps; on a bigger map the spot moves out
+ * with the map, so the arch keeps its place relative to the middle.
+ */
+function archPlan(a: WorldState, plan: { x: number; y: number }): { x: number; y: number } {
+  if (mapW(a) === MAP_W && mapH(a) === MAP_H) return plan;
+  return { x: Math.round((plan.x * mapW(a)) / MAP_W), y: Math.round((plan.y * mapH(a)) / MAP_H) };
 }
 
 /** A player is no longer in the fight: monsters stop chasing them. */
@@ -294,7 +303,7 @@ export function ensureSagaPlaces(keyStr: string, a: WorldState): boolean {
   DUNGEON_IDS.forEach((id, variant) => {
     const plan = DUNGEONS[id].portal;
     if (plan.area !== keyStr || Object.values(a.objects).some((o) => o.kind === 'saga_portal' && (o.variant ?? 0) === variant)) return;
-    const spot = archSpot(a, plan);
+    const spot = archSpot(a, archPlan(a, plan));
     if (!spot) return;
     const front = portalFront(spot);
     // clear the footprint, a tile around it and the path in front: only trees and stones go from the top row
@@ -302,13 +311,13 @@ export function ensureSagaPlaces(keyStr: string, a: WorldState): boolean {
       for (let dx = -1; dx <= SAGA_PORTAL.w; dx++) {
         const tx = spot.x + dx;
         const ty = spot.y + dy;
-        if (!inBounds(tx, ty)) continue;
+        if (!inBounds(a, tx, ty)) continue;
         const o = objectAt(a, tx, ty);
         if (o && (dy >= 0 || ARCH_CLEAR.has(o.kind))) removeObject(a, o.id);
-        const t = a.terrain[tileIndex(tx, ty)];
+        const t = a.terrain[tileIndex(a, tx, ty)];
         const solid = t === 'water' || t === 'lava' || t === 'bog' || t === 'basalt' || t === 'rock' || t === 'sandstone' || t === 'choco';
-        if (dy >= 0 && dy < SAGA_PORTAL.h && solid) a.terrain[tileIndex(tx, ty)] = 'stone';
-        if (dy >= SAGA_PORTAL.h && (solid || (tx === front.x && dy === SAGA_PORTAL.h))) a.terrain[tileIndex(tx, ty)] = 'path_stone';
+        if (dy >= 0 && dy < SAGA_PORTAL.h && solid) a.terrain[tileIndex(a, tx, ty)] = 'stone';
+        if (dy >= SAGA_PORTAL.h && (solid || (tx === front.x && dy === SAGA_PORTAL.h))) a.terrain[tileIndex(a, tx, ty)] = 'path_stone';
       }
     if (addObject(a, 'saga_portal', spot.x, spot.y, { variant })) changed = true;
   });
@@ -327,7 +336,7 @@ function archSpot(a: WorldState, plan: { x: number; y: number }): { x: number; y
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const s = { x: plan.x + dx, y: plan.y + dy };
-        if (s.x < 2 || s.y < 2 || s.x + SAGA_PORTAL.w > MAP_W - 2 || s.y + SAGA_PORTAL.h + 2 > MAP_H - 2) continue;
+        if (s.x < 2 || s.y < 2 || s.x + SAGA_PORTAL.w > mapW(a) - 2 || s.y + SAGA_PORTAL.h + 2 > mapH(a) - 2) continue;
         let ok = true;
         for (let ty = s.y - 1; ty <= s.y + SAGA_PORTAL.h + 1 && ok; ty++)
           for (let tx = s.x - 1; tx <= s.x + SAGA_PORTAL.w && ok; tx++) {
@@ -1115,7 +1124,7 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
     // follow the distance field: the neighbouring tile closest to the target
     const cx = tileOf(a.x);
     const cy = tileOf(a.y);
-    let best = field[tileIndex(cx, cy)] ?? -1;
+    let best = field[tileIndex(h.area, cx, cy)] ?? -1;
     for (const [dx, dy] of [
       [1, 0],
       [-1, 0],
@@ -1124,8 +1133,8 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
     ]) {
       const nx = cx + dx!;
       const ny = cy + dy!;
-      if (!inBounds(nx, ny)) continue;
-      const v = field[tileIndex(nx, ny)]!;
+      if (!inBounds(h.area, nx, ny)) continue;
+      const v = field[tileIndex(h.area, nx, ny)]!;
       if (v >= 0 && (best < 0 || v < best)) {
         best = v;
         tx = px(nx);
@@ -1141,7 +1150,7 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
     return;
   }
   const s = Math.min(step, d);
-  const r = resolveMove((x, y) => isSolidForAnimal(h.area, x, y), a.x, a.y, a.x + (dx / d) * s, a.y + (dy / d) * s, MOB_HALF, MOB_HALF);
+  const r = resolveMove((x, y) => isSolidForAnimal(h.area, x, y), a.x, a.y, a.x + (dx / d) * s, a.y + (dy / d) * s, MOB_HALF, MOB_HALF, h.area);
   a.moving = r.x !== a.x || r.y !== a.y;
   a.x = r.x;
   a.y = r.y;
@@ -1151,14 +1160,16 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
 
 /** How many steps every floor tile is from a player (to find the way around walls). */
 function distanceField(h: Here, from: { x: number; y: number }): Int16Array {
-  const field = new Int16Array(MAP_W * MAP_H).fill(-1);
-  const start = tileIndex(tileOf(from.x), tileOf(from.y));
+  const W = mapW(h.area);
+  const H = mapH(h.area);
+  const field = new Int16Array(W * H).fill(-1);
+  const start = tileIndex(h.area, tileOf(from.x), tileOf(from.y));
   field[start] = 0;
   const q = [start];
   for (let i = 0; i < q.length; i++) {
     const k = q[i]!;
-    const x = k % MAP_W;
-    const y = Math.floor(k / MAP_W);
+    const x = k % W;
+    const y = Math.floor(k / W);
     for (const [dx, dy] of [
       [1, 0],
       [-1, 0],
@@ -1167,8 +1178,8 @@ function distanceField(h: Here, from: { x: number; y: number }): Int16Array {
     ]) {
       const nx = x + dx!;
       const ny = y + dy!;
-      if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) continue;
-      const j = tileIndex(nx, ny);
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = tileIndex(h.area, nx, ny);
       if (field[j] !== -1 || isSolidForAnimal(h.area, nx, ny)) continue;
       field[j] = field[k]! + 1;
       if (field[j]! < 60) q.push(j);
@@ -2012,7 +2023,7 @@ export function castFieldSpell(world: WorldState, playerId: string, spellId: str
       for (let s = 0.5; s <= sp.range; s += 0.5) {
         const nx = p.x + dir[0]! * s * TILE;
         const ny = p.y + dir[1]! * s * TILE;
-        if (!inBounds(tileOf(nx), tileOf(ny)) || isSolidForPlayer(area, tileOf(nx), tileOf(ny))) break;
+        if (!inBounds(area, tileOf(nx), tileOf(ny)) || isSolidForPlayer(area, tileOf(nx), tileOf(ny))) break;
         to = { x: nx, y: ny };
       }
       out.push(spellFx(key, p.id, sp.id, p, to));

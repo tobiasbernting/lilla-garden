@@ -3,6 +3,7 @@ import {
   CHAT_BUBBLE_MS,
   objectDef,
   rebuildOccupancy,
+  tileIndex,
   key as tileKey,
   type AnimalSnap,
   type NpcSnap,
@@ -158,7 +159,7 @@ export function applyChange(c: Change): void {
   if (!world) return;
   switch (c.t) {
     case 'terrain':
-      world.terrain[c.y * 64 + c.x] = c.terrain;
+      world.terrain[tileIndex(world, c.x, c.y)] = c.terrain;
       break;
     case 'crop':
       if (c.crop) world.crops[c.k] = c.crop;

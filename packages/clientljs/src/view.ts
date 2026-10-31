@@ -33,6 +33,9 @@ import {
   localWeather,
   MAP_H,
   MAP_W,
+  mapH,
+  mapW,
+  tileIndex,
   NPC_LINES,
   NPCS,
   objectDef,
@@ -898,12 +901,13 @@ export class View implements HudTarget {
     this.wasMoving = me.moving;
 
     // --- walking off the edge of the map into the next area ---
-    if (!this.cave && performance.now() - this.travelSentAt > 1500 && inEdgeGap(tileOf(me.x), tileOf(me.y))) {
+    // (each map has its own size: 64 for the farm and the cities, 96 out in the wild)
+    if (!this.cave && performance.now() - this.travelSentAt > 1500 && inEdgeGap(world, tileOf(me.x), tileOf(me.y))) {
       let dir: 'n' | 's' | 'e' | 'w' | null = null;
       if (dy < 0 && me.y <= PLAYER_HALF_H + 1) dir = 'n';
-      else if (dy > 0 && me.y >= MAP_H * TILE - PLAYER_HALF_H - 1) dir = 's';
+      else if (dy > 0 && me.y >= mapH(world) * TILE - PLAYER_HALF_H - 1) dir = 's';
       else if (dx < 0 && me.x <= PLAYER_HALF_W + 1) dir = 'w';
-      else if (dx > 0 && me.x >= MAP_W * TILE - PLAYER_HALF_W - 1) dir = 'e';
+      else if (dx > 0 && me.x >= mapW(world) * TILE - PLAYER_HALF_W - 1) dir = 'e';
       if (dir) {
         this.travelSentAt = performance.now();
         this.sendMove(true);
@@ -990,7 +994,7 @@ export class View implements HudTarget {
     }
 
     // --- roofs: the one over the room I'm in fades away ---
-    const myTile = tileOf(me.y) * MAP_W + tileOf(me.x);
+    const myTile = tileIndex(world, tileOf(me.x), tileOf(me.y));
     if (this.roofsDirty) {
       this.roofsDirty = false;
       releaseRoofs(this.roofs);
@@ -1119,8 +1123,8 @@ export class View implements HudTarget {
     // what the camera may show: the map, the cave, or the bath house and a little around it
     let bx = 0;
     let by = 0;
-    let bw = MAP_W * TILE;
-    let bh = MAP_H * TILE;
+    let bw = (this.world ? mapW(this.world) : MAP_W) * TILE;
+    let bh = (this.world ? mapH(this.world) : MAP_H) * TILE;
     if (this.cave && !this.saga) {
       bw = (this.world?.cave?.w ?? DUNGEON_W) * TILE;
       bh = (this.world?.cave?.h ?? DUNGEON_H) * TILE;

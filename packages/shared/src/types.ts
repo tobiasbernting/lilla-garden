@@ -4,8 +4,18 @@ import type { GarageState } from './rally.ts';
 import type { SagaInstance, SagaProgress } from './saga.ts';
 
 export const TILE = 16;
+/** The usual map size: the farm, cities, caves, buildings and dungeons are all 64×64 (and so is any map without a size). */
 export const MAP_W = 64;
 export const MAP_H = 64;
+/** Wild biome maps out in the world are bigger. */
+export const WILD_MAP = 96;
+/** Anything that knows its map size (a WorldState); no size means 64×64. */
+export interface MapSize {
+  w?: number;
+  h?: number;
+}
+/** The size every handmade plan (the farm, the city, the buildings, the dungeons) is drawn for. */
+export const STANDARD_MAP: Readonly<Required<MapSize>> = { w: MAP_W, h: MAP_H };
 export const DAY_LENGTH_MS = 10 * 60 * 1000; // one game day = 10 real minutes
 export const TICK_HZ = 20;
 export const PLAYER_SPEED = 64; // px per second
@@ -436,7 +446,10 @@ export interface WorldState {
   timeMs: number;
   /** Everyone is in bed: the new day starts at this wall-clock time. */
   nightAt?: number;
-  terrain: Terrain[]; // MAP_W * MAP_H
+  /** Map size in tiles (undefined: MAP_W × MAP_H). Read it with mapW()/mapH(). */
+  w?: number;
+  h?: number;
+  terrain: Terrain[]; // w * h, row by row
   crops: Record<string, CropState>; // key "x,y"
   objects: Record<number, WorldObject>;
   /** Fast lookup: tile key -> object id (including footprint tiles). */

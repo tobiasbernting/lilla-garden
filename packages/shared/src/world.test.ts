@@ -9,6 +9,7 @@ import {
   LOOT,
   MAP_H,
   MAP_W,
+  WILD_MAP,
   MOON_KEY,
   MOON_ROCKET,
   SPACEPORT,
@@ -32,11 +33,16 @@ import {
   inEdgeGap,
   isSolidForPlayer,
   landmarkFronts,
+  mapH,
+  mapW,
   mulberry32,
   newDay,
   objectAt,
   objectDef,
   performAction,
+  rebuildOccupancy,
+  stepPlayer,
+  upgradeSavedArea,
   reachableFrom,
   rocketFront,
   setOnline,
@@ -70,6 +76,14 @@ function goTo(world: WorldState, p: PlayerState, k: string, x: number, y: number
   if (!p.visited.includes(k)) p.visited.push(k);
   a.players[p.id] = p;
   return a;
+}
+
+/** An open grass tile away from the edges (with an extra condition). */
+function openSpot(a: WorldState, ok: (x: number, y: number) => boolean = () => true): { x: number; y: number } {
+  for (let y = 8; y < mapH(a) - 8; y++)
+    for (let x = 8; x < mapW(a) - 8; x++)
+      if (a.terrain[tileIndex(a, x, y)] === 'grass' && !objectAt(a, x, y) && !inEdgeGap(a, x, y) && ok(x, y)) return { x, y };
+  throw new Error('no open spot');
 }
 
 const hold = (p: PlayerState, item: string): void => {
@@ -112,19 +126,22 @@ describe('biomerna', () => {
         seen.add(b);
         const a = generateArea(ax, ay);
         expect(a.gen).toBe(AREA_GEN);
-        const reach = reachableFrom(a, arrivalTile('n'));
+        // the wild is 96×96; the space base keeps the 64×64 of its plan
+        const side = b === 'rymdbas' ? MAP_W : WILD_MAP;
+        expect([mapW(a), mapH(a), a.terrain.length], `${b} size`).toEqual([side, side, side * side]);
+        const reach = reachableFrom(a, arrivalTile(a, 'n'));
         for (const side of ['s', 'e', 'w'] as const) {
-          const t = arrivalTile(side);
-          expect(reach[tileIndex(t.x, t.y)], `${b} (${ax},${ay}) opening ${side}`).toBe(1);
+          const t = arrivalTile(a, side);
+          expect(reach[tileIndex(a, t.x, t.y)], `${b} (${ax},${ay}) opening ${side}`).toBe(1);
         }
-        for (const f of landmarkFronts(a)) expect(reach[tileIndex(f.x, f.y)], `${b} (${ax},${ay}) landmark front ${f.x},${f.y}`).toBe(1);
+        for (const f of landmarkFronts(a)) expect(reach[tileIndex(a, f.x, f.y)], `${b} (${ax},${ay}) landmark front ${f.x},${f.y}`).toBe(1);
         for (const o of Object.values(a.objects)) {
           if (o.kind === 'loot_chest') {
-            const around = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(o.x + dx!, o.y + dy!)]);
+            const around = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(a, o.x + dx!, o.y + dy!)]);
             expect(around, `${b} chest`).toBe(true);
           }
           // nothing solid in the openings
-          if (objectDef(o.kind).solid) expect(inEdgeGap(o.x, o.y)).toBe(false);
+          if (objectDef(o.kind).solid) expect(inEdgeGap(a, o.x, o.y)).toBe(false);
         }
         for (const an of Object.values(a.animals)) expect(isSolidForPlayer(a, Math.floor(an.x / TILE), Math.floor(an.y / TILE))).toBe(false);
       }
@@ -161,15 +178,19 @@ describe('biomerna', () => {
       expect(at, b).not.toBeNull();
       const a = generateArea(at![0], at![1]);
       const here = Object.values(a.animals).filter((x) => x.species === species);
-      expect(here.length, `${b} has ${species}`).toBeGreaterThanOrEqual(3);
-      expect(here.length).toBeLessThanOrEqual(5);
+      // as many per tile as on a 64 map: a 96 map has 2.25 times as many
+      const scale = (mapW(a) * mapH(a)) / (MAP_W * MAP_H);
+      const [min, max] = ANIMALS[species]!.wildCount ?? [3, 5];
+      expect(scale, b).toBe(2.25);
+      expect(here.length, `${b} has ${species}`).toBeGreaterThanOrEqual(Math.round(min * scale));
+      expect(here.length).toBeLessThanOrEqual(Math.round(max * scale));
       for (const x of here) expect(x.hp).toBe(ANIMALS[species]!.mob!.hp);
       // only where it belongs
       for (const x of Object.values(a.animals)) if (ANIMALS[x.species]?.mob && ANIMALS[x.species]?.wild) expect(ANIMALS[x.species]!.wild!.split('|')).toContain(b);
       // a map saved before them gets them on load
       for (const x of here) delete a.animals[x.id];
       expect(ensureRoaming(a)).toBe(true);
-      expect(Object.values(a.animals).filter((x) => x.species === species).length).toBeGreaterThanOrEqual(3);
+      expect(Object.values(a.animals).filter((x) => x.species === species).length).toBeGreaterThanOrEqual(Math.round(min * scale));
     }
     expect(Object.values(generateMoon().animals).filter((x) => x.species === 'rymdkryp').length).toBeGreaterThanOrEqual(3);
     // none in the city, none on the farm
@@ -204,7 +225,7 @@ describe('grottorna', () => {
         const chests = Object.values(c.objects).filter((o) => o.kind === 'loot_chest');
         const main = chests.find((o) => o.loot === `cave_${theme}`)!;
         expect(main, theme).toBeDefined();
-        expect([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(main.x + dx!, main.y + dy!)])).toBe(true);
+        expect([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(c, main.x + dx!, main.y + dy!)])).toBe(true);
         const finds = Object.values(c.objects).filter((o) => (objectDef(o.kind).breakWith === 'pick' || objectDef(o.kind).harvest) && o.kind !== 'cave_rock' && o.kind !== 'stalagmite');
         expect(finds.length, theme).toBeGreaterThan(3);
         // deterministic
@@ -343,7 +364,7 @@ describe('rymden', () => {
     expect(moon.biome).toBe('mane');
     // walking off the moon is not possible: no openings, only the sky
     expect(travel(world, p.id, 'n')).toEqual([]);
-    expect(moon.terrain[tileIndex(0, 0)]).toBe('space');
+    expect(moon.terrain[tileIndex(moon, 0, 0)]).toBe('space');
     // home again
     const mr = Object.values(moon.objects).find((o) => o.kind === 'rocket')!;
     performAction(areaOf(world, p), p.id, mr.x, mr.y + 2, ctx());
@@ -356,11 +377,11 @@ describe('rymden', () => {
     for (const k of ['moon_cheese', 'star_crystal', 'moon_rock', 'ufo', 'loot_chest', 'cave_mouth', 'earth', 'rocket']) expect(kinds).toContain(k);
     expect(Object.values(m.animals).some((a) => a.species === 'alien')).toBe(true);
     const reach = reachableFrom(m, rocketFront(MOON_ROCKET));
-    for (const f of landmarkFronts(m)) expect(reach[tileIndex(f.x, f.y)], `${f.x},${f.y}`).toBe(1);
+    for (const f of landmarkFronts(m)) expect(reach[tileIndex(m, f.x, f.y)], `${f.x},${f.y}`).toBe(1);
     const chest = Object.values(m.objects).find((o) => o.kind === 'loot_chest')!;
-    expect([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(chest.x + dx!, chest.y + dy!)])).toBe(true);
+    expect([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(m, chest.x + dx!, chest.y + dy!)])).toBe(true);
     // the corners are open sky
-    for (const [x, y] of [[0, 0], [MAP_W - 1, MAP_H - 1]] as const) expect(m.terrain[tileIndex(x, y)]).toBe('space');
+    for (const [x, y] of [[0, 0], [MAP_W - 1, MAP_H - 1]] as const) expect(m.terrain[tileIndex(m, x, y)]).toBe('space');
   });
 });
 
@@ -368,14 +389,14 @@ describe('upptäckter och drakar', () => {
   it('each new kind of place gives a star the first time', () => {
     const { world, p } = setup();
     const stars = p.stars;
-    const t = arrivalTile('s');
     p.x = 32 * TILE + 8;
     p.y = 1 * TILE + 8;
     travel(world, p.id, 'n'); // Skogen
     expect(p.stats.biomes).toBe(1);
     expect(p.stars).toBe(stars + 1);
+    const t = arrivalTile(areaOf(world, p), 's');
     p.x = t.x * TILE + 8;
-    p.y = (MAP_H - 2) * TILE + 8;
+    p.y = t.y * TILE + 8;
     travel(world, p.id, 's'); // home
     p.x = 1 * TILE + 8;
     p.y = 32 * TILE + 8;
@@ -393,7 +414,7 @@ describe('upptäckter och drakar', () => {
     for (const [x, y] of [[21, 20]] as const) {
       const o = objectAt(world, x, y);
       if (o) delete world.objects[o.id], delete world.occupancy[`${x},${y}`];
-      world.terrain[tileIndex(x, y)] = 'grass';
+      world.terrain[tileIndex(world, x, y)] = 'grass';
     }
     performAction(areaOf(world, p), p.id, 21, 20, ctx());
     const egg = objectAt(world, 21, 20);
@@ -431,6 +452,7 @@ describe('gamla kartor', () => {
     expect(up.rebuilt).toBe(true);
     expect(up.area.biome).toBe('trask');
     expect(up.area.gen).toBe(AREA_GEN);
+    expect(mapW(up.area)).toBe(WILD_MAP);
 
     const kept = oldForest(k);
     const there = objectAt(kept, 20, 20);
@@ -441,13 +463,14 @@ describe('gamla kartor', () => {
     expect(up2.area).toBe(kept);
     expect(kept.biome).toBe('skog');
     expect(kept.gen).toBe(AREA_GEN);
+    expect([mapW(kept), mapH(kept), kept.terrain.length]).toEqual([MAP_W, MAP_H, MAP_W * MAP_H]);
     expect(kept.renew?.blueberry_bush).toBeGreaterThan(0);
     expect(Object.values(kept.objects).some((o) => o.kind === 'chest' && o.by === 'kid')).toBe(true);
     const mouth = Object.values(kept.objects).find((o) => o.kind === 'cave_mouth');
     expect(mouth).toBeDefined();
-    const reach = reachableFrom(kept, arrivalTile('n'));
+    const reach = reachableFrom(kept, arrivalTile(kept, 'n'));
     const f = entranceFront(mouth!);
-    expect(reach[tileIndex(f.x, f.y)]).toBe(1);
+    expect(reach[tileIndex(kept, f.x, f.y)]).toBe(1);
     // up to date maps are left alone
     expect(upgradeSavedArea(kept, k).area).toBe(kept);
   });
@@ -460,6 +483,163 @@ describe('gamla kartor', () => {
     const up = upgradeSavedArea(city, 'a:1,0');
     expect(up.rebuilt).toBe(false);
     expect(JSON.stringify(up.area.terrain)).toBe(before);
+  });
+});
+
+describe('stora kartor', () => {
+  /** A wild map as the server saved it before maps grew: 64×64, built by the gen 2 painters, through JSON. */
+  const saved64 = (ax: number, ay: number): WorldState => {
+    const a = generateArea(ax, ay, 1337, MAP_W);
+    a.gen = 2;
+    const back = JSON.parse(JSON.stringify({ ...a, players: {} })) as WorldState;
+    back.area = areaKey(ax, ay);
+    rebuildOccupancy(back);
+    return back;
+  };
+
+  it('farm, cities, the space base, the moon and caves stay 64; the wild is 96 and as full as before', () => {
+    expect(generateWorld(1).w).toBeUndefined();
+    for (const m of [generateWorld(1), generateArea(1, 0), generateArea(SPACEPORT.ax, SPACEPORT.ay), generateMoon(), generateCave('g:a:0,-1#1', 'rot', 'a:0,-1', { x: 10, y: 10 })])
+      expect([mapW(m), mapH(m), m.terrain.length], m.area ?? 'farm').toEqual([MAP_W, MAP_H, MAP_W * MAP_H]);
+    // the same place at both sizes: 2.25 times the tiles, about as many things and animals per tile
+    let small = { things: 0, animals: 0, caves: 0 };
+    let big = { things: 0, animals: 0, caves: 0 };
+    for (const [ax, ay] of [[0, -1], [-1, 0], [0, 1], [1, -1], [1, 1], [2, 0], [-2, 0], [0, -2], [0, 2], [-1, 2], [2, 2], [-1, -1]] as const) {
+      for (const [size, sum] of [[MAP_W, small], [WILD_MAP, big]] as const) {
+        const a = generateArea(ax, ay, 1337, size);
+        sum.things += Object.keys(a.objects).length;
+        sum.animals += Object.keys(a.animals).length;
+        sum.caves += Object.values(a.objects).filter((o) => o.kind === 'cave_mouth').length;
+      }
+    }
+    expect(big.things / small.things).toBeGreaterThan(1.7);
+    expect(big.animals / small.animals).toBeGreaterThan(1.9);
+    expect(big.animals / small.animals).toBeLessThan(2.6);
+    expect(big.caves / small.caves).toBeGreaterThan(1.6);
+  });
+
+  it('walking east off a 96 map into a 64 city and back west lands on open ground both times', () => {
+    // a city with the wild to its west
+    let city: [number, number] | null = null;
+    for (let r = 2; r < 14 && !city; r++)
+      for (let ay = -r; ay <= r && !city; ay++)
+        for (let ax = -r; ax <= r && !city; ax++) if (biomeAt(ax, ay) === 'by' && !['by', 'rymdbas'].includes(biomeAt(ax - 1, ay)) && (ax - 1 || ay)) city = [ax, ay];
+    expect(city).not.toBeNull();
+    const [cx, cy] = city!;
+    const { world, p } = setup();
+    const wild = goTo(world, p, areaKey(cx - 1, cy), 0, 0);
+    expect(mapW(wild)).toBe(WILD_MAP);
+    // in the east opening of the big map
+    const east = arrivalTile(wild, 'e');
+    p.x = (mapW(wild) - 1) * TILE + 8;
+    p.y = east.y * TILE + 8;
+    travel(world, p.id, 'e');
+    expect(p.area).toBe(areaKey(cx, cy));
+    const town = areaOf(world, p);
+    expect(mapW(town)).toBe(MAP_W);
+    expect([Math.floor(p.x / TILE), Math.floor(p.y / TILE)]).toEqual([1, MAP_H / 2]);
+    expect(isSolidForPlayer(town, Math.floor(p.x / TILE), Math.floor(p.y / TILE))).toBe(false);
+    // and back west from the city's west opening
+    p.x = 8;
+    p.y = (MAP_H / 2) * TILE + 8;
+    travel(world, p.id, 'w');
+    expect(p.area).toBe(areaKey(cx - 1, cy));
+    expect([Math.floor(p.x / TILE), Math.floor(p.y / TILE)]).toEqual([WILD_MAP - 2, WILD_MAP / 2]);
+    expect(isSolidForPlayer(wild, Math.floor(p.x / TILE), Math.floor(p.y / TILE))).toBe(false);
+    // from there you can walk anywhere on the big map, and further on
+    const reach = reachableFrom(wild, { x: Math.floor(p.x / TILE), y: Math.floor(p.y / TILE) });
+    for (const side of ['n', 's', 'w'] as const) expect(reach[tileIndex(wild, arrivalTile(wild, side).x, arrivalTile(wild, side).y)], side).toBe(1);
+  });
+
+  it('a map saved at 64 still loads and works; untouched it is rebuilt at 96, built on it stays 64', () => {
+    const k = areaKey(0, -1); // Skogen, with trails and bridges of its own
+    const old = saved64(0, -1);
+    expect(mapW(old)).toBe(MAP_W);
+    // walkable as it is: the openings join up, a player moves about and walks off its edge
+    const reach = reachableFrom(old, arrivalTile(old, 'n'));
+    for (const side of ['s', 'e', 'w'] as const) expect(reach[tileIndex(old, arrivalTile(old, side).x, arrivalTile(old, side).y)], side).toBe(1);
+    const { world, p } = setup();
+    world.areas = { [k]: old };
+    goTo(world, p, k, MAP_W / 2, MAP_H - 2);
+    const y0 = p.y;
+    for (let i = 0; i < 10; i++) stepPlayer(old, p, 0, -1, 50);
+    expect(p.y).toBeLessThan(y0);
+    p.x = (MAP_W / 2) * TILE + 8;
+    p.y = (MAP_H - 1) * TILE + 8;
+    travel(world, p.id, 's');
+    expect(p.area).toBe('farm');
+    expect(Math.floor(p.y / TILE)).toBe(1);
+
+    // untouched: built again, big
+    const up = upgradeSavedArea(saved64(0, -1), k);
+    expect(up.rebuilt).toBe(true);
+    expect([mapW(up.area), mapH(up.area), up.area.terrain.length]).toEqual([WILD_MAP, WILD_MAP, WILD_MAP * WILD_MAP]);
+    expect(up.area.gen).toBe(AREA_GEN);
+    // picked berries and wandering animals do not count as changes
+    const picked = saved64(0, -1);
+    const bush = Object.values(picked.objects).find((o) => o.kind === 'blueberry_bush');
+    if (bush) delete picked.objects[bush.id];
+    expect(upgradeSavedArea(picked, k).rebuilt).toBe(true);
+
+    // a chest the kids put down: kept at 64
+    const built = saved64(0, -1);
+    const spot = openSpot(built);
+    expect(addObject(built, 'chest', spot.x, spot.y, { by: 'kid' })).not.toBeNull();
+    const kept = upgradeSavedArea(built, k);
+    expect(kept.rebuilt).toBe(false);
+    expect(kept.area).toBe(built);
+    expect(mapW(built)).toBe(MAP_W);
+    expect(built.gen).toBe(AREA_GEN);
+    // a path the kids laid out in the open: kept too
+    const paved = saved64(0, -1);
+    const far = openSpot(paved, (x, y) => !paved.terrain.some((t, i) => (t === 'path_dirt' || t === 'floor_wood') && Math.abs((i % MAP_W) - x) <= 3 && Math.abs(Math.floor(i / MAP_W) - y) <= 3));
+    paved.terrain[tileIndex(paved, far.x, far.y)] = 'path_stone';
+    expect(upgradeSavedArea(paved, k).rebuilt).toBe(false);
+    // a field: kept
+    const farmed = saved64(0, -1);
+    const f = openSpot(farmed);
+    farmed.terrain[tileIndex(farmed, f.x, f.y)] = 'soil';
+    expect(upgradeSavedArea(farmed, k).rebuilt).toBe(false);
+  });
+
+  it('someone in a cave of a map that was rebuilt bigger comes out on open ground', () => {
+    const { world, p } = setup();
+    const k = areaKey(0, -1);
+    const forest = getArea(world, k)!;
+    const mouth = Object.values(forest.objects).find((o) => o.kind === 'cave_mouth')!;
+    expect(mouth).toBeDefined();
+    const ck = caveKey(k, mouth.id);
+    const cave = getArea(world, ck)!;
+    // the cave remembers a way out that is now in the middle of a rock
+    cave.cave!.out = { x: 5, y: 5 };
+    forest.terrain[tileIndex(forest, 5, 5)] = 'rock';
+    goTo(world, p, ck, cave.cave!.start.x, cave.cave!.start.y);
+    const front = cave.cave!.start;
+    const exit = objectAt(cave, front.x, front.y + 1)!;
+    performAction(cave, p.id, exit.x, exit.y, ctx());
+    expect(p.area).toBe(k);
+    expect(isSolidForPlayer(forest, Math.floor(p.x / TILE), Math.floor(p.y / TILE))).toBe(false);
+  });
+
+  it('roaming monsters and wild animals come in numbers that fit the map', () => {
+    for (const [ax, ay] of [[0, -1], [-1, 0], [0, 1]] as const) {
+      const big = generateArea(ax, ay);
+      const b = big.biome!;
+      for (const def of wildSpeciesOf(b)) {
+        const [min, max] = def.wildCount ?? [3, 5];
+        const n = Object.values(big.animals).filter((x) => x.species === def.species).length;
+        expect(n, `${b} ${def.species}`).toBeLessThanOrEqual(Math.round(max * 2.25));
+        if (min > 0) expect(n, `${b} ${def.species}`).toBeGreaterThanOrEqual(Math.round(min * 2.25));
+      }
+      // a map kept at 64 is topped up to the 64 numbers, not the big ones
+      const small = generateArea(ax, ay, 1337, MAP_W);
+      for (const x of Object.values(small.animals)) if (ANIMALS[x.species]?.mob) delete small.animals[x.id];
+      ensureRoaming(small);
+      for (const def of wildSpeciesOf(b).filter((d) => d.mob)) {
+        const n = Object.values(small.animals).filter((x) => x.species === def.species).length;
+        expect(n, `${b} ${def.species} at 64`).toBe((def.wildCount ?? [3, 5])[0]);
+      }
+    }
   });
 });
 

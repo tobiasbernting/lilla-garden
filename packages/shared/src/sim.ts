@@ -16,7 +16,7 @@ import { generateSaga } from './sagamap.ts';
 import { garageOf, healCars } from './rallysim.ts';
 import { enterSaga, ensureSagaPlaces, heroAction, idleSaga, isSagaMob, killXp, roamingDown, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, quickStack, removeItem, sortInventory, takeFromSlot } from './inventory.ts';
-import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
+import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, mapH, mapW, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
 import { PAINTED_SELL, isValidPainting } from './paint.ts';
 import { WALL_KINDS, findRooms, type Room } from './rooms.ts';
@@ -37,6 +37,7 @@ import type {
   NpcDef,
   NpcState,
   PlayerState,
+  MapSize,
   Quest,
   Season,
   Terrain,
@@ -148,14 +149,14 @@ export function rideSpeedMul(world: WorldState, p: { x: number; y: number; ridin
   if (!a) return 1;
   const v = ANIMALS[a.species]?.vehicle;
   if (!v) return ANIMALS[a.species]?.mount?.speed ?? RIDE_SPEED_MUL;
-  const t = world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] as string | undefined;
+  const t = world.terrain[tileIndex(world, tileOf(p.x), tileOf(p.y))] as string | undefined;
   const ground = t === 'road' || t === 'crossing' ? 1.3 : t === 'soil' || t === 'soil_wet' || t === 'sand' || t === 'gravel' ? 0.7 : 1;
   return (v.ride ?? RIDE_SPEED_MUL) * ground;
 }
 
 export function isSolidForPlayer(world: WorldState, tx: number, ty: number): boolean {
-  if (!inBounds(tx, ty)) return true;
-  if (WALL_TERRAIN.has(world.terrain[tileIndex(tx, ty)]!)) return true;
+  if (!inBounds(world, tx, ty)) return true;
+  if (WALL_TERRAIN.has(world.terrain[tileIndex(world, tx, ty)]!)) return true;
   if (npcAt(world, tx, ty)) return true;
   if (vehicleBlocks(world, tx, ty)) return true;
   if (world.area === 'dungeon') {
@@ -177,8 +178,8 @@ export function applyPortal(p: { x: number; y: number; facing: Facing }, world?:
 }
 
 export function isSolidForAnimal(world: WorldState, tx: number, ty: number): boolean {
-  if (!inBounds(tx, ty)) return true;
-  const t = world.terrain[tileIndex(tx, ty)]!;
+  if (!inBounds(world, tx, ty)) return true;
+  const t = world.terrain[tileIndex(world, tx, ty)]!;
   if (WALL_TERRAIN.has(t) || t === 'pool' || t === 'soil' || t === 'soil_wet') return true; // animals stay off the fields (and out of the pool)
   if (world.crops[key(tx, ty)]) return true;
   if (npcAt(world, tx, ty) || portalAt(tx, ty)) return true;
@@ -203,7 +204,7 @@ const boxBlocked = (
   return false;
 };
 
-/** Moves a box from (x,y) towards (nx,ny), sliding along solids. Returns the reachable position. */
+/** Moves a box from (x,y) towards (nx,ny), sliding along solids and staying inside the map `m`. Returns the reachable position. */
 export function resolveMove(
   solid: (tx: number, ty: number) => boolean,
   x: number,
@@ -212,9 +213,10 @@ export function resolveMove(
   ny: number,
   hw = PLAYER_HALF_W,
   hh = PLAYER_HALF_H,
+  m: MapSize = {},
 ): { x: number; y: number } {
-  const clampX = (v: number) => Math.min(MAP_W * TILE - hw, Math.max(hw, v));
-  const clampY = (v: number) => Math.min(MAP_H * TILE - hh, Math.max(hh, v));
+  const clampX = (v: number) => Math.min(mapW(m) * TILE - hw, Math.max(hw, v));
+  const clampY = (v: number) => Math.min(mapH(m) * TILE - hh, Math.max(hh, v));
   let rx = clampX(nx);
   let ry = y;
   if (boxBlocked(solid, rx, ry, hw, hh)) rx = x;
@@ -241,7 +243,7 @@ export function stepPlayer(
   const uy = dy / len;
   if (inPool(world, p)) speedMul *= SWIM_SPEED_MUL;
   const dist = (PLAYER_SPEED * speedMul * dtMs) / 1000;
-  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, p.x + ux * dist, p.y + uy * dist);
+  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, p.x + ux * dist, p.y + uy * dist, PLAYER_HALF_W, PLAYER_HALF_H, world);
   p.moving = r.x !== p.x || r.y !== p.y;
   p.x = r.x;
   p.y = r.y;
@@ -250,7 +252,7 @@ export function stepPlayer(
 }
 
 /** Standing in the bath house pool? */
-export const inPool = (world: WorldState, p: { x: number; y: number }): boolean => world.terrain[tileIndex(tileOf(p.x), tileOf(p.y))] === 'pool';
+export const inPool = (world: WorldState, p: { x: number; y: number }): boolean => world.terrain[tileIndex(world, tileOf(p.x), tileOf(p.y))] === 'pool';
 
 /** The tile in front of the player (for the context action button). */
 export function facingTile(p: { x: number; y: number; facing: Facing }): { tx: number; ty: number } {
@@ -417,9 +419,10 @@ const isWild = (kind: string): boolean => {
  */
 function finishRoom(world: WorldState, p: PlayerState, room: Room, ctx: SimCtx, out: Change[]): void {
   const floor: Terrain = room.stone ? 'floor_stone' : 'floor_wood';
+  const W = mapW(world);
   for (const i of room.tiles) {
-    const x = i % MAP_W;
-    const y = (i - x) / MAP_W;
+    const x = i % W;
+    const y = (i - x) / W;
     const crop = world.crops[key(x, y)];
     if (crop) {
       const cdef = CROPS[crop.crop];
@@ -443,7 +446,7 @@ function finishRoom(world: WorldState, p: PlayerState, room: Room, ctx: SimCtx, 
   }
   const mid = room.tiles[Math.floor(room.tiles.length / 2)]!;
   bump(p, 'rooms', 1, out);
-  out.push(fx(mid % MAP_W, Math.floor(mid / MAP_W), 'sparkle'), toast(p.id, T.roomDone), playerChange(p));
+  out.push(fx(mid % W, Math.floor(mid / W), 'sparkle'), toast(p.id, T.roomDone), playerChange(p));
 }
 
 const FLOOR_ITEMS: Record<string, Terrain> = {
@@ -469,7 +472,7 @@ export const animalDisplayName = (a: AnimalState): string => a.name || SPECIES_N
 export function performAction(world: WorldState, playerId: string, tx: number, ty: number, ctx: SimCtx): Change[] {
   const p = world.players[playerId];
   const out: Change[] = [];
-  if (!p || !inBounds(tx, ty)) return out;
+  if (!p || !inBounds(world, tx, ty)) return out;
   const ptx = tileOf(p.x);
   const pty = tileOf(p.y);
   if (Math.abs(tx - ptx) > REACH || Math.abs(ty - pty) > REACH) return out;
@@ -576,7 +579,7 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     fishingAct(world, p, ctx, out);
     return out;
   }
-  if (tool === 'rod' && isFishWater(world.terrain[tileIndex(tx, ty)])) {
+  if (tool === 'rod' && isFishWater(world.terrain[tileIndex(world, tx, ty)])) {
     const wait = 1500 + ctx.rnd() * 3500;
     p.fishing = { x: tx, y: ty, biteAt: ctx.now + wait, bite: false, until: 0 };
     p.emote = { id: 'fiske', until: ctx.now + wait + 2000 };
@@ -777,7 +780,7 @@ export function dismount(world: WorldState, p: PlayerState, out: Change[]): void
   const d = DIR_VEC[p.facing] ?? { dx: 0, dy: 1 };
   const btx = tileOf(p.x) - d.dx;
   const bty = tileOf(p.y) - d.dy;
-  const behindFree = inBounds(btx, bty) && !isSolidForAnimal(here, btx, bty) && !(isFarm(here) && inInterior(btx, bty));
+  const behindFree = inBounds(here, btx, bty) && !isSolidForAnimal(here, btx, bty) && !(isFarm(here) && inInterior(btx, bty));
   a.x = behindFree ? btx * TILE + TILE / 2 : p.x;
   a.y = behindFree ? bty * TILE + TILE / 2 : p.y;
   a.moving = false;
@@ -1081,7 +1084,7 @@ function actOnCrop(
     if (crop.watered) return;
     held.charges = (held.charges ?? 0) - 1;
     crop.watered = true;
-    world.terrain[tileIndex(tx, ty)] = 'soil_wet';
+    world.terrain[tileIndex(world, tx, ty)] = 'soil_wet';
     out.push({ t: 'crop', k: ck, crop }, { t: 'terrain', x: tx, y: ty, terrain: 'soil_wet' }, fx(tx, ty, 'water'), playerChange(p));
     return;
   }
@@ -1093,7 +1096,7 @@ function actOnCrop(
 }
 
 function actOnTerrain(world: WorldState, p: PlayerState, tx: number, ty: number, held: ItemStack | null, ctx: SimCtx, out: Change[]): void {
-  const ti = tileIndex(tx, ty);
+  const ti = tileIndex(world, tx, ty);
   const terrain = world.terrain[ti]!;
   const setTerrain = (t: Terrain) => {
     world.terrain[ti] = t;
@@ -1344,7 +1347,7 @@ export function buy(world: WorldState, playerId: string, id: string, qty: number
     const pty = tileOf(p.y);
     let spot = { tx: ptx, ty: pty + 1 };
     for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1]] as const) {
-      if (inBounds(ptx + dx, pty + dy) && !isSolidForAnimal(world, ptx + dx, pty + dy) && !(isFarm(world) && inInterior(ptx + dx, pty + dy))) {
+      if (inBounds(world, ptx + dx, pty + dy) && !isSolidForAnimal(world, ptx + dx, pty + dy) && !(isFarm(world) && inInterior(ptx + dx, pty + dy))) {
         spot = { tx: ptx + dx, ty: pty + dy };
         break;
       }
@@ -1503,7 +1506,7 @@ export function applyMove(world: WorldState, playerId: string, x: number, y: num
       return;
     }
   }
-  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, x, y);
+  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), p.x, p.y, x, y, PLAYER_HALF_W, PLAYER_HALF_H, world);
   const moved = r.x !== p.x || r.y !== p.y;
   p.x = r.x;
   p.y = r.y;
@@ -1589,7 +1592,7 @@ export function tickNpcs(world: WorldState, dtMs: number): void {
     const step = Math.min(dist, (NPC_SPEED * dtMs) / 1000);
     const nx = st.x + (dx / dist) * step;
     const ny = st.y + (dy / dist) * step;
-    const r = resolveMove((x, y) => isSolidForNpc(world, x, y), st.x, st.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+    const r = resolveMove((x, y) => isSolidForNpc(world, x, y), st.x, st.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H, world);
     const moved = Math.hypot(r.x - st.x, r.y - st.y);
     st.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
     if (moved < step * 0.5) {
@@ -1610,8 +1613,8 @@ export function tickNpcs(world: WorldState, dtMs: number): void {
 }
 
 const isSolidForNpc = (world: WorldState, tx: number, ty: number): boolean => {
-  if (!inBounds(tx, ty)) return true;
-  const t = world.terrain[tileIndex(tx, ty)];
+  if (!inBounds(world, tx, ty)) return true;
+  const t = world.terrain[tileIndex(world, tx, ty)];
   if (t === 'water' || t === 'pool' || t === 'soil' || t === 'soil_wet') return true;
   if (world.crops[key(tx, ty)] || portalAt(tx, ty)) return true;
   const obj = objectAt(world, tx, ty);
@@ -1907,16 +1910,20 @@ export function travel(world: WorldState, playerId: string, dir: 'n' | 's' | 'e'
   if (!p || p.area === 'dungeon') return [];
   const c = areaCoords(p.area);
   if (!c) return [];
-  // must stand in the edge gap on that side
+  // must stand in the edge gap on that side (of this map, whatever its size)
+  const here = areaOf(farm, p);
   const tx = tileOf(p.x);
   const ty = tileOf(p.y);
-  const atEdge = (dir === 'n' && ty <= 1) || (dir === 's' && ty >= MAP_H - 2) || (dir === 'w' && tx <= 1) || (dir === 'e' && tx >= MAP_W - 2);
-  if (!atEdge || !inEdgeGap(tx, ty)) return [];
+  const atEdge = (dir === 'n' && ty <= 1) || (dir === 's' && ty >= mapH(here) - 2) || (dir === 'w' && tx <= 1) || (dir === 'e' && tx >= mapW(here) - 2);
+  if (!atEdge || !inEdgeGap(here, tx, ty)) return [];
   const d = DIRS[dir];
   const nx = c.ax + d.dx;
   const ny = c.ay + d.dy;
   const keyStr = nx === 0 && ny === 0 ? 'farm' : areaKey(nx, ny);
-  const arrive = arrivalTile(d.opposite);
+  // you come out in the opening on the far side of the next map, in the middle of that map's own edge
+  const target = getArea(farm, keyStr);
+  if (!target) return [];
+  const arrive = arrivalTile(target, d.opposite);
   const out: Change[] = [];
   placeIn(farm, p, keyStr, arrive.x, arrive.y, dir === 'n' ? 'up' : dir === 's' ? 'down' : dir === 'e' ? 'right' : 'left', out);
   return out;
@@ -1933,7 +1940,7 @@ export function teleport(world: WorldState, playerId: string, keyStr: string): C
   else {
     const target = getArea(farm, keyStr);
     if (!target) return [];
-    const at = isMoonKey(keyStr) ? rocketFront(MOON_ROCKET) : openTileNear(target, MAP_W / 2, MAP_H / 2);
+    const at = isMoonKey(keyStr) ? rocketFront(MOON_ROCKET) : openTileNear(target, mapW(target) / 2, mapH(target) / 2);
     placeIn(farm, p, keyStr, at.x, at.y, 'down', out);
   }
   out.push(fx(tileOf(p.x), tileOf(p.y), 'sparkle'));
@@ -1942,16 +1949,16 @@ export function teleport(world: WorldState, playerId: string, keyStr: string): C
 
 /** The open tile nearest (x, y) that you can walk to from the map's openings (else just any open tile). */
 export function openTileNear(world: WorldState, x: number, y: number): { x: number; y: number } {
-  const reach = reachableFrom(world, arrivalTile('n'));
+  const reach = reachableFrom(world, arrivalTile(world, 'n'));
   let fallback: { x: number; y: number } | null = null;
-  for (let r = 0; r < MAP_W; r++)
+  for (let r = 0; r < Math.max(mapW(world), mapH(world)); r++)
     for (let dy = -r; dy <= r; dy++)
       for (let dx = -r; dx <= r; dx++) {
         if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
         const tx = x + dx;
         const ty = y + dy;
-        if (!inBounds(tx, ty) || isSolidForPlayer(world, tx, ty)) continue;
-        if (reach[tileIndex(tx, ty)]) return { x: tx, y: ty };
+        if (!inBounds(world, tx, ty) || isSolidForPlayer(world, tx, ty)) continue;
+        if (reach[tileIndex(world, tx, ty)]) return { x: tx, y: ty };
         fallback ??= { x: tx, y: ty };
       }
   return fallback ?? { x, y };
@@ -2038,8 +2045,8 @@ export function ride(world: WorldState, playerId: string, via: 'bus' | 'train', 
   // land in front of the stop at the other end
   const kind = stopKind(via, to);
   const stop = Object.values(target.objects).find((o) => o.kind === kind) ?? Object.values(target.objects).find((o) => o.kind === 'bus_stop');
-  let tx = to === 'farm' ? SPAWN.x : MAP_W / 2;
-  let ty = to === 'farm' ? SPAWN.y : MAP_H / 2;
+  let tx = to === 'farm' ? SPAWN.x : mapW(target) / 2;
+  let ty = to === 'farm' ? SPAWN.y : mapH(target) / 2;
   if (stop) {
     const def = objectDef(stop.kind);
     tx = stop.x + Math.floor(def.w / 2);
@@ -2151,7 +2158,7 @@ function shootArrow(d: WorldState, p: PlayerState, ctx: SimCtx, out: Change[]): 
   for (let i = 0; i < 6; i++) {
     tx += dir[0]!;
     ty += dir[1]!;
-    if (!inBounds(tx, ty) || d.terrain[tileIndex(tx, ty)] === 'water') break;
+    if (!inBounds(d, tx, ty) || d.terrain[tileIndex(d, tx, ty)] === 'water') break;
     const obj = objectAt(d, tx, ty);
     if (obj && objectDef(obj.kind).solid) break;
     const mob = animalAt(d, tx, ty);
@@ -2183,7 +2190,7 @@ function fireRocket(world: WorldState, p: PlayerState, ctx: SimCtx, out: Change[
   for (let i = 0; i < ROCKET_RANGE; i++) {
     const nx = tx + dir[0]!;
     const ny = ty + dir[1]!;
-    if (!inBounds(nx, ny)) break;
+    if (!inBounds(world, nx, ny)) break;
     tx = nx;
     ty = ny;
     if (animalAt(world, tx, ty)) break;
@@ -2385,7 +2392,12 @@ export function leaveGrotto(world: WorldState, playerId: string): Change[] {
     placeIn(farm, p, 'farm', SPAWN.x, SPAWN.y, 'down', out);
     return out;
   }
-  placeIn(farm, p, cave.parent, cave.out.x, cave.out.y, 'down', out);
+  // the map outside may have been rebuilt (bigger) since: then out onto the open ground nearest the old spot
+  const parent = getArea(farm, cave.parent)!;
+  const at = isSolidForPlayer(parent, cave.out.x, cave.out.y)
+    ? openTileNear(parent, Math.min(cave.out.x, mapW(parent) - 1), Math.min(cave.out.y, mapH(parent) - 1))
+    : cave.out;
+  placeIn(farm, p, cave.parent, at.x, at.y, 'down', out);
   return out;
 }
 
@@ -2470,7 +2482,7 @@ function regrowAreas(farm: WorldState, ctx: SimCtx, out: Change[]): void {
     const fronts = landmarkFronts(a);
     const start = a.cave?.start;
     const blocked = (x: number, y: number) =>
-      inEdgeGap(x, y) ||
+      inEdgeGap(a, x, y) ||
       people.some(([px, py]) => Math.abs(px - x) <= 1 && Math.abs(py - y) <= 1) ||
       fronts.some((f) => Math.abs(f.x - x) <= 1 && Math.abs(f.y - y) <= 1) ||
       (!!start && Math.abs(start.x - x) + Math.abs(start.y - y) < 3) ||
@@ -2496,7 +2508,7 @@ function throwLasso(world: WorldState, p: PlayerState, ctx: SimCtx, out: Change[
   for (let i = 0; i < LASSO_RANGE; i++) {
     tx += dir.dx;
     ty += dir.dy;
-    if (!inBounds(tx, ty)) break;
+    if (!inBounds(world, tx, ty)) break;
     const obj = objectAt(world, tx, ty);
     if (obj && objectDef(obj.kind).solid) break;
     const a = animalAt(world, tx, ty);
@@ -2641,7 +2653,7 @@ function tickFlee(world: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx):
   const dist = Math.hypot(dx, dy) || 1;
   const speed = (ANIMALS[a.species]?.speed ?? 20) * 1.5;
   const step = (speed * dtMs) / 1000;
-  const r = resolveMove((tx, ty) => isSolidForAnimal(world, tx, ty), a.x, a.y, a.x + (dx / dist) * step, a.y + (dy / dist) * step, ANIMAL_HALF_W, ANIMAL_HALF_H);
+  const r = resolveMove((tx, ty) => isSolidForAnimal(world, tx, ty), a.x, a.y, a.x + (dx / dist) * step, a.y + (dy / dist) * step, ANIMAL_HALF_W, ANIMAL_HALF_H, world);
   a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
   a.moving = r.x !== a.x || r.y !== a.y;
   a.x = r.x;
@@ -2664,7 +2676,7 @@ export function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y
     const t = i / steps;
     const tx = tileOf(x0 + (x1 - x0) * t);
     const ty = tileOf(y0 + (y1 - y0) * t);
-    if (!inBounds(tx, ty) || d.terrain[tileIndex(tx, ty)] === 'water') return false;
+    if (!inBounds(d, tx, ty) || d.terrain[tileIndex(d, tx, ty)] === 'water') return false;
     const o = objectAt(d, tx, ty);
     if (o && objectDef(o.kind).solid) return false;
   }
@@ -2723,7 +2735,7 @@ function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: 
   const step = (speed * dtMs) / 1000;
   const nx = a.x + (dx / best) * step;
   const ny = a.y + (dy / best) * step;
-  const r = resolveMove((tx, ty) => isSolidForAnimal(d, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+  const r = resolveMove((tx, ty) => isSolidForAnimal(d, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H, d);
   a.moving = r.x !== a.x || r.y !== a.y;
   a.x = r.x;
   a.y = r.y;
@@ -3022,7 +3034,7 @@ function tickPet(world: WorldState, a: AnimalState, dtMs: number): boolean {
   const step = Math.min(dist - PET_FOLLOW + 1, (speed * dtMs) / 1000);
   const nx = a.x + (dx / dist) * step;
   const ny = a.y + (dy / dist) * step;
-  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+  const r = resolveMove((tx, ty) => isSolidForPlayer(world, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H, world);
   a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
   a.moving = r.x !== a.x || r.y !== a.y;
   a.x = r.x;
@@ -3055,8 +3067,8 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
       const c = a.stay ?? homeCenter(world, a);
       const ang = ctx.rnd() * Math.PI * 2;
       const r = ctx.rnd() * (a.stay ? STAY_LEASH : LEASH);
-      a.tx = Math.min(MAP_W * TILE - 8, Math.max(8, c.x + Math.cos(ang) * r));
-      a.ty = Math.min(MAP_H * TILE - 8, Math.max(8, c.y + Math.sin(ang) * r));
+      a.tx = Math.min(mapW(world) * TILE - 8, Math.max(8, c.x + Math.cos(ang) * r));
+      a.ty = Math.min(mapH(world) * TILE - 8, Math.max(8, c.y + Math.sin(ang) * r));
     }
     const dx = a.tx - a.x;
     const dy = a.ty - a.y;
@@ -3072,7 +3084,7 @@ function tickAnimals(world: WorldState, dtMs: number, ctx: SimCtx, out: Change[]
     }
     const nx = a.x + (dx / dist) * step;
     const ny = a.y + (dy / dist) * step;
-    const r = resolveMove((tx, ty) => isSolidForAnimal(world, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H);
+    const r = resolveMove((tx, ty) => isSolidForAnimal(world, tx, ty), a.x, a.y, nx, ny, ANIMAL_HALF_W, ANIMAL_HALF_H, world);
     const moved = Math.hypot(r.x - a.x, r.y - a.y);
     if (moved < step * 0.5) {
       // Blocked (fence, water, another building): give up and rest a bit
@@ -3178,10 +3190,10 @@ const edgeDist = (x: number, y: number): number => Math.min(x, y, MAP_W - 1 - x,
 const nearHouse = (x: number, y: number): boolean => x >= 5 && x <= 18 && y >= 3 && y <= 14;
 
 const freeGrass = (world: WorldState, x: number, y: number): boolean =>
-  inBounds(x, y) &&
+  inBounds(world, x, y) &&
   !inInterior(x, y) &&
   !npcAt(world, x, y) &&
-  world.terrain[tileIndex(x, y)] === 'grass' &&
+  world.terrain[tileIndex(world, x, y)] === 'grass' &&
   !objectAt(world, x, y) &&
   !world.crops[key(x, y)] &&
   !nearHouse(x, y) &&
@@ -3230,7 +3242,7 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
   for (let i = 0; i < world.terrain.length; i++)
     if (world.terrain[i] === 'soil_wet') {
       world.terrain[i] = 'soil';
-      out.push({ t: 'terrain', x: i % MAP_W, y: Math.floor(i / MAP_W), terrain: 'soil' });
+      out.push({ t: 'terrain', x: i % mapW(world), y: Math.floor(i / mapW(world)), terrain: 'soil' });
     }
 
   // Troughs feed nearby animals

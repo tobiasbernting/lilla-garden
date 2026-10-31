@@ -1,15 +1,16 @@
-// The world beyond the farm: an endless grid of 64x64 areas, each generated from its coordinates.
-// Walking off an edge of one area puts you on the opposite edge of the next.
+// The world beyond the farm: an endless grid of areas, each generated from its coordinates. Wild biome maps
+// are 96×96 (WILD_MAP), cities and the space base 64×64 like the farm. Walking off an edge of one area puts
+// you in the opening on the opposite edge of the next (openings are always in the middle of a side).
 import { ANIMALS, NPCS, objectDef } from './data.ts';
 import { SPECIES_NAMES } from './sv.ts';
 import { countRenewables } from './caves.ts';
 import { BUS_STOP, PIZZERIA, TRAIN_STATION, buildCity, setAreaGenerator } from './city.ts';
-import { addObject, emptyWorld, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
+import { addObject, emptyWorld, inBounds, mapH, mapW, objectAt, removeObject, tileIndex } from './map.ts';
 import { PAINTERS } from './painters.ts';
 import { mulberry32, randInt } from './rng.ts';
 import { MOON_KEY, MOON_ROCKET, SPACEPORT, rocketFront } from './space.ts';
 import type { AnimalDef, AnimalState, CaveTheme, WorldState } from './types.ts';
-import { MAP_H, MAP_W, TILE, WALL_TERRAIN, key } from './types.ts';
+import { MAP_H, MAP_W, TILE, WALL_TERRAIN, WILD_MAP, key } from './types.ts';
 import { EDGE_GAP, Painter, arrivalTile, inEdgeGap, reachableFrom, wouldBlock } from './worldgen.ts';
 
 export type Biome = 'skog' | 'ang' | 'is' | 'berg' | 'strand' | 'oken' | 'by' | 'trask' | 'djungel' | 'vulkan' | 'svamp' | 'dino' | 'godis' | 'rymdbas' | 'mane';
@@ -191,16 +192,22 @@ export function biomeAt(ax: number, ay: number): Biome {
 
 export { EDGE_GAP, arrivalTile, inEdgeGap } from './worldgen.ts';
 
-/** Version of the area generator. Explored maps built by an older one are rebuilt (if nobody changed them) or topped up. */
-export const AREA_GEN = 2;
+/**
+ * Version of the area generator. Explored maps built by an older one are rebuilt (if nobody changed them) or
+ * topped up. 3: wild maps are 96×96.
+ */
+export const AREA_GEN = 3;
+
+/** How big a biome's maps are: cities and the space base keep the 64×64 of their plans, the wild is bigger. */
+export const areaSizeOf = (biome: string): number => (biome === 'by' || biome === 'rymdbas' ? MAP_W : WILD_MAP);
 
 /** Builds a city's surroundings the way it always was (so new cities look like the old ones), then the city. */
 function paintCity(world: WorldState, rnd: () => number): void {
   const T = world.terrain;
   T.fill('grass');
   const tryObj = (x: number, y: number, kind: string) => {
-    if (!inBounds(x, y) || inEdgeGap(x, y)) return;
-    const t = T[tileIndex(x, y)];
+    if (!inBounds(world, x, y) || inEdgeGap(world, x, y)) return;
+    const t = T[tileIndex(world, x, y)];
     if (t === 'water' || t === 'ice') return;
     if (objectAt(world, x, y)) return;
     addObject(world, kind, x, y);
@@ -220,11 +227,15 @@ function paintCity(world: WorldState, rnd: () => number): void {
   buildCity(world);
 }
 
-/** Builds a biome area for grid coordinates (ax, ay). Deterministic. */
-export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldState {
+/**
+ * Builds a biome area for grid coordinates (ax, ay). Deterministic. `size` is the side in tiles (the biome's
+ * own size unless asked for another; a 64 map comes out exactly as it did before maps grew).
+ */
+export function generateArea(ax: number, ay: number, worldSeed = 1337, size?: number): WorldState {
   const biome = biomeAt(ax, ay);
   const rnd = mulberry32(hash(ax, ay, worldSeed));
-  const world = emptyWorld();
+  const side = biome === 'by' ? MAP_W : (size ?? areaSizeOf(biome));
+  const world = emptyWorld(side, side);
   world.area = areaKey(ax, ay);
   world.biome = biome;
   world.gen = AREA_GEN;
@@ -239,12 +250,12 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337): WorldSta
   // A signpost beside every opening (decoration)
   if (biome !== 'by')
     for (const side of ['n', 's', 'e', 'w'] as const) {
-      const a = arrivalTile(side);
+      const a = arrivalTile(world, side);
       const sx = side === 'n' || side === 's' ? a.x + EDGE_GAP : side === 'w' ? a.x + 2 : a.x - 2;
       const sy = side === 'w' || side === 'e' ? a.y + EDGE_GAP : side === 'n' ? a.y + 2 : a.y - 2;
       const o = objectAt(world, sx, sy);
       if (o && objectDef(o.kind).breakWith && !objectDef(o.kind).interact && !objectDef(o.kind).solid) removeObject(world, o.id);
-      if (!objectAt(world, sx, sy) && !WALL_TERRAIN.has(world.terrain[tileIndex(sx, sy)]!) && !wouldBlock(world, sx, sy)) addObject(world, 'signpost', sx, sy);
+      if (!objectAt(world, sx, sy) && !WALL_TERRAIN.has(world.terrain[tileIndex(world, sx, sy)]!) && !wouldBlock(world, sx, sy)) addObject(world, 'signpost', sx, sy);
     }
   return world;
 }
@@ -254,11 +265,12 @@ export const wildSpeciesOf = (biome: string): AnimalDef[] =>
   Object.values(ANIMALS).filter((a) => a.wild && a.wild.split('|').includes(biome) && !(biome === 'by' && a.predator));
 
 /** Where wild animals may be found: tiles you can walk to from the way in. */
-const entryOf = (world: WorldState): { x: number; y: number } => (world.area === MOON_KEY ? rocketFront(MOON_ROCKET) : arrivalTile('n'));
+const entryOf = (world: WorldState): { x: number; y: number } => (world.area === MOON_KEY ? rocketFront(MOON_ROCKET) : arrivalTile(world, 'n'));
 
 /**
  * Puts the biome's wild animals into an area. With `restock`, only tops up species whose untamed
  * count fell below their minimum (predators that were chased off, animals that were tamed).
+ * The counts (`wildCount`) are for a 64×64 map; a bigger map gets more, as many per tile.
  * Returns the animals that were added.
  */
 export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => number, restock = false, only?: (def: AnimalDef) => boolean): AnimalState[] {
@@ -266,20 +278,25 @@ export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => nu
   const species = wildSpeciesOf(biome).filter((d) => !only || only(d));
   if (!species.length) return added;
   const T = world.terrain;
+  const W = mapW(world);
+  const H = mapH(world);
+  const scale = (W * H) / (MAP_W * MAP_H);
+  const many = (n: number) => (scale === 1 ? n : Math.round(n * scale));
   const reach = reachableFrom(world, entryOf(world));
   for (const def of species) {
     const [min, max] = def.wildCount ?? [3, 5];
     const have = Object.values(world.animals).filter((a) => a.species === def.species && !a.owner).length;
-    const want = restock ? Math.max(0, min - have) : randInt(rnd, min, max);
+    const want = restock ? Math.max(0, many(min) - have) : many(randInt(rnd, min, max));
     let tries = 0;
     let placed = 0;
-    while (placed < want && tries++ < 200) {
-      const x = randInt(rnd, 6, MAP_W - 7);
-      const y = randInt(rnd, 6, MAP_H - 7);
-      const t = T[tileIndex(x, y)]!;
-      if (WALL_TERRAIN.has(t) || t === 'ice' || objectAt(world, x, y) || inEdgeGap(x, y)) continue;
+    const maxTries = 200 * Math.ceil(scale);
+    while (placed < want && tries++ < maxTries) {
+      const x = randInt(rnd, 6, W - 7);
+      const y = randInt(rnd, 6, H - 7);
+      const t = T[tileIndex(world, x, y)]!;
+      if (WALL_TERRAIN.has(t) || t === 'ice' || objectAt(world, x, y) || inEdgeGap(world, x, y)) continue;
       // in the open where you can get to them (an old map's pockets count too, if nothing else is free)
-      if (!reach[tileIndex(x, y)] && tries < 150) continue;
+      if (!reach[tileIndex(world, x, y)] && tries < maxTries * 0.75) continue;
       if (Object.values(world.players).some((p) => Math.hypot(p.x - (x * TILE + 8), p.y - (y * TILE + 8)) < 8 * TILE)) continue;
       const id = world.nextId++;
       const a: AnimalState = {
@@ -328,15 +345,15 @@ export function ensureRoaming(world: WorldState, rnd: () => number = Math.random
 export function ensureFarmExits(world: WorldState): void {
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {
-      if (!inEdgeGap(x, y)) continue;
+      if (!inEdgeGap(world, x, y)) continue;
       const o = objectAt(world, x, y);
       if (o && (o.kind.startsWith('tree') || o.kind === 'bush' || o.kind.startsWith('rock'))) {
         delete world.objects[o.id];
         delete world.occupancy[key(x, y)];
       }
-      if (world.terrain[tileIndex(x, y)] === 'water') world.terrain[tileIndex(x, y)] = 'sand';
+      if (world.terrain[tileIndex(world, x, y)] === 'water') world.terrain[tileIndex(world, x, y)] = 'sand';
       const edge = Math.min(x, y, MAP_W - 1 - x, MAP_H - 1 - y);
-      if (edge <= 3 && world.terrain[tileIndex(x, y)] === 'grass') world.terrain[tileIndex(x, y)] = 'path_dirt';
+      if (edge <= 3 && world.terrain[tileIndex(world, x, y)] === 'grass') world.terrain[tileIndex(world, x, y)] = 'path_dirt';
     }
 }
 
@@ -373,12 +390,12 @@ function clearFootprint(world: WorldState, x0: number, y0: number, w: number, h:
     for (let dx = -1; dx <= w; dx++) {
       const x = x0 + dx;
       const y = y0 + dy;
-      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) continue;
+      if (!inBounds(world, x, y)) continue;
       const o = objectAt(world, x, y);
       if (o && !KEEP_BUILDINGS.has(o.kind)) delete world.objects[o.id];
       const occ = world.occupancy[key(x, y)];
       if (occ !== undefined && !world.objects[occ]) delete world.occupancy[key(x, y)];
-      if (world.terrain[tileIndex(x, y)] === 'water') world.terrain[tileIndex(x, y)] = 'sand';
+      if (world.terrain[tileIndex(world, x, y)] === 'water') world.terrain[tileIndex(world, x, y)] = 'sand';
     }
 }
 
@@ -394,7 +411,7 @@ export function placeTransport(world: WorldState): boolean {
     clearFootprint(world, CITY_STATION.x, CITY_STATION.y, 3, 2);
     addObject(world, 'train_station', CITY_STATION.x, CITY_STATION.y);
     // a little platform in front of the station
-    for (let dx = -1; dx <= 3; dx++) world.terrain[tileIndex(CITY_STATION.x + dx, CITY_STATION.y + 2)] = 'path_stone';
+    for (let dx = -1; dx <= 3; dx++) world.terrain[tileIndex(world, CITY_STATION.x + dx, CITY_STATION.y + 2)] = 'path_stone';
     added = true;
   }
   return added;

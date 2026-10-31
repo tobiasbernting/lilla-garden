@@ -1,11 +1,11 @@
 // Builds a dungeon of Sagan om Världsträdet from its plan in saga.ts: the rooms, three-wide corridors
 // between them, walls, torches, things along the walls, the gate after the mid-boss, the rest stones and
 // every monster where it waits. Like Spelhallen it is its own map (`saga:<id>`), built fresh whenever the
-// dungeon starts over, so nothing of it is saved.
+// dungeon starts over, so nothing of it is saved. Every dungeon is drawn for a 64×64 map (STANDARD_MAP).
 import { addObject, emptyWorld, inBounds, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import { DUNGEONS, SAGA_BOSSES, SAGA_MOBS, sagaKey, type DungeonId, type SagaInstance, type SagaMob, type SagaRoom } from './saga.ts';
-import { MAP_H, MAP_W, TILE, type AnimalState, type Terrain, type WorldState } from './types.ts';
+import { MAP_H, MAP_W, STANDARD_MAP, TILE, type AnimalState, type Terrain, type WorldState } from './types.ts';
 
 /** What is outside the rooms: rock nobody walks on (the sea around the temple, the starry sky under Bifrost). */
 const SOLID: Record<DungeonId, Terrain> = { draug: 'rock', frost: 'rock', surt: 'basalt', hel: 'rock', dvarg: 'rock', orm: 'water', alv: 'rock', fenrir: 'rock', loke: 'space' };
@@ -62,12 +62,12 @@ function route(from: { x: number; y: number }, to: { x: number; y: number }, blo
     }
     return top;
   };
-  const startTile = tileIndex(from.x, from.y);
+  const startTile = tileIndex(STANDARD_MAP, from.x, from.y);
   for (let d = 0; d < 4; d++) {
     cost[startTile * 4 + d] = 0;
     push(0, startTile * 4 + d);
   }
-  const goal = tileIndex(to.x, to.y);
+  const goal = tileIndex(STANDARD_MAP, to.x, to.y);
   let end = -1;
   while (heap.length) {
     const [c, s] = pop();
@@ -83,8 +83,8 @@ function route(from: { x: number; y: number }, to: { x: number; y: number }, blo
     for (let nd = 0; nd < 4; nd++) {
       const nx = x + STEPS[nd]![0];
       const ny = y + STEPS[nd]![1];
-      if (!inBounds(nx, ny)) continue;
-      const nk = tileIndex(nx, ny);
+      if (!inBounds(STANDARD_MAP, nx, ny)) continue;
+      const nk = tileIndex(STANDARD_MAP, nx, ny);
       if (blocked[nk] && nk !== goal) continue;
       const ns = nk * 4 + nd;
       const nc = c + 1 + (nd === d ? 0 : TURN);
@@ -98,8 +98,8 @@ function route(from: { x: number; y: number }, to: { x: number; y: number }, blo
   if (end < 0) {
     // no way around: straight across (an L), better than no corridor
     const tiles: number[] = [];
-    for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) tiles.push(tileIndex(x, from.y));
-    for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) tiles.push(tileIndex(to.x, y));
+    for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) tiles.push(tileIndex(STANDARD_MAP, x, from.y));
+    for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) tiles.push(tileIndex(STANDARD_MAP, to.x, y));
     return tiles;
   }
   const tiles: number[] = [];
@@ -151,12 +151,12 @@ export function generateSaga(id: DungeonId): WorldState {
   /** 0 rock, 1 room, 2 corridor. */
   const floor = new Uint8Array(MAP_W * MAP_H);
   const roomOf = new Int16Array(MAP_W * MAP_H).fill(-1);
-  const isFloor = (x: number, y: number): boolean => inBounds(x, y) && floor[tileIndex(x, y)]! > 0;
+  const isFloor = (x: number, y: number): boolean => inBounds(STANDARD_MAP, x, y) && floor[tileIndex(STANDARD_MAP, x, y)]! > 0;
 
   def.rooms.forEach((r, i) => {
     for (let y = r.y; y < r.y + r.h; y++)
       for (let x = r.x; x < r.x + r.w; x++) {
-        const k = tileIndex(x, y);
+        const k = tileIndex(STANDARD_MAP, x, y);
         floor[k] = 1;
         roomOf[k] = i;
         T[k] = r.kind === 'boss' ? def.bossFloor : def.floor;
@@ -173,13 +173,13 @@ export function generateSaga(id: DungeonId): WorldState {
       [def.rooms[ia]!, def.rooms[ib]!].some((r) => x >= r.x - 2 && y >= r.y - 2 && x < r.x + r.w + 2 && y < r.y + r.h + 2);
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
-        const k = tileIndex(x, y);
+        const k = tileIndex(STANDARD_MAP, x, y);
         if (x < 2 || y < 2 || x >= MAP_W - 2 || y >= MAP_H - 2) blocked[k] = 1;
         else if (own(x, y)) continue;
         else
           for (let dy = -2; dy <= 2 && !blocked[k]; dy++)
             for (let dx = -2; dx <= 2; dx++) {
-              const j = tileIndex(Math.min(MAP_W - 1, Math.max(0, x + dx)), Math.min(MAP_H - 1, Math.max(0, y + dy)));
+              const j = tileIndex(STANDARD_MAP, Math.min(MAP_W - 1, Math.max(0, x + dx)), Math.min(MAP_H - 1, Math.max(0, y + dy)));
               if (roomOf[j]! >= 0 || corridor[j]) {
                 blocked[k] = 1;
                 break;
@@ -195,8 +195,8 @@ export function generateSaga(id: DungeonId): WorldState {
         for (let dx = -1; dx <= 1; dx++) {
           const x = x0 + dx;
           const y = y0 + dy;
-          if (!inBounds(x, y)) continue;
-          const j = tileIndex(x, y);
+          if (!inBounds(STANDARD_MAP, x, y)) continue;
+          const j = tileIndex(STANDARD_MAP, x, y);
           if (floor[j] === 0) {
             floor[j] = 2;
             T[j] = def.floor;
@@ -217,7 +217,7 @@ export function generateSaga(id: DungeonId): WorldState {
       let touch = false;
       for (let dy = -1; dy <= 1 && !touch; dy++) for (let dx = -1; dx <= 1; dx++) if (isFloor(x + dx, y + dy)) touch = true;
       if (!touch) continue;
-      T[tileIndex(x, y)] = def.floor;
+      T[tileIndex(STANDARD_MAP, x, y)] = def.floor;
       addObject(world, 'saga_wall', x, y, { variant: def.wall });
     }
 
@@ -258,7 +258,7 @@ export function generateSaga(id: DungeonId): WorldState {
       ].some(([dx, dy]) => {
         const nx = x + dx!;
         const ny = y + dy!;
-        return inBounds(nx, ny) && roomOf[tileIndex(nx, ny)] === ri;
+        return inBounds(STANDARD_MAP, nx, ny) && roomOf[tileIndex(STANDARD_MAP, nx, ny)] === ri;
       });
       if (touches && addObject(world, 'saga_gate', x, y, { variant: def.wall })) into.push({ x, y });
     }
@@ -276,7 +276,7 @@ export function generateSaga(id: DungeonId): WorldState {
       for (let dx = -2; dx <= 2; dx++) {
         const nx = x + dx;
         const ny = y + dy;
-        if (inBounds(nx, ny) && floor[tileIndex(nx, ny)] === 2) return true;
+        if (inBounds(STANDARD_MAP, nx, ny) && floor[tileIndex(STANDARD_MAP, nx, ny)] === 2) return true;
       }
     return false;
   };

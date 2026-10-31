@@ -1,6 +1,6 @@
 // The pond and the rain: lily pads and jumping fish, the moon and the stars mirrored in the water at night, and
 // puddles that gather on the paths when it rains and slowly dry up afterwards.
-import { MAP_H, MAP_W, TILE } from '@lilla-garden/shared';
+import { TILE, inBounds, mapH, mapW, tileIndex } from '@lilla-garden/shared';
 import { on } from './features.ts';
 import { alpha, clamp01, drawSprite, rgba, smooth } from './gfx.ts';
 import { cellHash, inView, type Scene } from './scene.ts';
@@ -41,7 +41,7 @@ export class Water {
   }
 
   private isWater(sc: Scene, x: number, y: number): boolean {
-    return x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && sc.world.terrain[y * MAP_W + x] === 'water';
+    return inBounds(sc.world, x, y) && sc.world.terrain[tileIndex(sc.world, x, y)] === 'water';
   }
 
   update(sc: Scene, mapWeather: string | null): void {
@@ -93,7 +93,7 @@ export class Water {
         this.ringAcc -= 1;
         const x = Math.floor((sc.vx + Math.random() * sc.vw) / TILE);
         const y = Math.floor((sc.vy + Math.random() * sc.vh) / TILE);
-        if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H || !PUDDLY.has(sc.world.terrain[y * MAP_W + x]!) || cellHash(x, y, 30) > 0.4) continue;
+        if (!inBounds(sc.world, x, y) || !PUDDLY.has(sc.world.terrain[tileIndex(sc.world, x, y)]!) || cellHash(x, y, 30) > 0.4) continue;
         const p = this.puddleAt(x, y);
         this.rings.push({ x: p.x + (Math.random() - 0.5) * p.w * 0.6, y: p.y + (Math.random() - 0.5) * p.w * 0.2, t: 0, max: 0.5, size: 0.5 });
       }
@@ -112,8 +112,8 @@ export class Water {
     const ex = sc.extras;
     const x0 = Math.max(0, Math.floor(sc.vx / TILE) - 1);
     const y0 = Math.max(0, Math.floor(sc.vy / TILE) - 1);
-    const x1 = Math.min(MAP_W - 1, Math.ceil((sc.vx + sc.vw) / TILE));
-    const y1 = Math.min(MAP_H - 1, Math.ceil((sc.vy + sc.vh) / TILE));
+    const x1 = Math.min(mapW(sc.world) - 1, Math.ceil((sc.vx + sc.vw) / TILE));
+    const y1 = Math.min(mapH(sc.world) - 1, Math.ceil((sc.vy + sc.vh) / TILE));
     // lily pads on ponds and lakes, not on the sea or in caves
     const sea = sc.world.biome === 'strand';
     if (on('pond') && sc.where !== 'cave' && !sea)
@@ -131,7 +131,7 @@ export class Water {
     const k = smooth(this.wet);
     for (let y = y0; y <= y1; y++)
       for (let x = x0; x <= x1; x++) {
-        if (!PUDDLY.has(sc.world.terrain[y * MAP_W + x]!) || cellHash(x, y, 30) > 0.4) continue;
+        if (!PUDDLY.has(sc.world.terrain[tileIndex(sc.world, x, y)]!) || cellHash(x, y, 30) > 0.4) continue;
         const p = this.puddleAt(x, y);
         const w = p.w * (0.4 + 0.6 * k);
         drawSprite(ex.puddle, p.x, p.y, w, w * 0.42, 0, rgba(0.58, 0.68, 0.8, 0.7 * k));
