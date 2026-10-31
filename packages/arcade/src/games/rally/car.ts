@@ -22,7 +22,7 @@ export interface Ground {
 export const Ground_ = { Asphalt: 0, Gravel: 1, Kerb: 2, Grass: 3, Snow: 4, Sand: 5, Ice: 6, DeepSnow: 7, SoftSand: 8 } as const;
 
 /** Grip and rolling resistance per ground (index = Ground_ value). Rolling resistance grows with speed off the road. */
-const MU = [1.2, 0.86, 1.08, 0.74, 0.55, 0.8, 0.4, 0.5, 0.7];
+const MU = [1.2, 0.95, 1.08, 0.74, 0.55, 0.8, 0.4, 0.5, 0.7];
 const ROLL = [0.15, 0.55, 0.3, 2.6, 0.5, 1.4, 0.1, 1.9, 2.2];
 const ROLL_V = [0, 0, 0, 0.05, 0, 0.012, 0, 0.04, 0.05];
 const ROAD_GROUND = [Ground_.Asphalt, Ground_.Gravel, Ground_.Snow, Ground_.Sand, Ground_.Ice];
@@ -112,6 +112,8 @@ export class Car {
   /** What the ground off the road is at a point (grass when not set): snow, sand, ice on the lake. */
   offroadAt: ((x: number, z: number) => number) | null = null;
   private prevD = 0;
+  /** Last step's rear lateral force (N), so the traction control can leave grip for cornering. */
+  private fyRear = 0;
 
   constructor(private track: Track) {}
 
@@ -123,6 +125,7 @@ export class Car {
     this.vx = this.vz = this.vy = 0;
     this.yawRate = 0;
     this.steerAngle = 0;
+    this.fyRear = 0;
     this.gear = 1;
     this.reverse = false;
     this.track.project(this.x, this.z, -1, this.proj);
@@ -175,7 +178,11 @@ export class Car {
     const maxSteer = 0.62 / (1 + Math.abs(vLong) / 11);
     let target = clamp(c.steer, -1, 1) * maxSteer;
     const beta = Math.abs(vLong) > 3 ? Math.atan2(vLat, Math.abs(vLong)) * Math.sign(vLong) : 0;
-    target += clamp(beta * this.assist * (c.handbrake ? 0.5 : 1.3), -0.32, 0.32);
+    // the countersteer help backs off while the driver holds the wheel over, so the small slides of loose
+    // ground don't steer the bend away from them; it comes back in full once the car really starts to spin
+    const holdWheel = Math.abs(c.steer) * (1 - smooth(0.2, 0.4, Math.abs(beta)));
+    const csHelp = c.handbrake ? 0.5 : 1.3 * (1 - 0.75 * holdWheel);
+    target += clamp(beta * this.assist * csHelp, -0.32, 0.32);
     const rate = 3.2 + this.assist * 2;
     this.steerAngle += clamp(target - this.steerAngle, -rate * dt, rate * dt);
     const delta = this.steerAngle;
@@ -261,8 +268,10 @@ export class Car {
       let fxF = -dirSign * brake * 0.62;
       let fxR = drive - dirSign * brake * 0.38;
       if (c.handbrake && va > 0.5) fxR -= dirSign * Math.min(0.8 * rearMax, stopCap * 0.5);
-      // traction control (and wheelspin when it is overwhelmed)
-      const tcCap = rearMax * this.traction;
+      // traction control (and wheelspin when it is overwhelmed); it only hands the engine the grip the
+      // cornering leaves over, or on loose ground the throttle would take all the rear grip and the car slide wide
+      const latUse = Math.min(Math.abs(this.fyRear), rearMax * 0.9);
+      const tcCap = Math.sqrt(rearMax * rearMax - latUse * latUse) * this.traction;
       this.wheelspin = drive > tcCap ? clamp((drive - tcCap) / (rearMax * 0.4), 0, 1) : 0;
       if (Math.abs(fxR) > tcCap && !c.handbrake) fxR = Math.sign(fxR) * tcCap;
       fxF = clamp(fxF, -frontMax * 0.95, frontMax * 0.95);
@@ -283,6 +292,7 @@ export class Car {
       if (c.handbrake && va > 2) capR *= 0.5;
       const fyF = -capF * tyre(af, 11);
       const fyR = -capR * tyre(ar, 14);
+      this.fyRear = fyR;
       this.frontSlip = clamp((Math.abs(af) - 0.13) / 0.22, 0, 1);
       this.rearSlip = clamp((Math.abs(ar) - 0.1) / 0.2, 0, 1);
 
