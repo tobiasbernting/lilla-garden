@@ -165,7 +165,10 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
     }
   };
   if (access) {
-    access.onChange = enforce;
+    access.onChange = () => {
+      enforce();
+      game.voice.refresh();
+    };
     const t1 = setInterval(enforce, 15_000);
     const t2 = setInterval(() => void access.cleanup(), 3_600_000);
     t1.unref();
@@ -281,6 +284,14 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
                 const mode = form.get('mode');
                 if (mode === 'closed' || mode === 'family' || mode === 'open') {
                   await access.setMode(mode as AccessMode, ip);
+                  m = 'Sparat';
+                }
+                break;
+              }
+              case 'voice': {
+                const v = form.get('voice');
+                if (v === 'off' || v === 'family' || v === 'open') {
+                  await access.setVoice(v, ip);
                   m = 'Sparat';
                 }
                 break;
@@ -458,10 +469,10 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
       if (access.gate(device) !== 'ok') return refuse('403 Forbidden');
       access.seen(device!, clientIp(req));
     }
-    wss.handleUpgrade(req, socket, head, (ws) => onSocket(ws, device));
+    wss.handleUpgrade(req, socket, head, (ws) => onSocket(ws, device, clientIp(req)));
   });
 
-  const onSocket = (ws: WebSocket, device: Device | null): void => {
+  const onSocket = (ws: WebSocket, device: Device | null, ip: string): void => {
     const conn: Conn = { ws, deviceId: device?.id ?? null, playerId: null };
     conns.add(conn);
     const link: Link = {
@@ -475,7 +486,7 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
       },
       close: () => ws.close(),
     };
-    const handle = game.connect(link);
+    const handle = game.connect(link, { ip, guest: device?.kind === 'guest' });
     ws.on('message', (data) => {
       let msg: ClientMsg;
       try {

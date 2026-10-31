@@ -28,6 +28,10 @@ import {
   type SimCtx,
   type TalkCtx,
   type WorldState,
+  mySpeaker,
+  offers,
+  voicePeers,
+  type VoiceState,
 } from './index.ts';
 
 const ctx = (now = 1_000_000): SimCtx => ({ season: 'none', rnd: mulberry32(7), now });
@@ -238,5 +242,23 @@ describe('villager conversations', () => {
     expect(talkNode('sven', 'weather', tctx()).say).toContain('Regn');
     const noPets = talkNode('elsa', 'topics', { ...tctx(), pets: [], weather: null });
     expect(noPets.options.some((o) => o.go === 'pet' || o.go === 'weather')).toBe(false);
+  });
+});
+
+describe('voice', () => {
+  const state = (room: string, rooms: VoiceState['rooms']): VoiceState => ({ allowed: true, room, joined: true, rooms, talking: [] });
+  it('connects a speaker to the speakers of the other rooms only', () => {
+    const st = state('r1', [
+      { id: 'r1', members: [{ id: 'a', name: 'A', joined: true }], speaker: 'a' },
+      { id: 'r2', members: [{ id: 'b', name: 'B', joined: true }], speaker: 'b' },
+      { id: 'r3', members: [{ id: 'c', name: 'C', joined: false }], speaker: null },
+    ]);
+    expect(voicePeers(st)).toEqual(['b']);
+    expect(mySpeaker(st)).toBe('a');
+    expect(mySpeaker(state('r3', st.rooms))).toBeNull();
+  });
+  it('lets exactly one of two speakers make the offer', () => {
+    expect(offers('a', 'b')).not.toBe(offers('b', 'a'));
+    expect(offers('a', 'b') || offers('b', 'a')).toBe(true);
   });
 });

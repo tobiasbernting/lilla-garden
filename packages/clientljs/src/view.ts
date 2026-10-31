@@ -1525,6 +1525,7 @@ export class View implements HudTarget {
       if (!p || !inView(a.x - 20, a.y - 40, 40, 50)) continue;
       this.queueCharacter(a, p);
       this.updateBubble(a, p);
+      a.label.classList.toggle('talking', client.talking.has(id));
     }
     for (const [id, a] of this.npcs) {
       if (!inView(a.x - 20, a.y - 40, 40, 50)) continue;

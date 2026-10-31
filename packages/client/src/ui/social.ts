@@ -5,6 +5,7 @@ import { net } from '../net.js';
 import { bus, client, myPlayer } from '../state.js';
 import { SFX } from '../sound.ts';
 import { clear, h, onTap } from './dom.js';
+import type { VoiceUi } from './voice.ts';
 
 type ChatLine = Extract<Change, { t: 'chat' }>;
 
@@ -124,14 +125,14 @@ export class SocialButtons {
   private stay: HTMLElement;
   private come: HTMLElement;
 
-  constructor(root: HTMLElement, chat: Chat) {
+  constructor(root: HTMLElement, chat: Chat, voice?: VoiceUi) {
     const talk = h('div', { class: 'round small', title: 'Prata med alla (Enter eller T)' }, '💬');
     onTap(talk, () => chat.toggle());
     this.stay = h('div', { class: 'round small pet-btn', title: `${T.petsStayBtn} (X)` }, h('span', null, '✋'), h('i', null, T.petsStayBtn));
     onTap(this.stay, () => petCommand('stay'));
     this.come = h('div', { class: 'round small pet-btn', title: `${T.petsComeBtn} (V)` }, h('span', null, '🎵'), h('i', null, T.petsComeBtn));
     onTap(this.come, () => petCommand('come'));
-    this.el = h('div', { class: 'social' }, talk, this.stay, this.come);
+    this.el = h('div', { class: 'social' }, talk, voice?.btn, this.stay, this.come);
     root.append(this.el);
     const refresh = () => this.refresh();
     bus.on('change', (c) => {

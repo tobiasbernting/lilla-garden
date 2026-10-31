@@ -163,6 +163,9 @@ export class Net {
       case 'roam':
         bus.emit('rally', msg);
         break;
+      case 'voice':
+        bus.emit('voice', msg);
+        break;
       case 'pong':
         break;
     }

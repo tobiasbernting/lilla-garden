@@ -65,16 +65,27 @@ import {
   type WeatherKind,
   type SimCtx,
   type WorldState,
+  type IceServer,
+  type VoicePolicy,
 } from '../../shared/src/index.ts';
 import type { Store } from './db/store.ts';
 import { Races } from './races.ts';
+import { Voice } from './voice.ts';
 
 export interface Link {
   send(msg: ServerMsg): void;
   close(): void;
 }
 
-interface Client {
+/** What the server knows about a connection before the player says hello (for the voice rooms). */
+export interface ConnInfo {
+  /** The visitor's address: devices behind the same one are in the same room. */
+  ip?: string;
+  /** A guest device (the parent may keep guests out of voice). */
+  guest?: boolean;
+}
+
+interface Client extends ConnInfo {
   link: Link;
   playerId: string | null;
 }
@@ -83,6 +94,8 @@ export interface GameOptions {
   seasonOverride?: string | undefined;
   /** Replace timers (tests). */
   autoStart?: boolean;
+  /** Röstprat: who may use voice (default everyone, as on a home network) and the STUN/TURN servers (default none). */
+  voice?: { policy?: () => VoicePolicy; ice?: () => Promise<IceServer[]> };
 }
 
 /** How long an offline player may stay in the cave before being carried out. */
@@ -116,10 +129,20 @@ export class Game {
     },
   });
 
+  /** Röstprat: the rooms, their speakers and the handshake between them. */
+  readonly voice: Voice;
+
   constructor(
     private store: Store,
     private opts: GameOptions = {},
-  ) {}
+  ) {
+    this.voice = new Voice({
+      send: (id, msg) => this.sendTo(id, msg),
+      name: (id) => this.world?.players[id]?.name,
+      policy: opts.voice?.policy ?? (() => 'open'),
+      ice: opts.voice?.ice ?? (async () => []),
+    });
+  }
 
   async start(): Promise<void> {
     this.world = await this.store.load();
@@ -287,8 +310,8 @@ export class Game {
 
   // ---- connections ----
 
-  connect(link: Link): (msg: ClientMsg) => void {
-    const client: Client = { link, playerId: null };
+  connect(link: Link, info: ConnInfo = {}): (msg: ClientMsg) => void {
+    const client: Client = { link, playerId: null, ...info };
     this.clients.add(client);
     return (msg) => this.handle(client, msg);
   }
@@ -299,6 +322,7 @@ export class Game {
       this.clients.delete(c);
       if (c.playerId && ![...this.clients].some((o) => o.playerId === c.playerId)) {
         const p = this.world.players[c.playerId];
+        this.voice.offline(c.playerId);
         this.dropFromRacesLater(c.playerId);
         this.pending.push(...setOnline(this.world, c.playerId, false));
         this.dispatchPending();
@@ -349,6 +373,7 @@ export class Game {
         }
       }
       client.playerId = msg.playerId;
+      this.voice.online(msg.playerId, client.ip ?? 'local', !!client.guest);
       // back in time: still in the race room or out driving
       clearTimeout(this.raceDrops.get(msg.playerId));
       this.raceDrops.delete(msg.playerId);
@@ -488,6 +513,10 @@ export class Game {
         break;
       case 'roam':
         this.races.roam(pid, msg);
+        break;
+      case 'voice':
+        this.voice.handle(pid, msg);
+        break;
         break;
       case 'chat': {
         const text = cleanChat(msg.text);
