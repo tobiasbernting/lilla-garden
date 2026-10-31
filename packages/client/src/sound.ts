@@ -51,8 +51,56 @@ export const noise = (dur: number, vol = 0.06): void => {
   src.start();
 };
 
+/**
+ * A horse's whinny: a nasal voice that jumps up, wavers fast and slides down in a long, shaky neigh, with a snort at
+ * the end (the market town's carts and riding horses say hello this way).
+ */
+function whinny(): void {
+  const c = ensure();
+  if (!c) return;
+  const t = c.currentTime;
+  const dur = 0.95;
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  // the neigh's shape: a quick rise, a held top, a long wobbly slide down
+  o.frequency.setValueAtTime(520, t);
+  o.frequency.exponentialRampToValueAtTime(980, t + 0.09);
+  o.frequency.setValueAtTime(980, t + 0.22);
+  o.frequency.exponentialRampToValueAtTime(640, t + 0.55);
+  o.frequency.exponentialRampToValueAtTime(330, t + dur);
+  // the whinny's shiver: a fast vibrato that grows as the voice comes down
+  const lfo = c.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.setValueAtTime(16, t);
+  lfo.frequency.linearRampToValueAtTime(11, t + dur);
+  const depth = c.createGain();
+  depth.gain.setValueAtTime(25, t);
+  depth.gain.linearRampToValueAtTime(110, t + dur);
+  lfo.connect(depth).connect(o.frequency);
+  // a horse's long nose: a band of the voice, not the buzz of a saw
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = 1300;
+  f.Q.value = 1.6;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(0.16, t + 0.05);
+  g.gain.setValueAtTime(0.14, t + 0.5);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(f).connect(g).connect(c.destination);
+  o.start(t);
+  lfo.start(t);
+  o.stop(t + dur);
+  lfo.stop(t + dur);
+  // and a little snort
+  setTimeout(() => noise(0.12, 0.05), (dur + 0.08) * 1000);
+}
+
 export const SFX = {
-  honk: () => {
+  /** The 🐴 emote and a cart waiting for you to cross: a whinny. */
+  honk: () => whinny(),
+  /** Rallyvärlden's cars keep their real horn. */
+  horn: () => {
     tone(440, 0.18, 'square', 0.07);
     tone(554, 0.18, 'square', 0.05);
     setTimeout(() => {

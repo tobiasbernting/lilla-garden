@@ -1831,7 +1831,8 @@ export function killXp(area: WorldState, by: PlayerState, mob: AnimalState, out:
   const there = Object.values(area.players).filter((q) => q.id !== by.id && q.online && q.area === key && dist(q, mob) <= FIELD_SHARE);
   for (const q of [by, ...there]) {
     giveXp(q, n, out);
-    if (q.id !== by.id) out.push(playerChange(q));
+    // everyone's record goes out (the killer's too: not every kill path sends it), so the level chips follow
+    out.push(playerChange(q));
   }
 }
 

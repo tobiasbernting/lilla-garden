@@ -20,6 +20,7 @@ import {
   attackSpellOf,
   chapterDone,
   countItem,
+  heroLevel,
   isHostile,
   isIndoorKey,
   isSagaKey,
@@ -65,6 +66,11 @@ export const classOf = (p: PlayerState | undefined): ClassDef | null => {
   return cls ? CLASSES[cls] : null;
 };
 export const myClass = (): ClassDef | null => classOf(myPlayer());
+
+/** A player's hero level (every player has one; experience comes from every monster beaten). */
+export const levelOf = (p: PlayerState | undefined): number => heroLevel(p?.saga);
+/** Is the level worth showing (past the first, or a hero with a class)? */
+export const showsLevel = (p: PlayerState | undefined): boolean => !!p && (levelOf(p) >= 2 || !!p.saga?.cls);
 
 /** A player's newest title, shown under their name. */
 export const titleOf = (p: PlayerState | undefined): string | null => {

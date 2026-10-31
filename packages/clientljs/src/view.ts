@@ -5,6 +5,7 @@
 import { keyIsDown, keyWasPressed, mainCanvasSize, setCameraPos, setCameraScale, vec2, drawRect, rgb, setAdditiveBlendMode } from 'littlejsengine';
 import {
   ANIMALS,
+  auraOf,
   BATH_ROOM,
   BOOST_SPEED_MUL,
   countItem,
@@ -62,7 +63,7 @@ import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
 import { SFX } from '@v1/sound.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '@v1/state.ts';
-import { attackTarget, heroOn, sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
+import { attackTarget, heroOn, levelOf, sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
 import type { HudTarget } from '@v1/ui/hud.ts';
 import { animalSprites, characterSprites, loadSprites, paintingSprite, type ObjectSprites, type Sprites } from './art.ts';
 import type { Sprite } from './atlas.ts';
@@ -198,11 +199,41 @@ interface Actor {
   /** A hero's glowing weapon at night, and the colour it was made for. */
   weaponLamp?: Lamp;
   weaponGlow?: string;
+  /** The hero level's aura (0 none, 1 a warm glow, 2 a rainbow shimmer) and its light. */
+  aura?: number;
+  auraLamp?: Lamp;
+  /** Glowing clothes: the light, and the glows it was made for ("#ffb347", "rainbow", or two joined by a comma). */
+  clothLamp?: Lamp;
+  clothGlow?: string;
   /** Seconds to the next puff of dust while running. */
   dust: number;
   seed: number;
   species?: string;
 }
+
+/** A glow colour ("#ffb347") as light. */
+const glowRgb = (glow: string): [number, number, number] => {
+  const n = parseInt(glow.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+};
+/** The rainbow a 'rainbow' glow (and the highest aura) glides through, soft and pale enough to read as light. */
+const RAINBOW: [number, number, number][] = [
+  [1, 0.5, 0.5],
+  [1, 0.82, 0.42],
+  [0.55, 1, 0.55],
+  [0.45, 0.82, 1],
+  [0.78, 0.55, 1],
+];
+/** The rainbow at a point 0..1 along it (blended between its colours). */
+const rainbowAt = (u: number): [number, number, number] => {
+  const n = RAINBOW.length;
+  const x = (((u % 1) + 1) % 1) * n;
+  const i = Math.floor(x);
+  const e = x - i;
+  const a = RAINBOW[i % n]!;
+  const b = RAINBOW[(i + 1) % n]!;
+  return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e];
+};
 
 export class View implements HudTarget {
   joystick = { dx: 0, dy: 0 };
@@ -619,6 +650,8 @@ export class View implements HudTarget {
     if (!a) return;
     a.lamp?.destroy();
     a.weaponLamp?.destroy();
+    a.auraLamp?.destroy();
+    a.clothLamp?.destroy();
     a.label.remove();
     a.bubble?.remove();
     this.players.delete(id);
@@ -631,7 +664,8 @@ export class View implements HudTarget {
     let actor = this.animals.get(a.id);
     if (!actor) {
       actor = this.newActor('animal', frames, key, a.x, a.y, this.makeLabel(a.name, 'animal'), a.species);
-      if (isVehicle(a)) actor.lamp = new Lamp(a.x, a.y, { color: [1, 0.95, 0.8], radius: 3, strength: 0.7 }); // headlights
+      // the carts and coaches carry a lantern at the front (warm amber, swinging a little)
+      if (isVehicle(a)) actor.lamp = new Lamp(a.x, a.y, { color: [1, 0.66, 0.3], radius: 2.8, strength: 0.75, flicker: 0.35, glow: 0.9 });
       else {
         // creatures of fire, frost spirits and the golden boar glow in the dark
         const glow = lampForAnimal(a.species);
@@ -1199,15 +1233,24 @@ export class View implements HudTarget {
       a.lamp.level += (carried - a.lamp.level) * Math.min(1, dt * 3);
       a.lamp.moveTo(a.x, a.y - 6);
       a.lamp.update(lit, this.t);
-      if (p) this.updateWeaponLamp(a, p, lit);
+      if (p) {
+        this.updateWeaponLamp(a, p, lit);
+        this.updateGlowLamps(a, p, lit);
+      }
     }
     for (const [id, a] of this.animals) {
       if (!a.lamp) continue;
       const an = this.world!.animals[id];
-      // headlights shine where the car is going; a glowing creature shines from its middle
+      // a cart's lantern hangs at its front, where it is going; a glowing creature shines from its middle
       const f = an?.facing ?? 'right';
       if (an && !isVehicle(an)) a.lamp.moveTo(a.x, a.y + 4 - (ANIMAL_SIZE[an.species]?.h ?? 16) / 2);
-      else a.lamp.moveTo(a.x + (f === 'left' ? -18 : f === 'right' ? 18 : 0), a.y + (f === 'up' ? -14 : f === 'down' ? 14 : 0));
+      else {
+        // at the horse's head: the front of the picture, a little over half its height up
+        const size = an ? ANIMAL_SIZE[an.species] : undefined;
+        const fx = (size?.w ?? 32) / 2 - 3;
+        const up = (size?.h ?? 16) * 0.6;
+        a.lamp.moveTo(a.x + (f === 'left' ? -fx : f === 'right' ? fx : 0), a.y + 4 - up + (f === 'up' ? -6 : f === 'down' ? 4 : 0));
+      }
       a.lamp.update(lit, this.t);
     }
     for (const f of this.flashLamps) {
@@ -1667,15 +1710,123 @@ export class View implements HudTarget {
       a.weaponGlow = glow ?? undefined;
       if (glow) {
         const rainbow = glow === 'rainbow';
-        const n = rainbow ? 0xffffff : parseInt(glow.slice(1), 16);
-        const color: [number, number, number] = [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-        a.weaponLamp = new Lamp(a.x, a.y, { color, radius: 1.8, strength: 0.55, flicker: 0.2, glow: 0.6, twinkle: rainbow });
+        a.weaponLamp = new Lamp(a.x, a.y, { color: rainbow ? [1, 1, 1] : glowRgb(glow), radius: 1.8, strength: 0.55, flicker: 0.2, glow: 0.6, twinkle: rainbow });
       }
     }
     if (!a.weaponLamp) return;
     const s = p.facing === 'left' ? -1 : p.facing === 'right' ? 1 : p.facing === 'down' ? 0.8 : -0.8;
     a.weaponLamp.moveTo(a.x + s * 6, a.y - 8);
     a.weaponLamp.update(lit, this.t);
+  }
+
+  /** The glows of a player's worn hat and shirt (the saga's level clothes light up), joined by a comma. */
+  private clothGlowOf(p: PlayerState): string {
+    const glows: string[] = [];
+    for (const id of [p.outfit.hat, p.outfit.shirt]) {
+      const g = id ? sagaItem(id)?.glow : undefined;
+      if (g && !glows.includes(g)) glows.push(g);
+    }
+    return glows.join(',');
+  }
+
+  /**
+   * A high level's aura and glowing clothes, as light: a warm glow (aura 1) or a slowly shifting rainbow (aura 2)
+   * around the player, and a light in the clothes' colour. Like every lamp they mostly show at night and in the dark.
+   */
+  private updateGlowLamps(a: Actor, p: PlayerState, lit: number): void {
+    const aura = p.sleeping ? 0 : auraOf(levelOf(p));
+    if (aura !== (a.aura ?? 0)) {
+      a.auraLamp?.destroy();
+      a.auraLamp = undefined;
+      a.aura = aura;
+      if (aura === 1) a.auraLamp = new Lamp(a.x, a.y, { color: [1, 0.84, 0.55], radius: 2.4, strength: 0.4, flicker: 0.15 });
+      else if (aura === 2) a.auraLamp = new Lamp(a.x, a.y, { color: [1, 0.9, 0.8], radius: 3, strength: 0.55, flicker: 0.1, glow: 0.5, cycle: RAINBOW, cycleSec: 2.5 });
+    }
+    const glow = p.sleeping ? '' : this.clothGlowOf(p);
+    if (glow !== (a.clothGlow ?? '')) {
+      a.clothLamp?.destroy();
+      a.clothLamp = undefined;
+      a.clothGlow = glow;
+      if (glow) {
+        const glows = glow.split(',');
+        // a rainbow glides through every colour; two glowing pieces take turns
+        const cycle = glows.includes('rainbow') ? RAINBOW : glows.length > 1 ? glows.map(glowRgb) : undefined;
+        a.clothLamp = new Lamp(a.x, a.y, { color: cycle ? cycle[0]! : glowRgb(glows[0]!), radius: 2.2, strength: 0.5, flicker: 0.15, glow: 0.35, cycle, cycleSec: glows.includes('rainbow') ? 1.6 : 2.5 });
+      }
+    }
+    const lift = this.rideInfo(p).lift;
+    if (a.auraLamp) {
+      // from the ground at the feet, so its haze (aura 2) is a pool of light and does not wash out the body
+      a.auraLamp.moveTo(a.x, a.y + 2 - lift);
+      a.auraLamp.update(lit, this.t);
+    }
+    if (a.clothLamp) {
+      a.clothLamp.moveTo(a.x, a.y - 10 - lift);
+      a.clothLamp.update(lit, this.t);
+    }
+  }
+
+  /**
+   * Over the lit scene (additive): the aura's slow sparkles drifting up around a player, and a faint halo of pixels
+   * around glowing clothes. Gentle by day (a few sparkles), richer at night and in the dungeons.
+   */
+  private drawPlayerGlows(): void {
+    const world = this.world;
+    if (!world) return;
+    const [vx, vy, vw, vh] = this.viewRect();
+    const night = smooth((this.sky.dark - 0.2) / 0.5);
+    const vis = 0.35 + 0.65 * night;
+    const glowS = this.art.glow;
+    const px = this.art.white;
+    for (const [id, a] of this.players) {
+      const aura = a.aura ?? 0;
+      const cloth = a.clothGlow ?? '';
+      if (!aura && !cloth) continue;
+      if (a.x < vx - 30 || a.x > vx + vw + 30 || a.y < vy - 40 || a.y > vy + vh + 30) continue;
+      const p = world.players[id];
+      if (!p || p.sleeping || this.sagaFx.pose(id) === 'down') continue;
+      const lift = this.rideInfo(p).lift;
+      const footY = a.y + 4 - lift;
+      if (aura) {
+        // a few sparkles rising slowly around the player, each on its own beat
+        const n = Math.round(aura === 2 ? lerp(3, 7, night) : lerp(1.5, 4, night));
+        for (let i = 0; i < n; i++) {
+          const period = 2.8 + (i % 3) * 0.45;
+          const u = (this.t / period + a.seed * 0.37 + i * 0.618) % 1;
+          const ang = a.seed + i * 2.4 + this.t * 0.35;
+          const r = 7 + 3 * Math.sin(i * 1.7 + a.seed);
+          const x = a.x + Math.cos(ang) * r;
+          const y = footY - 2 - u * 24 + Math.sin(ang) * 2;
+          const tw = Math.sin(u * Math.PI) * (0.65 + 0.35 * Math.sin(this.t * 6 + i * 3));
+          const [r0, g0, b0] = aura === 2 ? rainbowAt(this.t * 0.06 + i / n + a.seed) : [1, 0.85, 0.45];
+          drawSprite(glowS, x, y, 5, 5, 0, rgba(r0, g0, b0, 0.45 * tw * vis));
+          drawSprite(px, x, y, 1, 1, 0, rgba(1, 1, 0.92, 0.9 * tw * vis));
+        }
+        // the highest aura: a faint shimmering ring at the feet
+        if (aura === 2) {
+          const [r0, g0, b0] = rainbowAt(this.t * 0.05 + a.seed);
+          drawSprite(glowS, a.x, footY - 1, 26, 9, 0, rgba(r0, g0, b0, 0.22 * vis));
+        }
+      }
+      if (cloth) {
+        // a faint halo of pixels around the body, slowly turning, each pixel twinkling in the clothes' colour
+        const glows = cloth.split(',');
+        const rainbow = glows.includes('rainbow');
+        const N = 12;
+        const cy = footY - 12;
+        for (let i = 0; i < N; i++) {
+          const ang = (i / N) * Math.PI * 2 + this.t * 0.5;
+          const x = a.x + Math.cos(ang) * 8.5;
+          const y = cy + Math.sin(ang) * 13;
+          const tw = 0.5 + 0.5 * Math.sin(this.t * 3.1 + i * 1.9 + a.seed);
+          const [r0, g0, b0] = rainbow ? rainbowAt(i / N + this.t * 0.15) : glowRgb(glows[i % glows.length]!);
+          drawSprite(px, Math.round(x), Math.round(y), 1, 1, 0, rgba(r0, g0, b0, (0.25 + 0.35 * tw) * vis));
+          drawSprite(glowS, x, y, 4, 4, 0, rgba(r0, g0, b0, 0.12 * tw * vis));
+        }
+        const [r0, g0, b0] = rainbow ? rainbowAt(this.t * 0.12 + a.seed) : glowRgb(glows[0]!);
+        drawSprite(glowS, a.x, cy, 24, 34, 0, rgba(r0, g0, b0, 0.1 * vis));
+      }
+    }
   }
 
   /** The item in someone's hand (tools, weapons, food… everything), swung when used; a hero's weapon in hero mode. */
@@ -1779,6 +1930,9 @@ export class View implements HudTarget {
       setAdditiveBlendMode(false);
     }
     this.sagaFx.drawBright();
+    setAdditiveBlendMode(true);
+    this.drawPlayerGlows();
+    setAdditiveBlendMode(false);
     // a soft fade from black after going in or out
     if (this.fade > 0) drawRect(vec2((vx + vw / 2) / TILE, -(vy + vh / 2) / TILE), vec2(vw / TILE + 2, vh / TILE + 2), rgb(0, 0, 0, smooth(this.fade)));
   }

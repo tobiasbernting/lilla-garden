@@ -8,6 +8,7 @@ import { bus, client, myPlayer, serverNow } from '../state.js';
 import { clear, h, icon, onTap } from './dom.js';
 import { isMuted, setMuted } from '../sound.ts';
 import { SAGA_SFX } from '../sagasfx.ts';
+import { levelOf, showsLevel } from '../saga.ts';
 
 /** What the HUD drives on the game view (the 2D scene or the 3D view). */
 export interface HudTarget {
@@ -55,6 +56,10 @@ export class Hud {
   ) {
     this.root = h('div', { class: 'hud' });
     this.top = h('div', { class: 'hud-top' });
+    // the top row is drawn anew with every state: the level chip's tap (it opens the journal's level page) is caught here
+    onTap(this.top, (ev) => {
+      if ((ev.target as HTMLElement | null)?.closest?.('.chip.level')) document.dispatchEvent(new Event('lilla:journal'));
+    });
     this.hotbar = h('div', { class: 'hotbar' });
     this.heldName = h('div', { class: 'hud-name' });
     this.toasts = h('div', { class: 'toasts' });
@@ -199,6 +204,10 @@ export class Hud {
     this.top.append(h('div', { class: 'chip' }, `${clock} ${fmt(T.day, { day: client.day })}`));
     if (me) this.top.append(h('div', { class: 'chip' }, h('span', { class: 'coins' }, `${me.coins} ${T.coins}`)));
     if (me && me.stars > 0) this.top.append(h('div', { class: 'chip' }, `⭐ ${me.stars}`));
+    // the hero level, for anyone past the first or with a class; a tap opens the journal's level page
+    if (me && showsLevel(me)) {
+      this.top.append(h('div', { class: 'chip level', title: T.sagaLevelChipTip }, `⭐ ${fmt(T.sagaLevelChip, { n: levelOf(me) })}`));
+    }
     // pizza power, or a berserker's rage in a dungeon
     if (me && me.boostUntil !== undefined && me.boostUntil > serverNow()) this.top.append(isSagaKey(me.area) ? h('div', { class: 'chip', title: SPELLS.raseri?.name }, '🔥💨') : h('div', { class: 'chip', title: T.pizzaPower }, '🍕💨'));
     // hearts: in the cave, when hurt, and always while walking the world as a hero
