@@ -72,6 +72,8 @@ import {
   BOOST_SPEED_MUL,
   ensurePizzeria,
   swapSlots,
+  sortSlots,
+  quickStackToChest,
   tick,
   tileIndex,
   paint,
@@ -2021,5 +2023,128 @@ describe('staden', () => {
     expect(Object.values(old.animals).some((a) => a.species === 'bus')).toBe(true);
     expect(Object.values(old.objects).some((o) => o.kind === 'train_station')).toBe(true);
     expect(ensureCity(old)).toBe(false);
+  });
+});
+
+
+describe('sort and quick stack', () => {
+  function placeChest(world: WorldState, p: PlayerState) {
+    addItem(p.inventory, 'chest', 1);
+    standAt(world, p, 20, 20);
+    clearTile(world, 21, 20);
+    select(p, 'chest');
+    performAction(world, p.id, 21, 20, ctx());
+    return objectAt(world, 21, 20)!;
+  }
+
+  it('sortSlots sorts only the backpack and keeps hotbar and selected', () => {
+    const { world, p } = setup();
+    const hotbar = p.inventory.slice(0, 8).map((s) => (s ? { ...s } : null));
+    p.selected = 2;
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[20] = { item: 'carrot', count: 3 };
+    p.inventory[9] = { item: 'carrot', count: 4 };
+    p.inventory[15] = { item: 'hoe', count: 1 };
+    const out = sortSlots(world, p.id);
+    expect(p.inventory.slice(0, 8)).toEqual(hotbar);
+    expect(p.selected).toBe(2);
+    expect(p.inventory[8]?.item).toBe('hoe');
+    expect(p.inventory[9]).toEqual({ item: 'carrot', count: 7 });
+    expect(p.inventory[10]).toBeNull();
+    expect(toasts(out)).toContain('Sorterat!');
+    expect(out.some((c) => c.t === 'player')).toBe(true);
+  });
+
+  it('sortSlots on a chest needs proximity and a real chest', () => {
+    const { world, p } = setup();
+    const chest = placeChest(world, p);
+    chest.items![5] = { item: 'carrot', count: 1 };
+    chest.items![9] = { item: 'carrot', count: 2 };
+    const out = sortSlots(world, p.id, chest.id);
+    expect(chest.items![0]).toEqual({ item: 'carrot', count: 3 });
+    expect(out.some((c) => c.t === 'object' && c.id === chest.id)).toBe(true);
+    chest.items![20] = { item: 'carrot', count: 1 };
+    standAt(world, p, 40, 40);
+    expect(sortSlots(world, p.id, chest.id)).toEqual([]);
+    expect(chest.items![20]).not.toBeNull();
+    standAt(world, p, 20, 20);
+    expect(sortSlots(world, p.id, 999999)).toEqual([]);
+    const house = Object.values(world.objects).find((o) => o.kind === 'house')!;
+    expect(sortSlots(world, p.id, house.id)).toEqual([]);
+  });
+
+  it('quickStackToChest moves matching backpack items and toasts', () => {
+    const { world, p } = setup();
+    const chest = placeChest(world, p);
+    chest.items![0] = { item: 'carrot', count: 5 };
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[10] = { item: 'carrot', count: 4 };
+    p.inventory[11] = { item: 'potato', count: 2 };
+    p.inventory[1] = { item: 'carrot', count: 7 };
+    const out = quickStackToChest(world, p.id, chest.id);
+    expect(chest.items![0]).toEqual({ item: 'carrot', count: 9 });
+    expect(p.inventory[10]).toBeNull();
+    expect(p.inventory[11]).toEqual({ item: 'potato', count: 2 });
+    expect(p.inventory[1]).toEqual({ item: 'carrot', count: 7 });
+    expect(toasts(out)).toContain('4 saker lades i kistan');
+    expect(out.some((c) => c.t === 'object')).toBe(true);
+    expect(out.some((c) => c.t === 'player')).toBe(true);
+    expect(toasts(quickStackToChest(world, p.id, chest.id))).toContain('Inget i ryggsäcken passar i kistan');
+    standAt(world, p, 40, 40);
+    expect(quickStackToChest(world, p.id, chest.id)).toEqual([]);
+  });
+
+  it('sortSlots keeps the held backpack stack selected', () => {
+    const { world, p } = setup();
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[9] = { item: 'carrot', count: 4 };
+    p.inventory[20] = { item: 'hoe', count: 1 };
+    p.inventory[25] = { item: 'potato', count: 2 };
+    p.selected = 25;
+    sortSlots(world, p.id);
+    expect(p.inventory[p.selected]).toEqual({ item: 'potato', count: 2 });
+    expect(p.selected).toBeGreaterThanOrEqual(8);
+    // a merged stack is followed by item id
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[9] = { item: 'carrot', count: 4 };
+    p.inventory[20] = { item: 'carrot', count: 3 };
+    p.selected = 20;
+    sortSlots(world, p.id);
+    expect(p.inventory[p.selected]?.item).toBe('carrot');
+  });
+
+  it('sort with nothing to change returns only the toast', () => {
+    const { world, p } = setup();
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[8] = { item: 'hoe', count: 1 };
+    expect(sortSlots(world, p.id).map((c) => c.t)).toEqual(['toast']);
+    const chest = placeChest(world, p);
+    chest.items![0] = { item: 'carrot', count: 3 };
+    expect(sortSlots(world, p.id, chest.id).map((c) => c.t)).toEqual(['toast']);
+  });
+
+  it('quickStackToChest leaves the held backpack slot alone and uses the singular text', () => {
+    const { world, p } = setup();
+    const chest = placeChest(world, p);
+    chest.items![0] = { item: 'carrot', count: 5 };
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[10] = { item: 'carrot', count: 1 };
+    p.inventory[12] = { item: 'carrot', count: 4 };
+    p.selected = 12;
+    const out = quickStackToChest(world, p.id, chest.id);
+    expect(p.inventory[12]).toEqual({ item: 'carrot', count: 4 });
+    expect(p.inventory[10]).toBeNull();
+    expect(chest.items![0]).toEqual({ item: 'carrot', count: 6 });
+    expect(toasts(out)).toContain('1 sak lades i kistan');
+  });
+
+  it('quickStackToChest with nothing moved returns only the toast', () => {
+    const { world, p } = setup();
+    const chest = placeChest(world, p);
+    for (let i = 8; i < 32; i++) p.inventory[i] = null;
+    p.inventory[10] = { item: 'potato', count: 2 };
+    const out = quickStackToChest(world, p.id, chest.id);
+    expect(out.map((c) => c.t)).toEqual(['toast']);
+    expect(toasts(out)).toContain('Inget i ryggsäcken passar i kistan');
   });
 });

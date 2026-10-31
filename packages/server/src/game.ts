@@ -31,6 +31,8 @@ import {
   sell,
   setOnline,
   swapSlots,
+  sortSlots,
+  quickStackToChest,
   tagArea,
   teleport,
   ride,
@@ -339,6 +341,22 @@ export class Game {
         break;
       case 'swap':
         changes = swapSlots(w, pid, msg.a, msg.b);
+        break;
+      case 'sort':
+        try {
+          changes = sortSlots(w, pid, typeof msg.chest === 'number' && Number.isFinite(msg.chest) ? Math.floor(msg.chest) : undefined);
+        } catch (e) {
+          console.error('sort failed', e);
+          changes = [];
+        }
+        break;
+      case 'quickStack':
+        try {
+          changes = typeof msg.chest === 'number' && Number.isFinite(msg.chest) ? quickStackToChest(w, pid, Math.floor(msg.chest)) : [];
+        } catch (e) {
+          console.error('quickStack failed', e);
+          changes = [];
+        }
         break;
       case 'craft':
         changes = craft(w, pid, msg.recipe);

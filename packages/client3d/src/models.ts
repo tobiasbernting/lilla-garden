@@ -152,11 +152,26 @@ export function buildModel(o: WorldObject, ctx: ModelCtx, g: GeoBuilder, sg: Geo
       g.box(0, 12, 0, 16, 14, 16, 'planks_spruce');
       g.box(6, 5, 15, 10, 9, 16, 'gold_block');
       return;
-    case 'mailbox':
-      g.box(7, 0, 7, 9, 12, 9, 'log_oak');
-      g.box(4, 12, 2, 12, 20, 14, 'blue_wool');
-      g.box(12, 16, 9, 13, 24, 10, 'red_wool').box(12, 21, 10, 13, 24, 13, 'red_wool');
+    case 'mailbox': {
+      // Farm shop stall ("Gårdsbutik"): corner posts, counter with crates, striped awning, price sign. 2 blocks tall at most.
+      for (const [x, z] of [
+        [0, 1],
+        [14, 1],
+        [0, 13],
+        [14, 13],
+      ] as const)
+        g.box(x, 0, z, x + 2, 26, z + 2, 'log_oak');
+      g.box(0, 0, 8, 16, 12, 15, 'planks_oak'); // counter
+      g.box(-1, 12, 7, 17, 14, 16, 'planks_spruce'); // counter top
+      g.box(1, 14, 9, 7, 18, 14, 'planks_birch'); // crate
+      g.box(2, 18, 10, 6, 19, 13, 'leaves_oak'); // greens in the crate
+      g.box(9, 14, 10, 13, 17, 14, 'red_wool'); // tomatoes
+      g.box(10, 17, 11, 12, 18, 13, 'yellow_wool');
+      g.box(4, 3, 15.2, 12, 9, 16, 'white', rgb('#4a3520')); // price sign
+      g.box(7, 4.5, 16, 9, 7.5, 16.3, 'gold_block');
+      for (let i = 0; i < 8; i++) g.box(-2 + i * 2.5, 26, -1, -2 + (i + 1) * 2.5, 28, 17, i % 2 ? 'white_wool' : 'red_wool'); // awning
       return;
+    }
     case 'wardrobe':
       g.box(1, 0, 3, 15, 30, 14, 'planks_dark');
       g.box(7.5, 2, 14, 8.5, 28, 14.5, 'white', rgb('#2a1a10'));

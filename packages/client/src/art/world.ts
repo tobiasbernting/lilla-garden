@@ -762,10 +762,28 @@ const house = (colour = 0): Px => {
   return p.outline(OUTLINE);
 };
 
+// The farm shop ("Gårdsbutik"): a small market stall with a striped awning, a counter with produce and a price sign.
+// Still registered as the 'mailbox' object kind (ids never change).
 const mailbox = (): Px => {
-  const p = new Px(16, 24).rect(7, 12, 2, 12, WOOD_D);
-  p.rect(2, 4, 12, 9, '#d8363a').rect(2, 4, 12, 1, '#ef6a6a').rect(3, 7, 10, 1, '#ffffff').rect(3, 9, 7, 1, '#ffffff');
-  p.rect(13, 1, 2, 5, '#f2d35a');
+  const p = new Px(16, 24);
+  // posts and dark back wall under the awning
+  p.rect(1, 8, 2, 15, WOOD_D).rect(13, 8, 2, 15, WOOD_D).rect(3, 8, 10, 7, '#5a3d22');
+  // red/white striped awning with a scalloped edge
+  for (let x = 0; x < 16; x += 2) {
+    const c = x % 4 === 0 ? '#d9453b' : '#ffffff';
+    p.rect(x, 2, 2, 6, c);
+    p.rect(x, 8, 2, 1, c);
+  }
+  p.rect(0, 1, 16, 1, '#8f2f2a').rect(0, 7, 16, 1, shade('#d9453b', 0.8));
+  // counter with plank lines
+  p.rect(0, 15, 16, 8, WOOD).rect(0, 15, 16, 1, WOOD_L).rect(0, 22, 16, 1, WOOD_D);
+  for (const x of [5, 10]) p.rect(x, 16, 1, 6, WOOD_D);
+  // produce on the counter: apples, a carrot crate and a bright pumpkin
+  p.rect(3, 13, 2, 2, '#e03a3a').rect(5, 13, 2, 2, '#e8502a').px(4, 12, '#3a8a3a');
+  p.rect(9, 12, 4, 3, WOOD_L).rect(9, 12, 4, 1, WOOD_D).rect(10, 11, 1, 1, '#f08a2a').rect(12, 11, 1, 1, '#f08a2a').px(11, 11, '#3a8a3a');
+  p.rect(7, 13, 2, 2, '#f5d94a');
+  // price sign on the counter front
+  p.rect(5, 17, 6, 4, '#f4ead8').box(5, 17, 6, 4, WOOD_D).circle(8, 19, 1, '#d4a52a');
   return p.outline(OUTLINE);
 };
 const sellbox = (): Px => {

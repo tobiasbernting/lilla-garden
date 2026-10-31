@@ -14,7 +14,7 @@ Agreed design (2026-10-24). A 2D pixel top-down farm game in Swedish for one par
 - Emote wheel (hjärta, skratt, hej, hjälp, titta, sova); names over heads. No text chat.
 
 ## World
-- Handmade 64×64 tile map: farmhouse (brevlåda = Katalog, garderob, kista, arbetsbänk, säljlåda), open fields, forest edge (trees/rocks/grass regrow after a few days), pond.
+- Handmade 64×64 tile map: farmhouse (gårdsbutik = shop stand, garderob, kista, arbetsbänk, säljlåda), open fields, forest edge (trees/rocks/grass regrow after a few days), pond.
 - Day = 10 real minutes, auto rollover, no forced sleep, world frozen when nobody is online.
 - Gentle rules: nothing dies, no stamina, tools never break, anyone can break anything.
 
@@ -24,14 +24,14 @@ Agreed design (2026-10-24). A 2D pixel top-down farm game in Swedish for one par
 
 ## Animals
 - höna, får, ko, kanin. Named on arrival, 0–5 hearts from feeding (hö), petting, brushing. Products (ägg, ull, mjölk) when happy. Babies grow in 3 days.
-- Bought from the Katalog but require the matching built house (hönshus, kaninbur, fårhus, lada); arrive next morning ("En ny vän har flyttat in!").
+- Bought from the Gårdsbutik but require the matching built house (hönshus, kaninbur, fårhus, lada); arrive next morning ("En ny vän har flyttat in!").
 
 ## Building & crafting
 - trä/sten/fiber from trees/rocks/grass → recipes at arbetsbänk: staket, grind, stigar, väggar, golv, dörr, kista, matho, fackla, fågelskrämma, bänk, bord, blomlåda, brunn, djurhus.
 - Free grid placement anywhere except water.
 
 ## Economy
-- Per-player kr, start 150. Säljlåda sells instantly. Katalog tabs: Frön, Djur, Foder, Material, Kläder, Säsong.
+- Per-player kr, start 150. Säljlåda sells instantly. Gårdsbutik tabs: Frön, Djur, Foder, Material, Kläder, Säsong.
 
 ## Clothes
 - Layered tintable character (hair, shirt, pants, shoes, hat). Bought clothes go to the Garderob.
@@ -43,6 +43,8 @@ Agreed design (2026-10-24). A 2D pixel top-down farm game in Swedish for one par
 
 ## Inventory & controls
 - 8 hotbar + 24 backpack, stacks of 99, kista 32 slots.
+- Ryggsäck/kista (2026-10-31): search field + icon filter chips (verktyg, frön, mat, material, bygg, annat) dim non-matching slots; "Sortera" asks the server to sort backpack slots 8–31 (hotbar never moves) or an open chest; "Lägg i kistan" moves backpack stacks that match items already in the chest. Slot indices stay the protocol; filtering is display-only.
+- Shop (2026-10-31): the `mailbox` object kind is kept for saves but is drawn and named as a Gårdsbutik (farm shop stand). Buying stays instant for goods, next-morning for animals; the shop shows every player's pending animal orders ("På väg i morgon"), "Du har N" per item, and search across all tabs. Protocol additions are only new message types (`sort`, `quickStack`); old clients/servers ignore them.
 - Touch: virtual joystick + context action button. Desktop: WASD/arrows + E/space, mouse click acts on a tile.
 
 ## Art

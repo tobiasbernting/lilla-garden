@@ -6,7 +6,7 @@ import { CAVE_EXIT_TILE, MAX_HEARTS, dungeonStart, generateDungeon } from './dun
 import { BIOME_NAMES, arrivalTile, areaCoords, areaKey, biomeAt, generateArea, inEdgeGap, spawnWildAnimals, type Biome } from './biomes.ts';
 import { BATH_EXIT, BATH_POOL, SWIM_SPEED_MUL, bathKey, bathhouseDoorTile, generateBath, isBathKey, villageOfBath } from './bath.ts';
 import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
-import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
+import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, quickStack, removeItem, sortInventory, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { mulberry32, randInt } from './rng.ts';
 import { PAINTED_SELL, isValidPainting } from './paint.ts';
@@ -34,6 +34,7 @@ import type {
 } from './types.ts';
 import {
   CHEST_SIZE,
+  HOTBAR_SIZE,
   DAY_LENGTH_MS,
   INVENTORY_SIZE,
   MAP_H,
@@ -1075,6 +1076,48 @@ export function swapSlots(world: WorldState, playerId: string, a: SlotRef, b: Sl
   if (a.chest !== undefined) out.push({ t: 'object', id: a.chest, obj: world.objects[a.chest]! });
   if (b.chest !== undefined && b.chest !== a.chest) out.push({ t: 'object', id: b.chest, obj: world.objects[b.chest]! });
   return out;
+}
+
+/** Cheap structural fingerprint of an inventory, to tell whether a sort changed anything. */
+const inventoryKey = (inv: Inventory): string =>
+  JSON.stringify(inv.map((s) => (s ? [s.item, s.count, s.data ?? null, s.charges ?? null] : null)));
+
+/** Sorts the backpack (slots 8..31, hotbar untouched) or, with a chestId in reach, that chest. */
+export function sortSlots(world: WorldState, playerId: string, chestId?: number): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  if (chestId === undefined) {
+    const before = inventoryKey(p.inventory);
+    const heldSlot = p.selected;
+    const held = p.inventory[heldSlot] ?? null;
+    sortInventory(p.inventory, HOTBAR_SIZE, INVENTORY_SIZE);
+    if (heldSlot >= HOTBAR_SIZE) {
+      // The held backpack stack moved: follow it (same object, else same item, else slot 0).
+      let at = held ? p.inventory.indexOf(held, HOTBAR_SIZE) : -1;
+      if (at < 0 && held) at = p.inventory.findIndex((s, i) => i >= HOTBAR_SIZE && s?.item === held.item);
+      p.selected = at >= 0 ? at : 0;
+    }
+    if (inventoryKey(p.inventory) === before) return [toast(p.id, T.sorted)];
+    return [playerChange(p), toast(p.id, T.sorted)];
+  }
+  const c = chestNear(world, p, chestId);
+  if (!c?.items) return [];
+  const before = inventoryKey(c.items);
+  sortInventory(c.items);
+  if (inventoryKey(c.items) === before) return [toast(p.id, T.sorted)];
+  return [{ t: 'object', id: chestId, obj: c }, toast(p.id, T.sorted)];
+}
+
+/** Moves backpack items (slots 8..31, except the held one) that already exist in the chest into it. */
+export function quickStackToChest(world: WorldState, playerId: string, chestId: number): Change[] {
+  const p = world.players[playerId];
+  if (!p) return [];
+  const c = chestNear(world, p, chestId);
+  if (!c?.items) return [];
+  const n = quickStack(p.inventory, HOTBAR_SIZE, INVENTORY_SIZE, c.items, p.selected);
+  if (n <= 0) return [toast(p.id, T.nothingToStack)];
+  const text = n === 1 ? T.quickStackedOne : fmt(T.quickStacked, { n });
+  return [{ t: 'object', id: chestId, obj: c }, playerChange(p), toast(p.id, text)];
 }
 
 export function selectSlot(world: WorldState, playerId: string, slot: number): Change[] {

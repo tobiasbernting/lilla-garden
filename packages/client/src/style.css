@@ -456,6 +456,81 @@ button.close {
   background: var(--accent);
   color: #fff;
 }
+/* ---- search, filter chips, dimmed slots ---- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--u);
+  align-items: center;
+}
+.toolbar button {
+  min-height: calc(10 * var(--u));
+}
+.chip {
+  background: var(--panel-dark);
+  color: var(--ink);
+  font-size: calc(4 * var(--u));
+  min-width: calc(10 * var(--u));
+  min-height: calc(10 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(2 * var(--u));
+  white-space: nowrap;
+}
+.chip.on {
+  background: var(--accent);
+  color: #fff;
+}
+input[type='text'].search {
+  font-size: calc(5 * var(--u));
+  height: calc(10 * var(--u));
+  box-sizing: border-box;
+  padding: 0 calc(2 * var(--u));
+  width: calc(80 * var(--u));
+  max-width: 100%;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.slot.dim {
+  opacity: 0.25;
+  cursor: default;
+}
+.slot.dim img {
+  filter: grayscale(1);
+}
+.hint.title-row {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+}
+.hint.title-row button {
+  min-height: calc(8 * var(--u));
+  font-size: calc(3.5 * var(--u));
+}
+.hint.section {
+  font-weight: 800;
+  margin-top: var(--u);
+}
+.picked-name {
+  font-weight: 800;
+  font-size: calc(4.5 * var(--u));
+  align-self: center;
+}
+.row .tag {
+  display: inline-block;
+  margin-left: calc(2 * var(--u));
+  padding: 0 calc(1.5 * var(--u));
+  border-radius: calc(2 * var(--u));
+  background: var(--accent);
+  color: #fff;
+  font-size: calc(3 * var(--u));
+  font-weight: 800;
+  vertical-align: middle;
+}
+.row .have {
+  font-size: calc(4 * var(--u));
+  font-weight: 700;
+  color: #7a6a4a;
+  white-space: nowrap;
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(8, calc(18 * var(--u)));
