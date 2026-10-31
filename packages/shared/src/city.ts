@@ -1,6 +1,7 @@
-// Staden: the village is a small city with a grid of streets, blocks of houses, a square,
-// a rail line with a station, and traffic (cars, buses, motorcycles, a train) that drives around
-// the blocks and always stops for people.
+// Köpingen (once Staden): the village is a Norse market town with a grid of cobbled streets, blocks of timber
+// houses, a square with banners, barrels and a runestone, the dwarves' mine train with its station, and traffic
+// (horse carts, riding horses, the Diligens coach; ids car, motorcycle, bus, train) that goes around the blocks and
+// always stops for people.
 import { ANIMALS, NPCS } from './data.ts';
 import { addObject, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
 import { SPECIES_NAMES } from './sv.ts';
@@ -166,6 +167,46 @@ const HOUSES: [number, number][] = [
   [44, 8],
 ];
 
+/**
+ * The town's Norse dressing (Saga III), all on the square and off the villagers' spots and walks: two banner poles
+ * at its top corners, barrels by the market, the sell stall and the pizzeria, a lit runestone by the well and a hay
+ * cart by the market.
+ */
+const TOWN_DRESS: { kind: string; x: number; y: number; w: number; variant?: number }[] = [
+  { kind: 'banner_pole', x: 34, y: 20, w: 1, variant: 0 },
+  { kind: 'banner_pole', x: 47, y: 20, w: 1, variant: 1 },
+  { kind: 'barrel_stack', x: 34, y: 22, w: 1 },
+  { kind: 'barrel_stack', x: 46, y: 22, w: 1 },
+  { kind: 'barrel_stack', x: 42, y: 21, w: 1 },
+  { kind: 'runestone', x: 40, y: 28, w: 1 },
+  { kind: 'hay_cart', x: 37, y: 24, w: 2 },
+];
+
+/**
+ * Dresses a city saved before Saga III as a Norse market town: each banner, barrel stack, runestone and hay cart
+ * that is missing goes on its spot if the spot is free (nothing built there, nobody standing there, not a street).
+ * Idempotent; true if something was added.
+ */
+export function ensureTownDress(world: WorldState): boolean {
+  if (!isCity(world)) return false;
+  const spots = new Set<string>();
+  for (const n of Object.values(NPCS)) if (n.area === world.area) for (const w of [n, ...n.routine]) spots.add(key(w.x, w.y));
+  const free = (x: number, y: number): boolean => {
+    const t = world.terrain[tileIndex(x, y)];
+    if (!inBounds(x, y) || objectAt(world, x, y) || spots.has(key(x, y))) return false;
+    if (t === 'road' || t === 'crossing' || t === 'rail' || t === 'water') return false;
+    return !Object.values(world.players).some((p) => p.area === world.area && Math.floor(p.x / TILE) === x && Math.floor(p.y / TILE) === y);
+  };
+  let changed = false;
+  for (const d of TOWN_DRESS) {
+    if (objectAt(world, d.x, d.y)?.kind === d.kind) continue;
+    let room = true;
+    for (let dx = 0; dx < d.w; dx++) if (!free(d.x + dx, d.y)) room = false;
+    if (room && addObject(world, d.kind, d.x, d.y, d.variant !== undefined ? { variant: d.variant } : undefined)) changed = true;
+  }
+  return changed;
+}
+
 /** Lays out streets, sidewalks, the square, buildings, lamps and the railway. Idempotent on fresh terrain. */
 export function buildCity(world: WorldState): void {
   const T = world.terrain;
@@ -306,6 +347,11 @@ export function buildCity(world: WorldState): void {
     set(x, y, 'path_stone');
     set(x + 1, y, 'path_stone');
     addObject(world, 'parked_car', x, y, { variant: x % 3 });
+  }
+  // Norse dressing on the square
+  for (const d of TOWN_DRESS) {
+    clearRect(d.x, d.y, d.x + d.w - 1, d.y);
+    addObject(world, d.kind, d.x, d.y, d.variant !== undefined ? { variant: d.variant } : undefined);
   }
   // villagers must be able to stand on their spots
   for (const n of Object.values(NPCS)) {

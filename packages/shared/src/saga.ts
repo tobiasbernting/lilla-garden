@@ -1116,6 +1116,8 @@ export interface SagaItemDef {
   color?: string;
   /** Pets and mounts: the animal it gives. */
   species?: string;
+  /** A hero level's reward (LEVEL_REWARDS): handed out when the level is reached, never found in a chest. */
+  levelReward?: number;
   text: string;
 }
 
@@ -1229,6 +1231,20 @@ export const SAGA_ITEMS: SagaItemDef[] = [
   { id: 'alvlykta', name: 'Ljusalvernas lykta', rarity: 'epic', kind: 'decor', glow: '#d6a8ff', text: 'Ljusalvernas tack. Den lyser lila hela natten.' },
   { id: 'fenrislanka', name: 'Fenrislänken', rarity: 'legendary', kind: 'decor', glow: '#cfe8ff', text: 'En länk från kedjan som höll Fenrisulven.' },
   { id: 'bifrostbit', name: 'Bit av Bifrost', rarity: 'legendary', kind: 'decor', glow: 'rainbow', text: 'En bit av regnbågsbron som skimrar i alla färger.' },
+  // Saga III: the hero levels' rewards (LEVEL_REWARDS), glowing clothes and legendary things that come with a level
+  { id: 'shirt_vandrarmantel', name: 'Vandrarmanteln', rarity: 'uncommon', kind: 'shirt', style: 'cloak', color: '#3f6b3a', levelReward: 2, text: 'En grön mantel för den som har börjat sin vandring.' },
+  { id: 'hat_glodkrans', name: 'Glödkransen', rarity: 'rare', kind: 'hat', style: 'circlet', color: '#ffb347', glow: '#ffb347', levelReward: 4, text: 'En krans som glöder som en brasa i mörkret.' },
+  { id: 'pet_lyktfe', name: 'Lyktfén', rarity: 'rare', kind: 'pet', species: 'alvljus_fe', levelReward: 5, text: 'En liten fe med en lykta, som lyser upp vägen åt dig.' },
+  { id: 'shirt_glodmantel', name: 'Glödmanteln', rarity: 'rare', kind: 'shirt', style: 'cloak', color: '#8a3a2a', glow: '#ff8a3a', levelReward: 6, text: 'En mantel med en kant som glöder som kol.' },
+  { id: 'hat_stjarnkrona', name: 'Stjärnkronan', rarity: 'epic', kind: 'hat', style: 'crown', color: '#cfe6ff', glow: '#9ad8ff', levelReward: 8, text: 'En krona av stjärnljus. Den tindrar när du går.' },
+  { id: 'amulet_hjaltemarke', name: 'Hjältemärket', rarity: 'epic', kind: 'amulet', stats: { hp: 10 }, levelReward: 9, text: 'Ett märke av silver som bara riktiga hjältar får bära.' },
+  { id: 'shirt_stjarnmantel', name: 'Stjärnmanteln', rarity: 'epic', kind: 'shirt', style: 'cloak', color: '#2a2a5a', glow: '#b8a8ff', levelReward: 10, text: 'En mantel lika mörk som natthimlen, full av små lysande stjärnor.' },
+  { id: 'hat_norrskenshjalm', name: 'Norrskenshjälmen', rarity: 'epic', kind: 'hat', style: 'valkyrie', color: '#dfeeff', glow: '#5fd38d', levelReward: 12, text: 'En vingad hjälm som skimrar grönt som norrskenet.' },
+  { id: 'mount_ljushjort', name: 'Ljushjorten', rarity: 'legendary', kind: 'mount', species: 'ljushjort', levelReward: 15, text: 'En blekt vitblå hjort vars horn lyser som månsken.' },
+  { id: 'shirt_eldmantel', name: 'Eldmanteln', rarity: 'legendary', kind: 'shirt', style: 'cloak', color: '#5a1a10', glow: '#ff6a3a', levelReward: 16, text: 'En mantel som fladdrar som lågor, men aldrig bränns.' },
+  { id: 'hat_solkrona', name: 'Solkronan', rarity: 'legendary', kind: 'hat', style: 'crown', color: '#ffe27a', glow: '#ffe27a', levelReward: 18, text: 'En krona av guld som lyser som solen själv.' },
+  { id: 'amulet_yggdrasil', name: 'Yggdrasils löv', rarity: 'legendary', kind: 'amulet', stats: { hp: 20 }, levelReward: 19, text: 'Ett löv från Världsträdet. Det är grönt året runt.' },
+  { id: 'shirt_bifrostmantel', name: 'Bifrostmanteln', rarity: 'legendary', kind: 'shirt', style: 'cloak', color: '#f0f0ff', glow: 'rainbow', levelReward: 20, text: 'En mantel vävd av regnbågsbron. Den skimrar i alla färger.' },
 ];
 export const sagaItem = (id: string): SagaItemDef | undefined => SAGA_ITEMS.find((i) => i.id === id);
 
@@ -1416,7 +1432,7 @@ export const portalFront = (p: { x: number; y: number }): { x: number; y: number
 export const RARITY_POWER: Record<Rarity, number> = { common: 1, uncommon: 1.05, rare: 1.1, epic: 1.2, legendary: 1.3 };
 
 // ---------------------------------------------------------------------------
-// Gear and hero levels (Act II): a weapon, an offhand and an amulet, and Hjältenivå 1–10
+// Gear and hero levels (Act II): a weapon, an offhand and an amulet, and Hjältenivå 1–20
 // ---------------------------------------------------------------------------
 
 export type GearSlot = 'weapon' | 'offhand' | 'amulet';
@@ -1428,19 +1444,54 @@ export const gearSlotOf = (itemId: string): GearSlot | null => {
   return k === 'weapon' || k === 'offhand' || k === 'amulet' ? k : null;
 };
 
-/** Every hero level above the first gives this much more power and health. */
-export const LEVEL_BONUS = 0.03;
+/** Every hero level above the first gives this much more power and health (+28.5 % at level 20). */
+export const LEVEL_BONUS = 0.015;
+/** The most gear, class fit and levels together may multiply damage and healing by (the family plays together). */
+export const POWER_CAP = 1.8;
 /** All the gear's armor together takes away at most this much of a hit. */
 export const ARMOR_CAP = 0.4;
 /** A piece that suits your class gives this much more power. */
 export const CLASS_FIT = 1.05;
-/** The experience needed for each level (index = level - 1). */
-export const XP_LEVELS: readonly number[] = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700];
+/** The experience needed to be at each level (index = level - 1). */
+export const XP_LEVELS: readonly number[] = [0, 60, 150, 280, 450, 660, 910, 1200, 1530, 1900, 2310, 2760, 3250, 3780, 4350, 4960, 5610, 6300, 7030, 7800];
 export const MAX_LEVEL = XP_LEVELS.length;
-/** Experience for each thing a hero does. */
-export const SAGA_XP = { mob: 5, add: 2, mini: 40, boss: 100, quest: 30, chapter: 100, field: 3 } as const;
+/**
+ * Experience for each thing a hero does. In a dungeon: a monster, a boss's helper, the mid-boss and the boss. Out in
+ * the world (anyone, class or not, and everyone within 10 tiles shares it): a roaming monster, a bear, wolf or lynx,
+ * a monster or the troll king in the farm's cave, a world boss. And a villager's quest and a chapter of the saga.
+ */
+export const SAGA_XP = { mob: 5, add: 2, mini: 40, boss: 100, quest: 30, chapter: 100, wild: 4, predator: 6, cave: 3, caveBoss: 30, worldBoss: 60 } as const;
 
-/** The level a hero with this much experience has (1–10). */
+/** What reaching a hero level gives: something to wear or keep (item), a title, and from level 10 a glow around you (aura). */
+export interface LevelReward {
+  item?: string;
+  title?: string;
+  aura?: 1 | 2;
+}
+/** Hero level rewards: looks, never power (the items are SAGA_ITEMS with `levelReward`). */
+export const LEVEL_REWARDS: Record<number, LevelReward> = {
+  2: { item: 'shirt_vandrarmantel' },
+  3: { title: 'Vandrare' },
+  4: { item: 'hat_glodkrans' },
+  5: { item: 'pet_lyktfe' },
+  6: { item: 'shirt_glodmantel' },
+  7: { title: 'Hjälte' },
+  8: { item: 'hat_stjarnkrona' },
+  9: { item: 'amulet_hjaltemarke' },
+  10: { item: 'shirt_stjarnmantel', aura: 1 },
+  12: { item: 'hat_norrskenshjalm' },
+  13: { title: 'Stor hjälte' },
+  15: { item: 'mount_ljushjort' },
+  16: { item: 'shirt_eldmantel' },
+  17: { title: 'Legend' },
+  18: { item: 'hat_solkrona' },
+  19: { item: 'amulet_yggdrasil' },
+  20: { item: 'shirt_bifrostmantel', aura: 2, title: 'Midgårds väktare' },
+};
+/** The glow around a hero: none below level 10, a soft one from 10, a rainbow one at 20. */
+export const auraOf = (level: number): 0 | 1 | 2 => (level >= 20 ? 2 : level >= 10 ? 1 : 0);
+
+/** The level a hero with this much experience has (1–20). */
 export const xpLevel = (xp: number): number => {
   let level = 1;
   while (level < MAX_LEVEL && xp >= XP_LEVELS[level]!) level++;
@@ -1492,7 +1543,8 @@ export function gearStats(p: PlayerState): GearStats {
     if (cls && d.classes?.includes(cls)) fits = true;
   }
   const lvl = 1 + LEVEL_BONUS * (heroLevel(p.saga) - 1);
-  return { power: (weapon ? RARITY_POWER[weapon.rarity] : 1) * (1 + power) * (fits ? CLASS_FIT : 1) * lvl, hp, armor: Math.min(ARMOR_CAP, armor) };
+  // capped, so a parent at level 20 in a legendary set is never much more than one and a half kids
+  return { power: Math.min(POWER_CAP, (weapon ? RARITY_POWER[weapon.rarity] : 1) * (1 + power) * (fits ? CLASS_FIT : 1) * lvl), hp, armor: Math.min(ARMOR_CAP, armor) };
 }
 
 /** A fighter's full health: the class's, the gear's on top, and a little more for every level. */
@@ -1799,7 +1851,7 @@ export interface SagaProgress {
   /** The clothes swapped in and out by the hero switch (the hero outfit starts as the class's own). */
   farmOutfit?: Outfit;
   heroOutfit?: Outfit;
-  /** Hero experience, and the level it gives (Hjältenivå 1–10, see XP_LEVELS). */
+  /** Hero experience, and the level it gives (Hjältenivå 1–20, see XP_LEVELS). Anyone can have it, class or not. */
   xp?: number;
   level?: number;
 }

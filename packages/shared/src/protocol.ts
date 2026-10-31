@@ -51,7 +51,9 @@ export type Change =
   /** Big words across the screen: a dungeon's name, a boss beaten (celebrate!), a new chapter, a rest stone, everyone fallen. */
   | { t: 'banner'; to: string | null; area?: string; text: string; sub?: string; kind?: 'enter' | 'boss' | 'cleared' | 'chapter' | 'reward' | 'rest' | 'wipe' | 'level' }
   /** What a dungeon chest gave you (a loot window in rarity colours). */
-  | { t: 'loot'; to: string; from: string; items: { item: string; count: number }[]; coins: number; stars: number };
+  | { t: 'loot'; to: string; from: string; items: { item: string; count: number }[]; coins: number; stars: number }
+  /** Hero experience gained (anywhere): the client floats "+n xp" from where the player stood (pixels; area left out on the farm). */
+  | { t: 'xp'; to: string; n: number; x: number; y: number; area?: string };
 
 /** A slot in the player's own inventory (chest undefined) or in a chest object. */
 export interface SlotRef {

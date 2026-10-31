@@ -22,6 +22,7 @@ import {
   BLOCK_SPECIES,
   REST_RADIUS,
   SAGA_XP,
+  LEVEL_REWARDS,
   fighterMax,
   gearOf,
   gearSlotOf,
@@ -64,6 +65,7 @@ import {
   type SagaZone,
   type SagaBossDef,
   type BossAbility,
+  type LevelReward,
 } from './saga.ts';
 import { sagaCheckpoint, spawnSagaMob } from './sagamap.ts';
 import {
@@ -1733,19 +1735,104 @@ export function equipGear(world: WorldState, playerId: string, slot: string, ite
   return out;
 }
 
-/** Hero experience: a banner and a sparkle at each new level, which gives a little more power and health. */
+/**
+ * Hero experience, for everyone (the saga record is made if there is none; spells still need a class). A floating
+ * "+n xp" for the player, and at each new level a banner naming the level's reward, a sparkle, the reward itself
+ * and a little more power and health.
+ */
 export function giveXp(p: PlayerState, n: number, out: Change[], h?: Here): void {
-  const prog = p.saga;
-  if (!prog?.cls || n <= 0) return;
+  if (n <= 0) return;
+  const prog = progressOf(p);
   const before = xpLevel(prog.xp ?? 0);
   prog.xp = (prog.xp ?? 0) + n;
   const level = xpLevel(prog.xp);
   prog.level = level;
+  out.push({ t: 'xp', to: p.id, n, x: p.x, y: p.y, ...(p.area !== 'farm' ? { area: p.area } : {}) });
+  // the rewards of the levels just reached, and any an old save is still owed
+  ensureLevelRewards(p, out);
+  if ((p.stats?.sagaLevel ?? 0) < level) bump(p, 'sagaLevel', level - (p.stats?.sagaLevel ?? 0), out);
   if (level <= before) return;
-  out.push({ t: 'banner', to: p.id, ...(h ? { area: h.key } : {}), kind: 'level', text: fmt(T.sagaLevelUp, { n: level }), sub: T.sagaLevelSub }, fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'));
-  bump(p, 'sagaLevel', level - (p.stats?.sagaLevel ?? 0), out);
+  const lines: string[] = [];
+  for (let l = before + 1; l <= level; l++) lines.push(...rewardLines(LEVEL_REWARDS[l]));
+  out.push(
+    { t: 'banner', to: p.id, ...(h ? { area: h.key } : {}), kind: 'level', text: fmt(T.sagaLevelUp, { n: level }), sub: lines.length ? lines.join(' ') : T.sagaLevelSub },
+    fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'),
+  );
   const f = h?.inst.fighters[p.id];
   if (f) refreshMax(p, f);
+}
+
+/** What the level banner says about a level's reward ("Du får Glödkransen!", "Ny titel: Vandrare"). */
+const rewardLines = (r: LevelReward | undefined): string[] => {
+  if (!r) return [];
+  const lines: string[] = [];
+  if (r.item) lines.push(fmt(T.sagaLevelItem, { item: itemName(r.item) }));
+  if (r.title) lines.push(fmt(T.sagaLevelTitle, { title: r.title }));
+  if (r.aura) lines.push(r.aura === 2 ? T.sagaLevelAura2 : T.sagaLevelAura1);
+  return lines;
+};
+
+/**
+ * Hands out every hero level reward a player has reached and not had yet: clothes to the wardrobe, pets, mounts and
+ * amulets to the bag, titles to the saga's list. Each item comes once (it is noted in the saga's `found`); one that
+ * does not fit in a full bag waits for the next time. giveXp runs it, and the server on load (saves from before the
+ * rewards). With `out`, a toast for each. True if anything changed.
+ */
+export function ensureLevelRewards(p: PlayerState, out?: Change[]): boolean {
+  const xp = p.saga?.xp ?? 0;
+  if (!xp) return false;
+  const prog = progressOf(p);
+  prog.found ??= [];
+  prog.titles ??= [];
+  const level = xpLevel(xp);
+  let changed = prog.level !== level;
+  prog.level = level;
+  for (let l = 2; l <= level; l++) {
+    const r = LEVEL_REWARDS[l];
+    if (!r) continue;
+    if (r.title && !prog.titles.includes(r.title)) {
+      prog.titles.push(r.title);
+      changed = true;
+    }
+    if (!r.item || prog.found.includes(r.item)) continue;
+    if (ITEMS[r.item]?.category === 'clothing') {
+      if (!p.wardrobe.includes(r.item)) {
+        p.wardrobe.push(r.item);
+        out?.push(toast(p.id, fmt(T.sagaLevelToWardrobe, { item: itemName(r.item) })));
+      }
+    } else if (addItem(p.inventory, r.item, 1) > 0) {
+      out?.push(toast(p.id, fmt(T.sagaLevelBagFull, { item: itemName(r.item) })));
+      continue;
+    } else out?.push(toast(p.id, fmt(T.sagaLevelToBag, { item: itemName(r.item) })));
+    prog.found.push(r.item);
+    changed = true;
+  }
+  return changed;
+}
+
+/** Experience for beating something out in the world or in the farm's cave (0: it gives none). */
+export function killXpOf(species: string): number {
+  const def = ANIMALS[species];
+  if (def?.mob) return def.wild ? (def.mob.boss ? SAGA_XP.worldBoss : SAGA_XP.wild) : def.mob.boss ? SAGA_XP.caveBoss : SAGA_XP.cave;
+  return def?.predator ? SAGA_XP.predator : 0;
+}
+
+/**
+ * Something was beaten out in the world or in the farm's cave (attackMob calls this: the sword, the bow, the bazooka,
+ * a spell): experience for whoever did it and for everyone within FIELD_SHARE tiles on the same map, class or not.
+ * A roaming monster, a predator, a cave monster, the cave's troll king or a world boss (SAGA_XP). Dungeons count
+ * their own (mobDown).
+ */
+export function killXp(area: WorldState, by: PlayerState, mob: AnimalState, out: Change[]): void {
+  if (isSagaKey(area.area)) return;
+  const n = killXpOf(mob.species);
+  if (!n) return;
+  const key = area.area ?? 'farm';
+  const there = Object.values(area.players).filter((q) => q.id !== by.id && q.online && q.area === key && dist(q, mob) <= FIELD_SHARE);
+  for (const q of [by, ...there]) {
+    giveXp(q, n, out);
+    if (q.id !== by.id) out.push(playerChange(q));
+  }
 }
 
 /**
@@ -1795,7 +1882,7 @@ const fieldState = (id: string): FieldState => {
 };
 /** Spell power is counted in dungeon health; out in the world monsters have hearts, so it is divided by this. */
 const FIELD_DIV = 8;
-/** Monsters beaten this close count for everyone's field task and quests (tiles). */
+/** Monsters beaten this close count for everyone's experience, field task and quests (tiles). */
 const FIELD_SHARE = 10;
 const FIELD_POTION_HEARTS = 3;
 const FIELD_HEAL_HEARTS = 2;
@@ -1971,8 +2058,8 @@ export function heroAction(world: WorldState, p: PlayerState, tx: number, ty: nu
 }
 
 /**
- * One of Loke's roaming servants is beaten out in the world (by a spell, the sword or anything else): experience,
- * field tasks and villagers' kill quests for every hero close by, and a world boss leaves its treasure chest.
+ * One of Loke's roaming servants is beaten out in the world (by a spell, the sword or anything else): field tasks
+ * and villagers' kill quests for every hero close by (the experience comes from killXp), and a world boss leaves its treasure chest.
  * Returns false for anything that is not a roaming monster (the caller handles it as before).
  */
 export function roamingDown(area: WorldState, by: PlayerState, mob: AnimalState, ctx: SimCtx, out: Change[]): boolean {
@@ -1984,7 +2071,6 @@ export function roamingDown(area: WorldState, by: PlayerState, mob: AnimalState,
   for (const q of there) {
     const prog = q.saga;
     if (!prog?.cls) continue;
-    giveXp(q, SAGA_XP.field, out);
     questCredit(area, q, mob.species, ctx, out, false);
     const ch = SAGA_CHAPTERS[prog.chapter];
     if (prog.heard && ch?.field?.target === mob.species) {
@@ -1995,7 +2081,7 @@ export function roamingDown(area: WorldState, by: PlayerState, mob: AnimalState,
         out.push(toast(q.id, n >= ch.field.count ? fmt(T.sagaFieldDone, { text: ch.field.text }) : fmt(T.sagaFieldProgress, { text: ch.field.text, n, count: ch.field.count })));
       }
     }
-    if (q.id !== by.id) out.push(playerChange(q));
+    // (killXp has already sent each of them, and objects are sent by reference)
   }
   if (def.mob.boss) {
     // the world boss's chest: one per map, filled again for everyone each time the boss is beaten
