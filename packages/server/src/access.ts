@@ -4,6 +4,7 @@
 // in with a password (and optionally a code from an authenticator app). Rules on top: world closed / family only /
 // open to guests, and play hours.
 import crypto from 'node:crypto';
+import type { VoicePolicy } from '../../shared/src/index.ts';
 import type { AccessStore } from './db/accessStore.ts';
 import { verifyTotp } from './totp.ts';
 
@@ -60,6 +61,8 @@ export interface Invite {
 
 export interface AccessSettings {
   mode: AccessMode;
+  /** Röstprat: nobody, family devices, or guests too (missing in settings saved before it existed = family). */
+  voice?: VoicePolicy;
   /** Play hours, 'HH:MM' in Swedish time; both null = any time */
   from: string | null;
   to: string | null;
@@ -285,6 +288,18 @@ export class Access {
     this.settings.mode = mode;
     await this.store.saveSettings(this.settings);
     await this.record('mode', { closed: 'stängt för alla', family: 'bara familjen', open: 'familj och gäster' }[mode], ip);
+    this.onChange();
+  }
+
+  /** Who may use voice. */
+  voicePolicy(): VoicePolicy {
+    return this.settings.voice ?? 'family';
+  }
+
+  async setVoice(policy: VoicePolicy, ip: string): Promise<void> {
+    this.settings.voice = policy;
+    await this.store.saveSettings(this.settings);
+    await this.record('voice', { off: 'röstprat av', family: 'röstprat för familjen', open: 'röstprat för familj och gäster' }[policy], ip);
     this.onChange();
   }
 

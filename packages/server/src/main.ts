@@ -4,6 +4,7 @@ import { createServers, findClientDist } from './http.ts';
 import { Access } from './access.ts';
 import { MemoryAccessStore } from './db/accessStore.ts';
 import { ntfyNotifier } from './notify.ts';
+import { iceProvider } from './ice.ts';
 
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 8080);
@@ -42,7 +43,11 @@ async function main(): Promise<void> {
     console.log(`access control: on (${access.approved().length} devices, mode ${access.settings.mode})`);
   }
   const seasonEnv = process.env.SEASON_OVERRIDE;
-  const game = new Game(store, { seasonOverride: seasonEnv });
+  // Röstprat: who may use it comes from the parent page (everyone when access control is off), the STUN/TURN
+  // servers from the environment
+  const ice = iceProvider(process.env);
+  console.log(`voice: ${ice.describe()}`);
+  const game = new Game(store, { seasonOverride: seasonEnv, voice: { policy: () => (access ? access.voicePolicy() : 'open'), ice: ice.servers } });
   await game.start();
   const clientDist = findClientDist();
   // ADMIN_PORT: the parent page gets its own listener (publish it only where the internet can't reach, e.g. a

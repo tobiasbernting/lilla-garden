@@ -16,6 +16,7 @@ import type {
 import type { SagaZone } from './saga.ts';
 import type { SagaSnap } from './sagasim.ts';
 import type { CarBody, CarPart, CarSnap, CarStyle, GarageCar, RaceResultLine, RaceRules, RoomInfo } from './rally.ts';
+import type { IceServer, VoiceState } from './voice.ts';
 
 /** A change to the world that the server broadcasts after applying. `area` marks dungeon changes. */
 export type Change =
@@ -121,6 +122,14 @@ export type ClientMsg =
   | { t: 'roam'; a: 'enter' }
   | { t: 'roam'; a: 'leave'; coins: number; damage: number }
   | { t: 'roam'; a: 'snap'; snap: CarSnap }
+  /** Röstprat: pick up (want voice) or hang up; make this device the room's speaker; move to a room of your own,
+   * back to the automatic room, or into another player's room; a WebRTC signal to another speaker; speaking or not. */
+  | { t: 'voice'; a: 'join' }
+  | { t: 'voice'; a: 'leave' }
+  | { t: 'voice'; a: 'speaker' }
+  | { t: 'voice'; a: 'room'; mode: 'auto' | 'alone' | 'with'; with?: string }
+  | { t: 'voice'; a: 'signal'; to: string; data: unknown }
+  | { t: 'voice'; a: 'talking'; on: boolean }
   | { t: 'ping' };
 
 export interface PlayerSnap {
@@ -169,6 +178,12 @@ export type ServerMsg =
   | { t: 'roam'; ev: 'peers'; peers: { id: string; name: string; car: GarageCar }[] }
   | { t: 'roam'; ev: 'snap'; from: string; snap: CarSnap }
   | { t: 'roam'; ev: 'left'; id: string }
+  /** Röstprat: the rooms and who speaks for them (to everyone online when it changes), the STUN/TURN servers (to a
+   * device that became a speaker), a relayed signal from another speaker, and a room that started or stopped talking. */
+  | { t: 'voice'; ev: 'state'; state: VoiceState }
+  | { t: 'voice'; ev: 'ice'; servers: IceServer[] }
+  | { t: 'voice'; ev: 'signal'; from: string; data: unknown }
+  | { t: 'voice'; ev: 'talking'; id: string; on: boolean }
   | { t: 'pong' };
 
 export interface PlayerSummary {

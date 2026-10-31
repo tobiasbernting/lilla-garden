@@ -19,6 +19,7 @@ export * from './paint.ts';
 export * from './rooms.ts';
 export * from './weather.ts';
 export * from './chat.ts';
+export * from './voice.ts';
 export * from './dialogue.ts';
 export * from './arcade.ts';
 export * from './rally.ts';

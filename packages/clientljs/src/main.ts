@@ -43,6 +43,7 @@ import { initRally } from '@v1/ui/rally.ts';
 import { SagaUi } from '@v1/ui/saga.ts';
 import { initSound, isMuted, setMuted } from '@v1/sound.ts';
 import { Chat, SocialButtons, petCommand, weatherChip } from '@v1/ui/social.ts';
+import { VoiceUi } from '@v1/ui/voice.ts';
 import { forceQuality, on } from './features.ts';
 import { initLighting } from './lighting.ts';
 import { View, VIEW_H, VIEW_W } from './view.ts';
@@ -111,7 +112,9 @@ chat.onToggle = (open) => {
   // keys pressed when the box opened would otherwise stay held in the game
   if (open) inputClear();
 };
-const social = new SocialButtons(hud.root, chat);
+// röstprat with the players who are not in the room
+const voice = new VoiceUi(hud.root);
+const social = new SocialButtons(hud.root, chat, voice);
 // Sagan om Världsträdet: the dungeon HUD, Kämpastenen, Völvan, the journal, loot and the family list
 const saga = new SagaUi(ui, hud.root, menus, social.el);
 /** Any window (or a minigame) open: the world stops reading taps and keys. */
