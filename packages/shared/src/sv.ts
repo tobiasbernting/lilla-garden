@@ -709,6 +709,7 @@ export const T = {
   sagaStrength: '💪 Styrkedryck! Du slår hårdare en stund.',
   sagaNoStrength: 'Du har ingen styrkedryck.',
   sagaStrengthKey: 'Styrkedryck',
+  lassoMonster: 'Lokes monster går inte att fånga med lasso! Besegra dem i stället.',
   // the saga's windows and the dungeon HUD
   sagaStoneTitle: 'Kämpastenen',
   sagaStoneIntro: 'Välj din väg! Du får klassens kläder, och kan byta när du vill (fast inte inne i en fängelsehåla).',
@@ -841,6 +842,26 @@ export const T = {
   julTwist: 'Djuren har tomteluvor!',
   paskTwist: 'Hönsen värper påskägg!',
   midsommarTwist: 'Blommor överallt!',
+  // Saga II (client)
+  sagaGearTitle: 'Utrustning',
+  sagaGearBtn: 'Utrustning (G)',
+  sagaSlotWeapon: 'Vapen',
+  sagaSlotOffhand: 'Bihand',
+  sagaSlotAmulet: 'Smycke',
+  sagaSlotWeaponHint: 'Inget vapen. Tryck på ett vapen i väskan!',
+  sagaSlotOffhandHint: 'Tomt. En sköld, en bok eller ett koger.',
+  sagaSlotAmuletHint: 'Tomt. Ett halsband eller en ring.',
+  sagaTapOff: 'Tryck för att ta av',
+  sagaTapOn: 'Tryck för att ta på',
+  sagaGearBag: 'I väskan',
+  sagaGearBagEmpty: 'Ingen utrustning i väskan än. Bossarna i fängelsehålorna har vapen, sköldar och smycken i sina kistor!',
+  sagaClothes: 'Kläder',
+  sagaHeroMode: 'Bli hjälte',
+  sagaFarmerMode: 'Bli bonde igen',
+  sagaHeroBtnHero: 'Hjälteläge: tryck för att bli bonde igen',
+  sagaHeroBtnFarmer: 'Bondeläge: tryck för att bli hjälte',
+  sagaDungeonLine: 'Besegra {boss} i {dungeon}',
+  sagaActTwo: 'Andra delen: Lokes list',
 };
 
 /** Names animals get until a player renames them. */

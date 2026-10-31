@@ -360,7 +360,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     name: 'Hel',
     title: 'Dödsrikets drottning',
     hp: 3400,
-    dmg: 15,
+    dmg: 16,
     atkMs: 2200,
     reach: 2.2,
     speed: 1.9,
@@ -368,7 +368,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     phaseAdds: { species: 'gengangare', count: 2 },
     moves: [
       { move: 'pull', name: 'Dödens famn', every: 15000, first: 9000, warn: 2200, radius: 7, dmg: 20, text: 'Hel sträcker ut sina kalla händer och drar alla nära sig. Akta er, för sedan kommer Helskriket!' },
-      { move: 'nova', name: 'Helskriket', every: 15000, first: 11500, warn: 2400, radius: 4, dmg: 40, interrupt: true, text: 'Hon skriker så det isar i hela salen. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring ut ur cirkeln!' },
+      { move: 'nova', name: 'Helskriket', every: 15000, first: 11500, warn: 2400, radius: 4, dmg: 44, interrupt: true, text: 'Hon skriker så det isar i hela salen. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring ut ur cirkeln!' },
       { move: 'rain', name: 'Gravkyla', every: 11000, first: 6000, warn: 1500, radius: 1.5, count: 2, dmg: 28, phase: 1, text: 'Kall dimma stiger upp ur golvet där ni står. Flytta på er!' },
     ],
     yells: { pull: 'Levande barn? Här nere? Jag får ju aldrig besök!', phase: ['Mina gengångare, vakna!', 'Pappa Loke lovade mig hela Midgård!'], kill: 'Välkommen till Helheim.', death: 'Ljuset… är så… varmt…', wipe: 'Helheim har gott om plats. Kom tillbaka när ni vill!' },
@@ -495,7 +495,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     name: 'Sköll',
     title: 'Solens jägare',
     hp: 2700,
-    dmg: 16,
+    dmg: 18,
     atkMs: 1700,
     reach: 1.9,
     speed: 2.8,
@@ -514,14 +514,14 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     name: 'Fenrisulven',
     title: 'Den bundne',
     hp: 4800,
-    dmg: 19,
+    dmg: 22,
     atkMs: 2100,
     reach: 2.4,
     speed: 2.4,
     phases: [0.7, 0.4],
     phaseAdds: { species: 'ulv', count: 2 },
     moves: [
-      { move: 'charge', name: 'Käftarna', every: 9000, first: 5000, warn: 1400, radius: 2, dmg: 44, text: 'Han hoppar fram med gapet på vid gavel. Hoppa undan från cirkeln!' },
+      { move: 'charge', name: 'Käftarna', every: 9000, first: 5000, warn: 1400, radius: 2, dmg: 48, text: 'Han hoppar fram med gapet på vid gavel. Hoppa undan från cirkeln!' },
       { move: 'cleave', name: 'Klorna', every: 9000, first: 8000, warn: 1300, radius: 4.2, arc: 100, dmg: 42, text: 'Han slår med klorna i en stor båge framför sig. Ställ dig bakom honom!' },
       { move: 'summon', name: 'Flocken!', every: 16000, first: 3000, warn: 1500, radius: 0, count: 2, add: 'ulv', dmg: 0, phase: 1, text: 'Han kallar på sin flock. Ta hand om ulvarna snabbt!' },
       { move: 'nova', name: 'Vinterylet', every: 15000, first: 5000, warn: 2800, radius: 8, dmg: 50, interrupt: true, phase: 2, text: 'Han ylar så att hela klyftan fryser. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
@@ -534,7 +534,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     name: 'Lokes skugga',
     title: 'En lögn i mörkret',
     hp: 3000,
-    dmg: 17,
+    dmg: 19,
     atkMs: 2000,
     reach: 2,
     speed: 2.3,
@@ -553,7 +553,7 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     name: 'Loke',
     title: 'Lögnernas fader',
     hp: 6000,
-    dmg: 20,
+    dmg: 24,
     atkMs: 2200,
     reach: 2.2,
     speed: 2.3,
@@ -561,13 +561,13 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     phaseAdds: { species: 'isvarg', count: 2 },
     // one move for every boss the family has beaten before, each from a later phase
     moves: [
-      { move: 'cleave', name: 'Kungasvärdet', every: 9000, first: 5000, warn: 1300, radius: 3.6, arc: 100, dmg: 40, text: 'Han härmar Draugkungen och svingar ett svärd i en stor båge. Ställ dig bakom honom!' },
+      { move: 'cleave', name: 'Kungasvärdet', every: 9000, first: 5000, warn: 1300, radius: 3.6, arc: 100, dmg: 44, text: 'Han härmar Draugkungen och svingar ett svärd i en stor båge. Ställ dig bakom honom!' },
       { move: 'nova', name: 'Snöstorm', every: 16000, first: 6000, warn: 2600, radius: 8, dmg: 40, interrupt: true, phase: 1, text: 'Han härmar Rimtursen och kallar på en snöstorm. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
       { move: 'pools', name: 'Lavapölar', every: 12000, first: 8000, warn: 1200, radius: 1.6, dmg: 11, linger: 9000, phase: 2, text: 'Han härmar Surt, och lava väller upp under er. Flytta på er!' },
       { move: 'mend', name: 'Lokes list', every: 22000, first: 16000, warn: 3000, radius: 1, dmg: 0, heal: 0.08, interrupt: true, phase: 2, text: 'Han låtsas sova och läker sig i smyg. Avbryt med Sköldslag, Stormsteg eller Isspjut!' },
       { move: 'pull', name: 'Dödens famn', every: 15000, first: 9000, warn: 2200, radius: 7, dmg: 20, phase: 3, text: 'Han härmar Hel och drar alla nära sig. Akta er, för sedan kommer Helskriket!' },
       { move: 'nova', name: 'Helskriket', every: 15000, first: 11500, warn: 2400, radius: 4, dmg: 44, interrupt: true, phase: 3, text: 'Han skriker som Hel. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring ut ur cirkeln!' },
-      { move: 'line', name: 'Svansslag', every: 8000, first: 4500, warn: 1500, radius: 8, width: 2, dmg: 44, phase: 4, text: 'Han trollar fram Midgårdsormens svans, som slår ner i en lång rak linje. Gå åt sidan!' },
+      { move: 'line', name: 'Svansslag', every: 8000, first: 4500, warn: 1500, radius: 8, width: 2, dmg: 48, phase: 4, text: 'Han trollar fram Midgårdsormens svans, som slår ner i en lång rak linje. Gå åt sidan!' },
     ],
     yells: {
       pull: 'Ni trodde Surt var farlig? Han var bara min hantlangare! Välkomna till min lilla bro. Hihi!',
@@ -1864,6 +1864,8 @@ export interface SagaFighter {
   /** The monster they last attacked: spells without a target go for it. */
   target?: number;
   potionAt?: number;
+  /** A strength potion: more power until then. */
+  strong?: number;
 }
 
 /** A boss's attack on its way down (shown on the ground), or burning ground that stays a while. */

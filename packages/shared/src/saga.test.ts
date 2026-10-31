@@ -40,7 +40,25 @@ import {
   setOnline,
   setWeather,
   tick,
+  ANIMALS,
+  SAGA_XP,
+  XP_LEVELS,
+  addObject,
+  chapterDone,
+  ensureRoaming,
+  equipGear,
+  fieldKey,
+  fighterMax,
+  gearStats,
+  newDay,
+  openTileNear,
+  placeIn,
+  sagaSnapshot,
+  setHero,
+  shownHeld,
+  type AnimalState,
   type Change,
+  type DungeonId,
   type PlayerState,
   type SimCtx,
   type WorldState,
@@ -88,11 +106,11 @@ function family(n = 1): { world: WorldState; players: PlayerState[] } {
 }
 
 /** A family member with a class, inside a dungeon. */
-function inside(world: WorldState, p: PlayerState, cls: keyof typeof CLASSES, id: 'draug' | 'frost' | 'surt' = 'draug'): WorldState {
-  p.saga = { cls, chapter: 1, heard: true, cleared: id === 'draug' ? [] : id === 'frost' ? ['draug'] : ['draug', 'frost'], titles: [], quests: {}, done: [], found: [] };
+function inside(world: WorldState, p: PlayerState, cls: keyof typeof CLASSES, id: DungeonId = 'draug'): WorldState {
+  p.saga = { cls, chapter: DUNGEONS[id].chapter, heard: true, cleared: DUNGEON_IDS.slice(0, DUNGEON_IDS.indexOf(id)), titles: [], quests: {}, done: [], found: [] };
   const plan = DUNGEONS[id].portal;
   const out = getArea(world, plan.area)!;
-  const arch = Object.values(out.objects).find((o) => o.kind === 'saga_portal')!;
+  const arch = Object.values(out.objects).find((o) => o.kind === 'saga_portal' && (o.variant ?? 0) === DUNGEON_IDS.indexOf(id))!;
   enterSaga(world, p, arch);
   return world.areas![sagaKey(id)]!;
 }
@@ -473,5 +491,464 @@ describe('the saga', () => {
     run(world, 100);
     expect(world.areas![sagaKey('draug')]).toBeUndefined();
     expect(p.area).toBe(DUNGEONS.draug.portal.area);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sagan om Världsträdet II: Lokes list
+// ---------------------------------------------------------------------------
+
+const ACT2: DungeonId[] = ['hel', 'dvarg', 'orm', 'alv', 'fenrir', 'loke'];
+
+/** A tank and a healer standing right by a (mid-)boss, so tough that nobody falls; the fight has begun. */
+function atBoss(id: DungeonId, which: 'mini' | 'boss') {
+  const { world, players } = family(2);
+  const [tank, healer] = players as [PlayerState, PlayerState];
+  const d = inside(world, tank, 'vaktare', id);
+  inside(world, healer, 'helare', id);
+  const inst = d.saga!;
+  const a = d.animals[which === 'mini' ? inst.mini : inst.boss]!;
+  tank.x = a.x + TILE;
+  tank.y = a.y;
+  healer.x = a.x - 2 * TILE;
+  healer.y = a.y;
+  for (const q of [tank, healer]) {
+    const f = inst.fighters[q.id]!;
+    f.hp = f.max = 99999;
+  }
+  run(world, 100);
+  const m = inst.mobs[a.id]!;
+  expect(m.state).toBe('fight');
+  return { world, d, inst, m, a, tank, healer };
+}
+
+/** Makes a boss use its move `i` next (and nothing else). */
+function force(m: { species: string; phase?: number; next?: number[]; cast?: unknown }, i: number): void {
+  const def = SAGA_BOSSES[m.species]!;
+  m.phase = Math.max(m.phase ?? 0, def.moves[i]!.phase ?? 0);
+  m.next = def.moves.map((_, k) => (k === i ? clock : Infinity));
+  delete m.cast;
+}
+const waitCast = (world: WorldState, m: { cast?: unknown }): void => {
+  let guard = 0;
+  while (!m.cast && guard++ < 100) run(world, 50);
+};
+
+describe('Lokes list: the bosses', () => {
+  for (const id of ACT2)
+    for (const which of ['mini', 'boss'] as const) {
+      const species = which === 'mini' ? DUNGEONS[id].mini : DUNGEONS[id].boss;
+      it(`${species}: every move is cast and lands, and the stoppable ones stop for a shield bash`, () => {
+        const { world, inst, m, a, tank } = atBoss(id, which);
+        const def = SAGA_BOSSES[species]!;
+        expect(def.yells.phase.length).toBe(def.phases.length);
+        def.moves.forEach((mv, i) => {
+          force(m, i);
+          tank.x = a.x + TILE;
+          tank.y = a.y;
+          waitCast(world, m);
+          expect(m.cast?.move).toBe(i);
+          const zones = m.cast!.zones.map((z) => inst.zones.find((x) => x.id === z)!);
+          if (mv.move === 'line') expect(zones[0]).toMatchObject({ shape: 'line', r: mv.radius, w: mv.width });
+          if (mv.move === 'summon') expect(zones).toHaveLength(0);
+          if (mv.move === 'mend' || mv.move === 'pull' || mv.move === 'nova' || mv.move === 'slam') expect(zones[0]?.shape).toBe('circle');
+          if (mv.interrupt) {
+            // every stoppable move says how to stop it
+            expect(mv.text).toContain('Sköldslag, Stormsteg eller Isspjut');
+            const f = inst.fighters[tank.id]!;
+            f.cd = {};
+            f.gcd = 0;
+            tank.x = a.x + TILE;
+            tank.y = a.y;
+            const ch = castSpell(world, tank.id, 'skoldslag', m.id, ctx());
+            expect(m.cast).toBeUndefined();
+            expect(ch.some((c) => c.t === 'hit' && c.kind === 'kick')).toBe(true);
+          } else {
+            run(world, mv.warn + 150);
+            expect(m.cast?.move === i).toBe(false);
+          }
+        });
+      });
+    }
+
+  it('a line hits whoever stands in the strip, not the one beside it', () => {
+    const { world, inst, m, a, tank, healer } = atBoss('dvarg', 'mini');
+    const i = SAGA_BOSSES.jarnvakten!.moves.findIndex((mv) => mv.move === 'line');
+    force(m, i);
+    tank.x = a.x + 3 * TILE;
+    tank.y = a.y;
+    healer.x = a.x + 3 * TILE;
+    healer.y = a.y + 3 * TILE;
+    inst.mobs[m.id]!.target = tank.id;
+    waitCast(world, m);
+    const z = inst.zones.find((x) => x.id === m.cast!.zones[0])!;
+    expect(z.shape).toBe('line');
+    expect(Math.abs(z.dir!)).toBeLessThan(0.2);
+    const landed = run(world, SAGA_BOSSES.jarnvakten!.moves[i]!.warn + 100);
+    const dmg = Math.round(SAGA_BOSSES.jarnvakten!.moves[i]!.dmg * mobDmgScale(2));
+    expect(landed.some((c) => c.t === 'hit' && c.on === tank.id && c.n === dmg)).toBe(true);
+    expect(landed.some((c) => c.t === 'hit' && c.on === healer.id && c.kind === 'dmg')).toBe(false);
+  });
+
+  it("Hel's embrace pulls everyone close to her, ready for the scream", () => {
+    const { world, m, a, healer } = atBoss('hel', 'boss');
+    const i = SAGA_BOSSES.hel!.moves.findIndex((mv) => mv.move === 'pull');
+    force(m, i);
+    healer.x = a.x - 5 * TILE;
+    healer.y = a.y;
+    waitCast(world, m);
+    const landed = run(world, SAGA_BOSSES.hel!.moves[i]!.warn + 100);
+    expect(landed.some((c) => c.t === 'warp' && c.id === healer.id)).toBe(true);
+    expect(Math.hypot(healer.x - a.x, healer.y - a.y) / TILE).toBeLessThan(2.8);
+    expect(isSolidForPlayer(world.areas![sagaKey('hel')]!, Math.floor(healer.x / TILE), Math.floor(healer.y / TILE))).toBe(false);
+  });
+
+  it('Fafner heals in his golden sleep unless someone wakes him', () => {
+    const { world, m, a, tank, inst } = atBoss('dvarg', 'boss');
+    const i = SAGA_BOSSES.fafner!.moves.findIndex((mv) => mv.move === 'mend');
+    m.hp = Math.round(m.max / 2);
+    force(m, i);
+    waitCast(world, m);
+    const before = m.hp;
+    const landed = run(world, SAGA_BOSSES.fafner!.moves[i]!.warn + 100);
+    const healed = Math.round(m.max * SAGA_BOSSES.fafner!.moves[i]!.heal!);
+    expect(landed.some((c) => c.t === 'hit' && c.on === m.id && c.kind === 'heal' && c.n === healed)).toBe(true);
+    expect(m.hp).toBeGreaterThan(before);
+    // again, and this time the tank wakes him with a bash
+    force(m, i);
+    waitCast(world, m);
+    const f = inst.fighters[tank.id]!;
+    f.cd = {};
+    f.gcd = 0;
+    tank.x = a.x + TILE;
+    tank.y = a.y;
+    const mid = m.hp;
+    castSpell(world, tank.id, 'skoldslag', m.id, ctx());
+    const after = run(world, 3200);
+    expect(after.some((c) => c.t === 'hit' && c.on === m.id && c.kind === 'heal')).toBe(false);
+    expect(m.hp).toBeLessThanOrEqual(mid);
+  });
+
+  it('the Spider Queen webs a friend in, and the web breaks like the ice', () => {
+    const { world, d, inst, m, healer, tank } = atBoss('alv', 'mini');
+    force(m, 0);
+    waitCast(world, m);
+    const landed = run(world, SAGA_BOSSES.spindeldrottning!.moves[0]!.warn + 100);
+    const f = inst.fighters[healer.id]!;
+    expect(f.frozen).toBeDefined();
+    expect(d.animals[f.frozen!]!.species).toBe('spindelnat');
+    expect(landed.some((c) => c.t === 'toast' && c.text.includes('nät'))).toBe(true);
+    // the friend breaks the web
+    const web = inst.mobs[f.frozen!]!;
+    web.hp = 1;
+    const tf = inst.fighters[tank.id]!;
+    tf.cd = {};
+    tf.gcd = 0;
+    tank.x = d.animals[web.id]!.x + TILE;
+    tank.y = d.animals[web.id]!.y;
+    castSpell(world, tank.id, 'hugg', web.id, ctx());
+    expect(f.frozen).toBeUndefined();
+  });
+
+  it('Garm howls for his hounds: the cast bar shows it, then they come', () => {
+    const { world, d, inst, m } = atBoss('hel', 'mini');
+    force(m, 1);
+    waitCast(world, m);
+    expect(sagaSnapshot(world, clock)![sagaKey('hel')]!.b?.cast?.name).toBe('Yla!');
+    run(world, SAGA_BOSSES.garm!.moves[1]!.warn + 100);
+    const adds = Object.values(inst.mobs).filter((x) => x.kind === 'add');
+    expect(adds.length).toBeGreaterThan(0);
+    expect(adds.every((x) => d.animals[x.id]!.species === 'helhund')).toBe(true);
+  });
+
+  it("Loke has five phases, one for each boss he copies, and his helpers are illusions", () => {
+    const w = generateSaga('loke');
+    for (const m of Object.values(w.saga!.mobs)) expect(w.animals[m.id]!.variant).toBe(m.kind === 'mob' ? 1 : undefined);
+    const { world, d, inst, m, healer } = atBoss('loke', 'boss');
+    const phases = SAGA_BOSSES.loke!.phases;
+    expect(phases).toHaveLength(4);
+    const yells: string[] = [];
+    for (const th of phases) {
+      m.hp = Math.ceil(m.max * th) + 5;
+      const f = inst.fighters[healer.id]!;
+      f.cd = {};
+      f.gcd = 0;
+      for (const c of castSpell(world, healer.id, 'ljuspil', m.id, ctx())) if (c.t === 'yell') yells.push(c.text);
+      clock += 500;
+    }
+    expect(m.phase).toBe(4);
+    expect(yells.join(' ')).toContain('Rimtursen');
+    expect(yells.join(' ')).toContain('Surt');
+    const adds = Object.values(inst.mobs).filter((x) => x.kind === 'add');
+    expect(adds.length).toBeGreaterThan(0);
+    for (const x of adds) expect(d.animals[x.id]!.variant).toBe(1);
+  });
+});
+
+describe('Lokes list: puzzles and loot', () => {
+  it('standing on the three plates opens the way on', () => {
+    for (const id of ['dvarg', 'alv', 'loke'] as const) {
+      const { world, players } = family();
+      const p = players[0]!;
+      const d = inside(world, p, 'krigare', id);
+      const inst = d.saga!;
+      expect(inst.plates).toHaveLength(3);
+      expect(inst.puzzleOpen).toBe(false);
+      let out: Change[] = [];
+      for (const plate of inst.plates) {
+        p.x = px(plate.x);
+        p.y = px(plate.y);
+        out = out.concat(run(world, 100));
+        expect(plate.lit).toBe(true);
+        expect(objectAt(d, plate.x, plate.y)!.variant).toBe(1);
+      }
+      expect(inst.puzzleOpen).toBe(true);
+      for (const g of inst.puzzleGate) expect(objectAt(d, g.x, g.y)?.kind).not.toBe('saga_gate');
+      expect(out.some((c) => c.t === 'banner' && c.kind === 'rest' && c.text === T.sagaPuzzleOpen)).toBe(true);
+    }
+  });
+
+  it('a chest gives offhands and amulets once each, and each player opens it once', () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    const d = inside(world, p, 'krigare', 'hel');
+    const inst = d.saga!;
+    p.saga!.found = ['shirt_helrustning', 'garmklo'];
+    const tx = Math.floor(p.x / TILE) + 1;
+    const ty = Math.floor(p.y / TILE);
+    const chest = addObject(d, 'saga_chest', tx, ty, { variant: 1 })!;
+    let got = false;
+    for (let seed = 1; seed < 60 && !got; seed++) {
+      delete inst.looted[chest.id];
+      const ch = performAction(d, p.id, tx, ty, ctx(seed));
+      got = ch.some((c) => c.t === 'loot' && c.items.some((it) => it.item === 'offhand_helskold'));
+    }
+    expect(got).toBe(true);
+    expect(p.saga!.found).toContain('offhand_helskold');
+    expect(p.inventory.some((s) => s?.item === 'offhand_helskold')).toBe(true);
+    // all the chest's gear is found: potions instead
+    for (let seed = 1; seed < 20; seed++) {
+      delete inst.looted[chest.id];
+      const ch = performAction(d, p.id, tx, ty, ctx(seed));
+      expect(ch.some((c) => c.t === 'loot' && c.items.some((it) => it.item === 'offhand_helskold' || it.item === 'garmklo'))).toBe(false);
+    }
+    expect(performAction(d, p.id, tx, ty, ctx(3)).some((c) => c.t === 'loot')).toBe(false);
+  });
+});
+
+describe('Lokes list: gear and levels', () => {
+  it('an old save puts on its best weapon; gear goes on and off by its rules', () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    p.saga = { cls: 'vaktare', chapter: 4, heard: true, cleared: ['draug', 'frost', 'surt'], titles: [], quests: {}, done: [], found: [] };
+    p.inventory[10] = { item: 'runsvard', count: 1 };
+    p.inventory[11] = { item: 'frostbett', count: 1 };
+    // not in the bag: refused, but the gear record is made and the best weapon is put on
+    const missing = equipGear(world, p.id, 'offhand', 'offhand_dvargskold');
+    expect(missing.some((c) => c.t === 'toast')).toBe(true);
+    expect(p.saga.gear).toEqual({ weapon: 'frostbett' });
+    expect(p.inventory.some((s) => s?.item === 'frostbett')).toBe(false);
+    expect(p.inventory.some((s) => s?.item === 'runsvard')).toBe(true);
+    p.inventory[12] = { item: 'offhand_dvargskold', count: 1 };
+    p.inventory[13] = { item: 'amulet_helring', count: 1 };
+    // an amulet does not go in the offhand slot
+    equipGear(world, p.id, 'offhand', 'amulet_helring');
+    expect(p.saga.gear!.offhand).toBeUndefined();
+    equipGear(world, p.id, 'offhand', 'offhand_dvargskold');
+    expect(p.saga.gear!.offhand).toBe('offhand_dvargskold');
+    expect(p.inventory.some((s) => s?.item === 'offhand_dvargskold')).toBe(false);
+    const st = gearStats(p);
+    expect(st.armor).toBeCloseTo(0.1);
+    // an epic weapon, and a shield made for the tank
+    expect(st.power).toBeCloseTo(1.2 * 1.05);
+    const max = fighterMax(p, 'vaktare');
+    equipGear(world, p.id, 'amulet', 'amulet_helring');
+    expect(fighterMax(p, 'vaktare')).toBe(max + 20);
+    // a full bag: nothing can come off
+    for (let i = 0; i < p.inventory.length; i++) if (!p.inventory[i]) p.inventory[i] = { item: 'stone', count: 1 };
+    const full = equipGear(world, p.id, 'amulet', null);
+    expect(full.some((c) => c.t === 'toast' && c.text === T.sagaEquipBagFull)).toBe(true);
+    expect(p.saga.gear!.amulet).toBe('amulet_helring');
+    p.inventory[20] = null;
+    equipGear(world, p.id, 'amulet', null);
+    expect(p.saga.gear!.amulet).toBeUndefined();
+    expect(p.inventory.findIndex((x) => x?.item === 'amulet_helring')).toBe(20);
+    // a legendary weapon: the old one goes back into the bag, and it counts
+    p.inventory[21] = { item: 'tyrsyxa', count: 1 };
+    equipGear(world, p.id, 'weapon', 'tyrsyxa');
+    expect(p.saga.gear!.weapon).toBe('tyrsyxa');
+    expect(p.inventory.findIndex((x) => x?.item === 'frostbett')).toBe(21);
+    expect(p.stats.sagaLegendary).toBe(1);
+  });
+
+  it('armor takes away part of every hit', () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    const d = inside(world, p, 'vaktare', 'hel');
+    p.saga!.gear = { offhand: 'offhand_tyrshandske' };
+    const inst = d.saga!;
+    const boss = d.animals[inst.boss]!;
+    p.x = boss.x + TILE;
+    p.y = boss.y;
+    const f = inst.fighters[p.id]!;
+    f.hp = f.max = 99999;
+    const out = run(world, 4000);
+    const hits = out.filter((c) => c.t === 'hit' && c.on === p.id && c.kind === 'dmg').map((c) => (c.t === 'hit' ? c.n : 0));
+    expect(hits).toContain(Math.round(SAGA_BOSSES.hel!.dmg * mobDmgScale(1) * (1 - 0.14)));
+  });
+
+  it('experience gives levels: a banner, a sparkle, more health', () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    const d = inside(world, p, 'krigare');
+    const inst = d.saga!;
+    p.saga!.xp = XP_LEVELS[1]! - SAGA_XP.mob;
+    const m = Object.values(inst.mobs).find((x) => x.kind === 'mob')!;
+    const a = d.animals[m.id]!;
+    p.x = a.x + TILE;
+    p.y = a.y;
+    run(world, 100);
+    m.hp = 1;
+    const out = castSpell(world, p.id, 'yxhugg', m.id, ctx());
+    expect(out.some((c) => c.t === 'banner' && c.kind === 'level' && c.text === 'Nivå 2!')).toBe(true);
+    expect(p.saga!.level).toBe(2);
+    expect(p.stats.sagaLevel).toBe(2);
+    expect(inst.fighters[p.id]!.max).toBe(Math.round(CLASSES.krigare.hp * 1.03));
+    expect(gearStats(p).power).toBeCloseTo(1.03);
+  });
+});
+
+describe('Lokes list: out in the world', () => {
+  /** A hero with chapter 4 told, standing on an open tile of a map out in the world, with no monsters about. */
+  function outdoors(cls: keyof typeof CLASSES, key: string, chapter = 4) {
+    // (players in a new world get the same ids, and spell cooldowns out in the world are kept by id)
+    clock += 30_000;
+    const { world, players } = family(2);
+    const p = players[0]!;
+    p.saga = { cls, chapter, heard: true, cleared: ['draug', 'frost', 'surt'], titles: [], quests: {}, done: [], found: [] };
+    const a = getArea(world, key)!;
+    const at = openTileNear(a, 32, 30);
+    placeIn(world, p, key, at.x, at.y, 'right', []);
+    const roamers = Object.values(a.animals).filter((x) => ANIMALS[x.species]?.mob);
+    for (const x of Object.values(a.animals)) if (ANIMALS[x.species]?.mob || ANIMALS[x.species]?.predator) delete a.animals[x.id];
+    return { world, p, a, roamers, friend: players[1]! };
+  }
+  /** Puts a monster right next to (east of) the player. */
+  const nextTo = (a: WorldState, p: PlayerState, m: AnimalState, tiles = 1): AnimalState => {
+    m.x = p.x + tiles * TILE;
+    m.y = p.y;
+    m.hp = ANIMALS[m.species]!.mob!.hp;
+    a.animals[m.id] = m;
+    return m;
+  };
+
+  it('the hero switch swaps the outfits and draws the weapon', () => {
+    const { world, p } = outdoors('krigare', 'a:0,-1');
+    p.outfit = { hat: 'hat_straw', shirt: 'shirt_red' };
+    p.saga!.gear = { weapon: 'draugyxa' };
+    expect(shownHeld(p)).not.toBe('draugyxa');
+    setHero(world, p.id, true);
+    expect(p.saga!.hero).toBe(true);
+    expect(p.outfit.hat).toBe(CLASSES.krigare.outfit.hat);
+    expect(shownHeld(p)).toBe('draugyxa');
+    p.outfit = { ...p.outfit, shirt: 'shirt_bjornfall' };
+    setHero(world, p.id, false);
+    expect(p.outfit).toEqual({ hat: 'hat_straw', shirt: 'shirt_red' });
+    setHero(world, p.id, true);
+    expect(p.outfit.shirt).toBe('shirt_bjornfall');
+    // no class, no hero
+    const q = createPlayer(world, 'Utan', { skin: '#f1c9a5', hair: '#2b2119', hairStyle: 'short' });
+    expect(setHero(world, q.id, true).some((c) => c.t === 'toast')).toBe(true);
+    expect(q.saga?.hero).toBeFalsy();
+  });
+
+  it("spells beat Loke's roaming servants, and the chapter's field task counts them", () => {
+    const { world, p, a, roamers, friend } = outdoors('magiker', 'a:0,-1');
+    expect(roamers.some((x) => x.species === 'vandrardraug')).toBe(true);
+    // the friend close by has the same chapter: it counts for them too
+    friend.saga = { cls: 'helare', chapter: 4, heard: true, cleared: [], titles: [], quests: {}, done: [], found: [] };
+    placeIn(world, friend, 'a:0,-1', Math.floor(p.x / TILE), Math.floor(p.y / TILE) + 1, 'up', []);
+    // a farmer's spells do nothing out here
+    expect(castSpell(world, p.id, 'eldboll', undefined, ctx())).toEqual([]);
+    setHero(world, p.id, true);
+    const m = nextTo(a, p, roamers.find((x) => x.species === 'vandrardraug')!, 3);
+    let out: Change[] = [];
+    for (let i = 0; i < 6 && a.animals[m.id]; i++) {
+      out = out.concat(castSpell(world, p.id, 'eldboll', undefined, ctx(i + 1)));
+      clock += 1500;
+    }
+    expect(a.animals[m.id]).toBeUndefined();
+    expect(out.some((c) => c.t === 'spell' && c.area === 'a:0,-1')).toBe(true);
+    expect(p.saga!.quests[fieldKey(4)]).toBe(1);
+    expect(friend.saga!.quests[fieldKey(4)]).toBe(1);
+    expect(p.saga!.xp).toBe(SAGA_XP.field);
+    expect(chapterDone(p.saga!)).toBe(false);
+    p.saga!.quests[fieldKey(4)] = 8;
+    expect(chapterDone(p.saga!)).toBe(true);
+  });
+
+  it('in hero mode the use key casts the attack spell at a monster in reach; taunts and heals work too', () => {
+    const { world, p, a, roamers } = outdoors('krigare', 'a:0,-1');
+    setHero(world, p.id, true);
+    const m = nextTo(a, p, roamers[0]!);
+    const hp = m.hp!;
+    const out = performAction(a, p.id, Math.floor(p.x / TILE), Math.floor(p.y / TILE) + 1, ctx());
+    expect(out.some((c) => c.t === 'spell' && c.spell === 'yxhugg')).toBe(true);
+    expect(a.animals[m.id] ? m.hp! : 0).toBeLessThan(hp);
+    // a guardian's challenge makes it go for them, a healer's rune gives hearts back
+    const g = outdoors('vaktare', 'a:0,-1');
+    setHero(g.world, g.p.id, true);
+    const t = nextTo(g.a, g.p, g.roamers[0]!, 2);
+    castSpell(g.world, g.p.id, 'utmana', undefined, ctx());
+    expect(t.hunt).toBe(g.p.id);
+    const h = outdoors('helare', 'a:0,-1');
+    setHero(h.world, h.p.id, true);
+    h.p.hearts = 1;
+    castSpell(h.world, h.p.id, 'lakerunan', undefined, ctx());
+    expect(h.p.hearts).toBe(3);
+  });
+
+  it('chapter 5 needs both the field task and Helheim', () => {
+    const prog = { cls: 'krigare' as const, chapter: 5, heard: true, cleared: ['draug', 'frost', 'surt'] as DungeonId[], titles: [], quests: {} as Record<string, number>, done: [], found: [] };
+    expect(chapterDone(prog)).toBe(false);
+    prog.cleared.push('hel');
+    expect(chapterDone(prog)).toBe(false);
+    prog.quests[fieldKey(5)] = 6;
+    expect(chapterDone(prog)).toBe(true);
+    const { world, players } = family();
+    const p = players[0]!;
+    p.saga = { ...prog, titles: [], done: [], found: [] };
+    getArea(world, VILLAGE_KEY);
+    placeIn(world, p, VILLAGE_KEY, VOLVA_SPOT.x, VOLVA_SPOT.y + 1, 'up', []);
+    sagaChapter(world, p.id);
+    expect(p.saga.chapter).toBe(6);
+    expect(p.saga.titles).toContain('Helfarare');
+    expect(p.saga.quests[fieldKey(5)]).toBeUndefined();
+    expect(p.saga.xp).toBe(SAGA_XP.chapter);
+  });
+
+  it('a world boss leaves a treasure chest behind', () => {
+    const { world, p, a, roamers } = outdoors('magiker', 'a:2,0');
+    const boss = roamers.find((x) => x.species === 'bergatroll')!;
+    expect(boss).toBeDefined();
+    setHero(world, p.id, true);
+    nextTo(a, p, boss, 2);
+    boss.hp = 1;
+    const out = castSpell(world, p.id, 'eldboll', boss.id, ctx());
+    const chest = Object.values(a.objects).find((o) => o.kind === 'loot_chest' && o.loot === 'worldboss');
+    expect(chest).toBeDefined();
+    expect(p.stats.worldBoss).toBe(1);
+    expect(out.some((c) => c.t === 'toast' && c.to === null && c.text.includes('Bergatrollet'))).toBe(true);
+  });
+
+  it('the roaming monsters come back: on old maps, and every morning', () => {
+    const { world, a } = outdoors('magiker', 'a:0,-1');
+    expect(Object.values(a.animals).some((x) => x.species === 'vandrardraug')).toBe(false);
+    expect(ensureRoaming(a)).toBe(true);
+    expect(Object.values(a.animals).filter((x) => x.species === 'vandrardraug').length).toBeGreaterThanOrEqual(2);
+    expect(ensureRoaming(a)).toBe(false);
+    for (const x of Object.values(a.animals)) if (x.species === 'vandrardraug') delete a.animals[x.id];
+    newDay(world, ctx());
+    expect(Object.values(a.animals).filter((x) => x.species === 'vandrardraug').length).toBeGreaterThanOrEqual(2);
   });
 });

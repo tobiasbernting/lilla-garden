@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureRoaming, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 import { PgAccessStore } from './accessStore.ts';
 
@@ -115,6 +115,8 @@ export class PgStore implements Store {
       }
       delete world.players[p.id]!.emote;
       delete world.players[p.id]!.fishing;
+      // heroes from before gear: their best weapon goes from the bag into their hand
+      ensureGear(world.players[p.id]!);
     }
     rebuildOccupancy(world);
     world.areas = {};
@@ -169,6 +171,10 @@ export class PgStore implements Store {
       if (ensureSagaPlaces(k, a)) {
         this.dirtyAreas.add(k);
         console.log(`added a dungeon's arch or Kämpastenen to ${k}`);
+      }
+      if (ensureRoaming(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`Loke's servants now roam ${k}`);
       }
     }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers

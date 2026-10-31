@@ -4,9 +4,11 @@
 // on the ground before they land, call helpers at each new phase, and some attacks can be stopped with a
 // stun. Rest stones heal and become where the family gets up after falling. Chests give each player their
 // own loot. Völvan Sigrun tells the saga, the villagers give quests, and anyone can jump to a family member.
-import { ITEMS, NPCS, VILLAGE_KEY, objectDef } from './data.ts';
-import { countItem, removeItem } from './inventory.ts';
-import { addObject, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
+import { ANIMALS, ITEMS, NPCS, VILLAGE_KEY, objectDef } from './data.ts';
+import { MAX_HEARTS } from './dungeon.ts';
+import { isIndoorKey } from './hall.ts';
+import { addItem, countItem, removeItem } from './inventory.ts';
+import { addObject, inBounds, inInterior, objectAt, removeObject, tileIndex } from './map.ts';
 import type { Change } from './protocol.ts';
 import { randInt } from './rng.ts';
 import {
@@ -17,8 +19,15 @@ import {
   DUNGEONS,
   GCD_MS,
   LEASH_TILES,
-  RARITY_POWER,
+  BLOCK_SPECIES,
   REST_RADIUS,
+  SAGA_XP,
+  fighterMax,
+  gearOf,
+  gearSlotOf,
+  gearStats,
+  isGearSlot,
+  xpLevel,
   SAGA_BOSSES,
   SAGA_CHAPTERS,
   SAGA_LOOT,
@@ -53,11 +62,37 @@ import {
   type SagaProgress,
   type SagaQuest,
   type SagaZone,
+  type SagaBossDef,
+  type BossAbility,
 } from './saga.ts';
 import { sagaCheckpoint, spawnSagaMob } from './sagamap.ts';
-import { bump, farmOf, fx, getArea, giveItems, isSolidForAnimal, isSolidForPlayer, lineOfSight, npcState, openTileNear, placeIn, playerChange, resolveMove, toast, type SimCtx } from './sim.ts';
+import {
+  ATTACK_GAP,
+  animalAt,
+  attackMob,
+  bump,
+  farmOf,
+  fx,
+  getArea,
+  giveItems,
+  isFarm,
+  isHostile,
+  isSolidForAnimal,
+  isSolidForPlayer,
+  lineOfSight,
+  npcAt,
+  npcState,
+  openTileNear,
+  placeIn,
+  playerChange,
+  resolveMove,
+  tagArea,
+  toast,
+  type SimCtx,
+} from './sim.ts';
+import { isUnderground } from './caves.ts';
 import { T, fmt, itemName } from './sv.ts';
-import { MAP_H, MAP_W, TILE, type PlayerState, type WorldObject, type WorldState } from './types.ts';
+import { MAP_H, MAP_W, TILE, type AnimalState, type PlayerState, type WorldObject, type WorldState } from './types.ts';
 
 const px = (t: number): number => t * TILE + TILE / 2;
 const tileOf = (v: number): number => Math.floor(v / TILE);
@@ -93,9 +128,9 @@ const upright = (h: Here, p: PlayerState): boolean => {
 };
 
 const hit = (h: Here, on: string | number, n: number, kind: 'dmg' | 'heal' | 'crit' | 'block' | 'stun' | 'kick' | 'miss'): Change => ({ t: 'hit', area: h.key, on, n: Math.round(n), kind });
-const spellFx = (h: Here, by: string | number, spell: string, from: { x: number; y: number }, to?: { x: number; y: number }, on?: string | number): Change => ({
+const spellFx = (h: Here | string, by: string | number, spell: string, from: { x: number; y: number }, to?: { x: number; y: number }, on?: string | number): Change => ({
   t: 'spell',
-  area: h.key,
+  area: typeof h === 'string' ? h : h.key,
   by,
   spell,
   x: from.x,
@@ -118,9 +153,10 @@ const yell = (h: Here, species: string, text: string): Change => ({ t: 'yell', a
 function makeFighter(h: Here, p: PlayerState): SagaFighter | null {
   const cls = p.saga?.cls;
   if (!cls) return null;
+  ensureGear(p);
   const old = h.inst.fighters[p.id];
   if (old && old.cls === cls) return old;
-  const max = CLASSES[cls].hp;
+  const max = fighterMax(p, cls);
   const f: SagaFighter = { cls, hp: max, max, cd: {}, gcd: 0, fightAt: 0 };
   h.inst.fighters[p.id] = f;
   return f;
@@ -235,13 +271,13 @@ export function jumpTo(world: WorldState, playerId: string, toId: string): Chang
   return out;
 }
 
-/** Moves a player within the map they are on (blink, charge, getting up): the client jumps there too. */
-function warp(h: Here, p: PlayerState, tx: number, ty: number, out: Change[], exact?: { x: number; y: number }): void {
+/** Moves a player within the map they are on (blink, charge, getting up, a boss's pull): the client jumps there too. */
+function warp(h: Here | string, p: PlayerState, tx: number, ty: number, out: Change[], exact?: { x: number; y: number }): void {
   p.x = exact?.x ?? px(tx);
   p.y = exact?.y ?? px(ty);
   p.moving = false;
   p.moveLock = 6;
-  out.push({ t: 'warp', id: p.id, x: p.x, y: p.y, area: h.key }, playerChange(p));
+  out.push({ t: 'warp', id: p.id, x: p.x, y: p.y, area: typeof h === 'string' ? h : h.key }, playerChange(p));
 }
 
 // ---------------------------------------------------------------------------
@@ -311,9 +347,12 @@ export function chooseClass(world: WorldState, playerId: string, cls: string): C
   const prog = progressOf(p);
   const first = !prog.cls;
   prog.cls = cls;
+  ensureGear(p);
   const c = CLASSES[cls];
   for (const piece of [c.outfit.hat, c.outfit.shirt]) if (!p.wardrobe.includes(piece)) p.wardrobe.push(piece);
   p.outfit = { ...p.outfit, hat: c.outfit.hat, shirt: c.outfit.shirt };
+  // the new class's clothes are what the hero switch puts on from now on
+  prog.heroOutfit = { ...p.outfit };
   const out: Change[] = [toast(p.id, fmt(T.sagaClassChosen, { cls: c.name })), fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle')];
   if (first) {
     // every new hero gets a few healing potions to start with
@@ -372,8 +411,11 @@ export function sagaChapter(world: WorldState, playerId: string): Change[] {
     prog.titles.push(r.title);
     out.push(toast(p.id, fmt(T.sagaTitle, { title: r.title })));
   }
+  if (prog.chapter === SAGA_CHAPTERS.length - 1) bump(p, 'sagaAct2', 1, out);
+  delete prog.quests[fieldKey(prog.chapter)];
   prog.chapter++;
   prog.heard = false;
+  giveXp(p, SAGA_XP.chapter, out);
   out.push({ t: 'banner', to: p.id, kind: 'reward', text: fmt(T.sagaChapterDone, { title: ch.title }), sub: `+${r.coins} kr · +${r.stars} ⭐${r.item ? ` · ${itemName(r.item)}` : ''}` }, fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p));
   return out;
 }
@@ -412,6 +454,7 @@ export function sagaQuestAct(world: WorldState, playerId: string, questId: strin
   bump(p, 'earned', q.reward.coins, out);
   if (q.reward.item) giveItems(farm, p, q.reward.item, q.reward.count ?? 1, out);
   bump(p, 'sagaQuests', 1, out);
+  giveXp(p, SAGA_XP.quest, out);
   out.push(toast(p.id, fmt(T.sagaQuestDone, { title: q.title })), fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p));
   return out;
 }
@@ -428,7 +471,10 @@ export function sagaAct(world: WorldState, p: PlayerState, tx: number, ty: numbe
   if (obj?.kind === 'saga_exit') return leaveSaga(world, p);
   if (obj?.kind === 'saga_chest') return openChest(h, p, obj, ctx);
   if (obj?.kind === 'saga_rest') return [toast(p.id, T.sagaRestHint)];
+  if (obj?.kind === 'saga_gate' && h.inst.puzzleGate.some((g) => g.x === obj.x && g.y === obj.y)) return [toast(p.id, T.sagaPuzzleShut)];
+  if (obj?.kind === 'saga_plate' && !h.inst.puzzleOpen) return [toast(p.id, T.sagaPlatesHint)];
   if (p.inventory[p.selected]?.item === 'healing_potion') return drinkPotion(world, p.id, ctx);
+  if (p.inventory[p.selected]?.item === STRENGTH_POTION) return drinkStrength(world, p.id, ctx);
   // nothing to use: the use key (E, space, the ✋ button, a tap next to you) swings your everyday attack at the
   // nearest monster in reach, quietly when there is none (the key is pressed a lot while walking about)
   const f = h.inst.fighters[p.id];
@@ -443,6 +489,7 @@ export const POTION_CD = 15_000;
 /** Drinks a healing potion (the potion button, or pressing action with one in hand). */
 export function drinkPotion(world: WorldState, playerId: string, ctx: SimCtx): Change[] {
   const p = farmOf(world).players[playerId];
+  if (p && !isSagaKey(p.area) && p.saga?.hero) return drinkFieldPotion(world, playerId, ctx);
   const h = p ? hereOf(world, p) : null;
   const f = h && p ? h.inst.fighters[p.id] : undefined;
   if (!p || !h || !f || f.down !== undefined || f.frozen !== undefined) return [];
@@ -453,6 +500,25 @@ export function drinkPotion(world: WorldState, playerId: string, ctx: SimCtx): C
   heal(h, p, f, f.max * POTION_HEAL, out);
   out.push(spellFx(h, p.id, 'potion', p), playerChange(p));
   return out;
+}
+
+/** The strength potion (Styrkedryck): a quarter more power for a little while, in a dungeon or out in the world. */
+export const STRENGTH_POTION = 'styrkedryck';
+const STRENGTH_MS = 20_000;
+const STRENGTH_MUL = 1.25;
+
+export function drinkStrength(world: WorldState, playerId: string, ctx: SimCtx): Change[] {
+  const p = farmOf(world).players[playerId];
+  if (!p || !p.saga?.cls) return [];
+  const h = hereOf(world, p);
+  const f = h ? h.inst.fighters[p.id] : undefined;
+  if (h && (!f || f.down !== undefined || f.frozen !== undefined)) return [];
+  if (!h && !canFieldCast(world, p)) return [];
+  if (!removeItem(p.inventory, STRENGTH_POTION, 1)) return [toast(p.id, T.sagaNoStrength)];
+  const until = ctx.now + STRENGTH_MS;
+  if (f) f.strong = until;
+  else fieldState(p.id).strong = until;
+  return [spellFx(h ?? p.area, p.id, 'strength', p), toast(p.id, T.sagaStrength), playerChange(p)];
 }
 
 /** Opens a chest: everyone gets their own loot from it once. */
@@ -474,10 +540,10 @@ function openChest(h: Here, p: PlayerState, chest: WorldObject, ctx: SimCtx): Ch
   return out;
 }
 
-/** Things that come once each (clothes, weapons, pets, mounts), so the same one does not come twice while there are new ones. */
+/** Things that come once each (clothes, weapons, offhands, amulets, pets, mounts), so the same one does not come twice while there are new ones. */
 const unique = (id: string): boolean => {
   const k = sagaItem(id)?.kind;
-  return k === 'weapon' || k === 'hat' || k === 'shirt' || k === 'pet' || k === 'mount';
+  return k === 'weapon' || k === 'offhand' || k === 'amulet' || k === 'hat' || k === 'shirt' || k === 'pet' || k === 'mount';
 };
 
 function rollLoot(h: Here, p: PlayerState, table: SagaLoot, from: string, ctx: SimCtx, out: Change[]): void {
@@ -520,15 +586,8 @@ function rollLoot(h: Here, p: PlayerState, table: SagaLoot, from: string, ctx: S
 // Spells
 // ---------------------------------------------------------------------------
 
-/** The best weapon in the bag makes every spell a little stronger. */
-function weaponPower(p: PlayerState): number {
-  let best = 1;
-  for (const s of p.inventory) {
-    const d = s ? sagaItem(s.item) : undefined;
-    if (d?.kind === 'weapon') best = Math.max(best, RARITY_POWER[d.rarity]);
-  }
-  return best;
-}
+/** The gear and the hero's level make every spell stronger (and a strength potion, while it lasts). */
+const spellPower = (p: PlayerState, strongUntil: number | undefined, now: number): number => gearStats(p).power * (strongUntil !== undefined && now < strongUntil ? STRENGTH_MUL : 1);
 
 const CRIT_CHANCE = 0.12;
 const RAGE_LEECH = 0.3;
@@ -592,13 +651,16 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
   const h = p ? hereOf(world, p) : null;
   const f = h && p ? h.inst.fighters[p.id] : undefined;
   const sp = SPELLS[spellId];
+  // out in the world in hero mode, the same spells work on Loke's roaming servants
+  if (p && !h && !isSagaKey(p.area) && p.saga?.hero) return castFieldSpell(world, playerId, spellId, target, ctx, opts);
   if (!p || !h || !f || !sp || !CLASSES[f.cls].spells.includes(spellId)) return [];
   const now = ctx.now;
   if (f.down !== undefined || f.frozen !== undefined || now < f.gcd || now < (f.cd[spellId] ?? 0)) return [];
   const out: Change[] = [];
+  const gear = spellPower(p, f.strong, now);
   const power = (base: number): { n: number; crit: boolean } => {
     const crit = ctx.rnd() < CRIT_CHANCE;
-    return { n: base * weaponPower(p) * (f.rage !== undefined && now < f.rage ? 1.5 : 1) * (crit ? 1.5 : 1), crit };
+    return { n: base * gear * (f.rage !== undefined && now < f.rage ? 1.5 : 1) * (crit ? 1.5 : 1), crit };
   };
   const raging = f.rage !== undefined && now < f.rage;
   const strike = (m: SagaMob, base: number): void => {
@@ -683,7 +745,7 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
       const ms = sp.ms ?? 6000;
       for (const q of partyOf(h)) {
         const qf = h.inst.fighters[q.id]!;
-        if (qf.down === undefined && dist(q, p) <= (sp.radius ?? 4)) qf.hot = { until: now + ms, per: (sp.power * weaponPower(p)) / (ms / 1000) };
+        if (qf.down === undefined && dist(q, p) <= (sp.radius ?? 4)) qf.hot = { until: now + ms, per: (sp.power * gear) / (ms / 1000) };
       }
       healThreat(h, p.id, sp.power / 2);
       break;
@@ -770,7 +832,8 @@ function hurtFighter(h: Here, p: PlayerState, amount: number, by: SagaMob | null
   const f = h.inst.fighters[p.id];
   // the ice that holds a frozen player keeps everything else out too
   if (!f || f.down !== undefined || f.frozen !== undefined) return;
-  let n = Math.max(1, Math.round(amount * mobDmgScale(partyOf(h).length) * (f.wall !== undefined && now < f.wall ? 0.4 : 1)));
+  const armor = gearStats(p).armor;
+  let n = Math.max(1, Math.round(amount * mobDmgScale(partyOf(h).length) * (1 - armor) * (f.wall !== undefined && now < f.wall ? 0.4 : 1)));
   if (n >= f.hp && f.hp > f.max * 0.5 && n < f.max) n = f.hp - 1; // one hit from full health never knocks you down
   f.hp -= n;
   f.fightAt = now;
@@ -889,10 +952,12 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
     return;
   }
   const party = partyOf(h);
+  const xp = m.kind === 'boss' ? SAGA_XP.boss : m.kind === 'mini' ? SAGA_XP.mini : m.kind === 'add' ? SAGA_XP.add : SAGA_XP.mob;
   for (const p of party) {
     if (h.inst.fighters[p.id]?.target === m.id) delete h.inst.fighters[p.id]!.target;
-    questCredit(h, p, m.species, ctx, out);
+    questCredit(h.area, p, m.species, ctx, out, true);
     bump(p, 'sagaMobs', 1, out);
+    giveXp(p, xp, out, h);
   }
   if (m.pack >= 0) {
     const pack = h.inst.packs[m.pack]!;
@@ -956,8 +1021,8 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
 /** The achievement stat for clearing each dungeon. */
 const CLEARED_STAT: Record<DungeonId, string> = { draug: 'sagaDraug', frost: 'sagaFrost', surt: 'sagaSurt', hel: 'sagaHel', dvarg: 'sagaDvarg', orm: 'sagaOrm', alv: 'sagaAlv', fenrir: 'sagaFenrir', loke: 'sagaLoke' };
 
-/** Kill quests count the monster; collect quests may find what the villager wants on it. */
-function questCredit(h: Here, p: PlayerState, species: string, ctx: SimCtx, out: Change[]): void {
+/** Kill quests count the monster; collect quests may find what the villager wants on it (in a dungeon). */
+function questCredit(area: WorldState, p: PlayerState, species: string, ctx: SimCtx, out: Change[], collect: boolean): void {
   const prog = p.saga;
   if (!prog) return;
   for (const q of SAGA_QUESTS) {
@@ -966,8 +1031,8 @@ function questCredit(h: Here, p: PlayerState, species: string, ctx: SimCtx, out:
       prog.quests[q.id]!++;
       out.push(toast(p.id, fmt(T.sagaQuestProgress, { goal: q.goal, n: prog.quests[q.id]!, count: q.count })));
     }
-    if (q.kind === 'collect' && q.from?.includes(species) && countItem(p.inventory, q.target) < q.count && ctx.rnd() < (q.chance ?? 0.5)) {
-      giveItems(h.area, p, q.target, 1, out);
+    if (collect && q.kind === 'collect' && q.from?.includes(species) && countItem(p.inventory, q.target) < q.count && ctx.rnd() < (q.chance ?? 0.5)) {
+      giveItems(area, p, q.target, 1, out);
       out.push(toast(p.id, fmt(T.sagaQuestProgress, { goal: q.goal, n: countItem(p.inventory, q.target), count: q.count })));
     }
   }
@@ -1254,7 +1319,20 @@ function startCast(h: Here, m: SagaMob, a: { x: number; y: number; facing: strin
     }
     case 'slam':
     case 'nova':
+    case 'pull':
       circle(a.x, a.y, mv.radius);
+      break;
+    case 'line': {
+      // a long strip from the boss towards the one it is fighting
+      const t = tank ?? party[0]!;
+      const dir = Math.atan2(t.y - a.y, t.x - a.x);
+      zones.push(addZone(h, m, { shape: 'line', x: a.x, y: a.y, r: mv.radius, w: mv.width ?? 1.6, dir, at, dmg: mv.dmg }, out));
+      break;
+    }
+    case 'mend':
+      // the boss curls up and glows (only a picture: nobody is hurt)
+      circle(a.x, a.y, mv.radius || 1, { dmg: 0 });
+      toEveryone(h, out, fmt(T.sagaMending, { boss: boss.name }));
       break;
     case 'rain':
     case 'pools': {
@@ -1286,6 +1364,15 @@ function startCast(h: Here, m: SagaMob, a: { x: number; y: number; facing: strin
 }
 
 const inZone = (z: SagaZone, p: { x: number; y: number }): boolean => {
+  if (z.shape === 'line') {
+    // along the strip (from a little behind the boss to its far end) and no further to the side than half its width
+    const dx = (p.x - z.x) / TILE;
+    const dy = (p.y - z.y) / TILE;
+    const c = Math.cos(z.dir ?? 0);
+    const s = Math.sin(z.dir ?? 0);
+    const along = dx * c + dy * s;
+    return along >= -0.6 && along <= z.r && Math.abs(-dx * s + dy * c) <= (z.w ?? 1.6) / 2;
+  }
   const d = Math.hypot(p.x - z.x, p.y - z.y) / TILE;
   if (d > z.r) return false;
   if (z.shape === 'circle') return true;
@@ -1316,13 +1403,31 @@ function landCast(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
     }
     out.push(spellFx(h, m.id, 'charge_land', from, z));
   }
+  if (mv.move === 'mend' && a) {
+    // nobody stopped it: the boss gets some of its health back
+    const n = Math.min(m.max - m.hp, Math.round(m.max * (mv.heal ?? 0.1)));
+    if (n > 0) {
+      m.hp += n;
+      out.push(hit(h, m.id, n, 'heal'));
+    }
+    toEveryone(h, out, fmt(T.sagaMended, { boss: boss.name }));
+  }
+  let pulled = false;
   for (const z of zones) {
     out.push(spellFx(h, m.id, `land_${mv.move}`, z));
+    if (mv.move === 'mend') {
+      dropZone(h, z.id, out);
+      continue;
+    }
     for (const p of party) {
       if (!inZone(z, p)) continue;
       if (mv.move === 'freeze') {
-        freeze(h, m, p, ctx, out);
+        freeze(h, m, p, mv, ctx, out);
         continue;
+      }
+      if (mv.move === 'pull' && a) {
+        pullIn(h, a, p, out);
+        pulled = true;
       }
       hurtFighter(h, p, mv.dmg, m, now, out);
     }
@@ -1333,6 +1438,7 @@ function landCast(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
       out.push({ t: 'zone', area: h.key, id: z.id, zone: z });
     } else dropZone(h, z.id, out);
   }
+  if (pulled) toEveryone(h, out, fmt(T.sagaPulled, { boss: boss.name }));
   if (mv.move === 'summon' && a && mv.add) {
     for (let i = 0; i < addCount(mv.count ?? 2, partySize(h)); i++) {
       const add = spawnSagaMob(h.area, h.inst, mv.add, a.x + (i - 0.5) * 2 * TILE, a.y + TILE, 'add', -1);
@@ -1345,14 +1451,32 @@ function landCast(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
   }
 }
 
+/** A boss's pull: the player lands on a free tile one or two steps from the boss, on their own side of it. */
+function pullIn(h: Here, a: { x: number; y: number }, p: PlayerState, out: Change[]): void {
+  const d = Math.max(1, Math.hypot(p.x - a.x, p.y - a.y));
+  const bx = tileOf(a.x);
+  const by = tileOf(a.y);
+  for (const step of [1.5, 2, 1, 2.5]) {
+    const tx = tileOf(a.x + ((p.x - a.x) / d) * step * TILE);
+    const ty = tileOf(a.y + ((p.y - a.y) / d) * step * TILE);
+    if ((tx !== bx || ty !== by) && !isSolidForPlayer(h.area, tx, ty)) {
+      warp(h, p, tx, ty, out);
+      return;
+    }
+  }
+  const spot = openTileNear(h.area, bx, by + 1);
+  warp(h, p, spot.x, spot.y, out);
+}
+
 const ICE_HP = 45;
 const ICE_MS = 9000;
 
-/** Freezes a player in a block of ice: no walking or spells until someone breaks it (or it melts). */
-function freeze(h: Here, m: SagaMob, p: PlayerState, ctx: SimCtx, out: Change[]): void {
+/** Freezes a player in a block of ice (or a spider's web): no walking or spells until someone breaks it (or it melts). */
+function freeze(h: Here, m: SagaMob, p: PlayerState, mv: BossAbility, ctx: SimCtx, out: Change[]): void {
   const f = h.inst.fighters[p.id];
   if (!f || f.frozen !== undefined) return;
-  const ice = spawnSagaMob(h.area, h.inst, 'isblock', p.x, p.y + 1, 'ice', -1);
+  const block = mv.block && BLOCK_SPECIES.has(mv.block) ? mv.block : 'isblock';
+  const ice = spawnSagaMob(h.area, h.inst, block, p.x, p.y + 1, 'ice', -1);
   const im = h.inst.mobs[ice.id]!;
   im.max = Math.round(ICE_HP * mobHpScale(partySize(h)));
   im.hp = im.max;
@@ -1361,8 +1485,8 @@ function freeze(h: Here, m: SagaMob, p: PlayerState, ctx: SimCtx, out: Change[])
   im.meltAt = ctx.now + ICE_MS;
   f.frozen = ice.id;
   out.push({ t: 'animal', id: ice.id, animal: ice, area: h.key });
-  toEveryone(h, out, fmt(T.sagaFrozen, { name: p.name }));
-  hurtFighter(h, p, SAGA_BOSSES[m.species]!.moves.find((mv) => mv.move === 'freeze')?.dmg ?? 10, m, ctx.now, out);
+  toEveryone(h, out, fmt(block === 'spindelnat' ? T.sagaWebbed : T.sagaFrozen, { name: p.name }));
+  hurtFighter(h, p, mv.dmg, m, ctx.now, out);
   out.push(playerChange(p));
 }
 
@@ -1421,6 +1545,21 @@ export function tickSaga(area: WorldState, key: string, dtMs: number, ctx: SimCt
     // out of the fight, health slowly comes back
     if (!fighting && now - f.fightAt > CALM_MS) f.hp = Math.min(f.max, f.hp + f.max * REGEN * sec);
   }
+  // a puzzle room's plates light up under anyone standing on them; all of them lit opens the way on
+  if (!inst.puzzleOpen) {
+    for (const plate of inst.plates) {
+      if (plate.lit || !party.some((p) => upright(h, p) && tileOf(p.x) === plate.x && tileOf(p.y) === plate.y)) continue;
+      plate.lit = true;
+      const o = objectAt(area, plate.x, plate.y);
+      if (o) {
+        o.variant = 1;
+        out.push({ t: 'object', id: o.id, obj: o, area: key });
+      }
+      out.push(fxOn(key, plate.x, plate.y, 'sparkle'));
+      toEveryone(h, out, fmt(T.sagaPlateLit, { n: inst.plates.filter((q) => q.lit).length, count: inst.plates.length }));
+    }
+    if (inst.plates.length && inst.plates.every((q) => q.lit)) openPuzzle(h, out);
+  }
   // monsters
   const fields = new Map<string, Int16Array>();
   for (const m of Object.values(inst.mobs)) tickMob(h, m, dtMs, ctx, fields, out);
@@ -1448,6 +1587,19 @@ export function tickSaga(area: WorldState, key: string, dtMs: number, ctx: SimCt
       for (const p of party) standUp(h, p, now, out);
     }
   } else delete inst.wipeAt;
+}
+
+/** Every plate is lit: the puzzle room's gate goes, like the gate after the mid-boss. */
+function openPuzzle(h: Here, out: Change[]): void {
+  h.inst.puzzleOpen = true;
+  for (const g of h.inst.puzzleGate) {
+    const o = objectAt(h.area, g.x, g.y);
+    if (o?.kind === 'saga_gate') {
+      removeObject(h.area, o.id);
+      out.push({ t: 'object', id: o.id, obj: null, area: h.key });
+    }
+  }
+  for (const p of partyOf(h)) out.push({ t: 'banner', to: p.id, area: h.key, text: T.sagaPuzzleOpen, sub: T.sagaPuzzleOpenSub, kind: 'rest' });
 }
 
 /** A dungeon nobody is in: after a while it starts over. Returns true when it should be thrown away. */
@@ -1518,3 +1670,350 @@ export function sagaSnapshot(farm: WorldState, now: number): Record<string, Saga
   }
   return res;
 }
+
+// ---------------------------------------------------------------------------
+// Act II: gear, hero levels, hero mode out in the world, field tasks and Loke's roaming servants
+// ---------------------------------------------------------------------------
+
+/** Saves from before gear: the gear record is made and the best weapon in the bag is put on. True if it changed. */
+export function ensureGear(p: PlayerState): boolean {
+  const prog = p.saga;
+  if (!prog || prog.gear) return false;
+  const best = gearOf(p).weapon;
+  prog.gear = {};
+  if (best && removeItem(p.inventory, best, 1)) prog.gear.weapon = best;
+  return true;
+}
+
+/** A fighter's full health follows their gear and level (they keep what they gained or lost). */
+function refreshMax(p: PlayerState, f: SagaFighter): void {
+  const max = fighterMax(p, f.cls);
+  if (max === f.max) return;
+  if (f.down === undefined) f.hp = Math.max(1, Math.min(max, f.hp + Math.max(0, max - f.max)));
+  f.max = max;
+}
+
+/**
+ * Puts a weapon, an offhand or an amulet from the bag on (`itemId` null takes the slot's piece off, back into the
+ * bag). Anywhere, but not while fallen or frozen in a dungeon.
+ */
+export function equipGear(world: WorldState, playerId: string, slot: string, itemId: string | null): Change[] {
+  const p = farmOf(world).players[playerId];
+  if (!p || !isGearSlot(slot)) return [];
+  const prog = progressOf(p);
+  ensureGear(p);
+  const gear = prog.gear!;
+  const h = hereOf(world, p);
+  const f = h?.inst.fighters[p.id];
+  if (f && (f.down !== undefined || f.frozen !== undefined)) return [toast(p.id, T.sagaEquipNotNow)];
+  const old = gear[slot];
+  const out: Change[] = [];
+  if (itemId === null) {
+    if (!old) return [];
+    if (addItem(p.inventory, old, 1) > 0) return [toast(p.id, T.sagaEquipBagFull)];
+    delete gear[slot];
+    out.push(toast(p.id, fmt(T.sagaUnequipped, { item: itemName(old) })));
+  } else {
+    if (gearSlotOf(itemId) !== slot) return [toast(p.id, fmt(T.sagaEquipNoFit, { item: itemName(itemId) }))];
+    if (old === itemId) return [];
+    if (!removeItem(p.inventory, itemId, 1)) return [toast(p.id, fmt(T.sagaEquipMissing, { item: itemName(itemId) }))];
+    if (old && addItem(p.inventory, old, 1) > 0) {
+      addItem(p.inventory, itemId, 1);
+      return [toast(p.id, T.sagaEquipBagFull)];
+    }
+    gear[slot] = itemId;
+    out.push(toast(p.id, fmt(T.sagaEquipped, { item: itemName(itemId) })));
+    if (sagaItem(itemId)?.rarity === 'legendary' && !p.stats?.sagaLegendary) {
+      bump(p, 'sagaLegendary', 1, out);
+      out.push(toast(null, fmt(T.sagaLegendaryOn, { name: p.name, item: itemName(itemId) })));
+    }
+  }
+  if (f) refreshMax(p, f);
+  out.push(playerChange(p));
+  return out;
+}
+
+/** Hero experience: a banner and a sparkle at each new level, which gives a little more power and health. */
+export function giveXp(p: PlayerState, n: number, out: Change[], h?: Here): void {
+  const prog = p.saga;
+  if (!prog?.cls || n <= 0) return;
+  const before = xpLevel(prog.xp ?? 0);
+  prog.xp = (prog.xp ?? 0) + n;
+  const level = xpLevel(prog.xp);
+  prog.level = level;
+  if (level <= before) return;
+  out.push({ t: 'banner', to: p.id, ...(h ? { area: h.key } : {}), kind: 'level', text: fmt(T.sagaLevelUp, { n: level }), sub: T.sagaLevelSub }, fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'));
+  bump(p, 'sagaLevel', level - (p.stats?.sagaLevel ?? 0), out);
+  const f = h?.inst.fighters[p.id];
+  if (f) refreshMax(p, f);
+}
+
+/**
+ * The hero switch: walk the world as your class (spells, the weapon drawn, the hero outfit) or as a farmer again.
+ * Needs a class; inside a dungeon you are always the hero.
+ */
+export function setHero(world: WorldState, playerId: string, on: boolean): Change[] {
+  const p = farmOf(world).players[playerId];
+  if (!p) return [];
+  const prog = progressOf(p);
+  if (!prog.cls) return [toast(p.id, T.sagaHeroNeedClass)];
+  if (isSagaKey(p.area)) return [toast(p.id, T.sagaHeroInDungeon)];
+  if (!!prog.hero === on) return [];
+  ensureGear(p);
+  if (on) {
+    const c = CLASSES[prog.cls].outfit;
+    prog.farmOutfit = { ...p.outfit };
+    p.outfit = { ...(prog.heroOutfit ?? { ...p.outfit, hat: c.hat, shirt: c.shirt }) };
+  } else {
+    prog.heroOutfit = { ...p.outfit };
+    if (prog.farmOutfit) p.outfit = { ...prog.farmOutfit };
+  }
+  prog.hero = on;
+  return [toast(p.id, on ? T.sagaHeroOn : T.sagaHeroOff), fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p)];
+}
+
+/** What a player holds in the picture: their weapon while a hero (and in a dungeon), else what they have selected. */
+export const shownHeld = (p: PlayerState): string | null => {
+  const weapon = p.saga?.gear?.weapon;
+  if (weapon && (p.saga?.hero || isSagaKey(p.area))) return weapon;
+  return p.inventory[p.selected]?.item ?? null;
+};
+
+/** Spells out in the world: cooldowns and buffs per player (not saved; a restart makes them all ready). */
+interface FieldState {
+  cd: Record<string, number>;
+  gcd: number;
+  rage?: number;
+  potionAt?: number;
+  strong?: number;
+}
+const FIELD = new Map<string, FieldState>();
+const fieldState = (id: string): FieldState => {
+  let st = FIELD.get(id);
+  if (!st) FIELD.set(id, (st = { cd: {}, gcd: 0 }));
+  return st;
+};
+/** Spell power is counted in dungeon health; out in the world monsters have hearts, so it is divided by this. */
+const FIELD_DIV = 8;
+/** Monsters beaten this close count for everyone's field task and quests (tiles). */
+const FIELD_SHARE = 10;
+const FIELD_POTION_HEARTS = 3;
+const FIELD_HEAL_HEARTS = 2;
+
+/** May this player cast spells where they are? A hero, out in the world (not the farm's cave, indoors or a dungeon). */
+function canFieldCast(world: WorldState, p: PlayerState): boolean {
+  if (!p.saga?.cls || !p.saga.hero || p.sleeping || p.hearts <= 0) return false;
+  if (isSagaKey(p.area) || p.area === 'dungeon' || isIndoorKey(p.area)) return false;
+  const area = getArea(farmOf(world), p.area);
+  return !!area && !(isFarm(area) && inInterior(tileOf(p.x), tileOf(p.y)));
+}
+
+/** A monster out in the world is dazed: it stands still and does not bite for a while (sim's tickMob reads attackAt). */
+const daze = (a: AnimalState, ms: number, now: number): void => {
+  a.attackAt = Math.max(a.attackAt ?? 0, now + ATTACK_GAP + ms);
+};
+
+/**
+ * A hero's spell out in the world, at the roaming monsters (any hostile animal) and the family. Damage is counted
+ * in hearts like the sword's; heals give hearts back. `target`: an animal id or a player id (left out, the server
+ * picks). castSpell sends a hero out in the world here by itself.
+ */
+export function castFieldSpell(world: WorldState, playerId: string, spellId: string, target: number | string | undefined, ctx: SimCtx, opts: { quiet?: boolean } = {}): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  const sp = SPELLS[spellId];
+  const cls = p?.saga?.cls;
+  if (!p || !cls || !sp || !CLASSES[cls].spells.includes(spellId) || !canFieldCast(farm, p)) return [];
+  const area = getArea(farm, p.area);
+  if (!area) return [];
+  const st = fieldState(p.id);
+  const now = ctx.now;
+  if (now < st.gcd || now < (st.cd[spellId] ?? 0)) return [];
+  const key = p.area;
+  const out: Change[] = [];
+  const raging = st.rage !== undefined && now < st.rage;
+  const pow = spellPower(p, st.strong, now) * (raging ? 1.5 : 1);
+  const hostile = (a: AnimalState | undefined): a is AnimalState => !!a && isHostile(a) && !area.saga?.mobs[a.id];
+  const inReach = (a: AnimalState, range: number, sight: boolean): boolean => dist(a, p) <= range + 0.6 && (!sight || lineOfSight(area, p.x, p.y, a.x, a.y));
+  const pick = (range: number, sight: boolean): AnimalState | null => {
+    const wanted = typeof target === 'number' ? area.animals[target] : undefined;
+    if (hostile(wanted) && inReach(wanted, range, sight)) return wanted;
+    let best: AnimalState | null = null;
+    for (const a of Object.values(area.animals)) if (hostile(a) && inReach(a, range, sight) && (!best || dist(a, p) < dist(best, p))) best = a;
+    return best;
+  };
+  const near = (at: { x: number; y: number }, r: number): AnimalState[] => Object.values(area.animals).filter((a) => hostile(a) && dist(a, at) <= r + 0.4);
+  const strike = (a: AnimalState, base: number): void => {
+    if (area.animals[a.id] === a) attackMob(area, p, a, Math.max(1, Math.round((base * pow) / FIELD_DIV)), ctx, out);
+  };
+  const friends = (r: number): PlayerState[] => Object.values(area.players).filter((q) => q.online && q.area === key && q.hearts > 0 && dist(q, p) <= r + 0.6);
+  const noTarget = (): Change[] => (opts.quiet ? [] : [toast(p.id, T.sagaNoTarget)]);
+  switch (sp.kind) {
+    case 'melee':
+    case 'bolt':
+    case 'lance':
+    case 'bash': {
+      const a = pick(sp.range, sp.kind === 'bolt' || sp.kind === 'lance');
+      if (!a) return noTarget();
+      out.push(spellFx(key, p.id, sp.id, p, a, a.id));
+      strike(a, sp.power);
+      if ((sp.kind === 'bash' || sp.kind === 'lance') && area.animals[a.id]) daze(a, sp.kind === 'bash' ? (sp.ms ?? 1500) : 800, now);
+      break;
+    }
+    case 'charge': {
+      const a = pick(sp.range, true);
+      if (!a) return noTarget();
+      const d = Math.max(1, Math.hypot(p.x - a.x, p.y - a.y));
+      const to = { x: a.x + ((p.x - a.x) / d) * TILE, y: a.y + ((p.y - a.y) / d) * TILE };
+      const from = { x: p.x, y: p.y };
+      if (!isSolidForPlayer(area, tileOf(to.x), tileOf(to.y))) warp(key, p, 0, 0, out, to);
+      out.push(spellFx(key, p.id, sp.id, from, a, a.id));
+      strike(a, sp.power);
+      if (area.animals[a.id]) daze(a, sp.ms ?? 1000, now);
+      break;
+    }
+    case 'storm': {
+      const a = pick(sp.range, true);
+      if (!a) return noTarget();
+      const at = { x: a.x, y: a.y };
+      out.push(spellFx(key, p.id, sp.id, p, at));
+      for (const o of near(at, sp.radius ?? 2)) strike(o, sp.power);
+      break;
+    }
+    case 'whirl':
+      out.push(spellFx(key, p.id, sp.id, p));
+      for (const o of near(p, sp.radius ?? 2)) strike(o, sp.power);
+      break;
+    case 'taunt':
+      out.push(spellFx(key, p.id, sp.id, p));
+      for (const a of near(p, sp.radius ?? 5)) {
+        a.hunt = p.id;
+        a.huntUntil = now + (sp.ms ?? 4000);
+      }
+      break;
+    case 'heal': {
+      const all = friends(sp.range).filter((q) => q.hearts < MAX_HEARTS);
+      const q = all.find((x) => x.id === target) ?? all.sort((x, y) => x.hearts - y.hearts)[0];
+      if (!q) return opts.quiet ? [] : [toast(p.id, T.sagaAllWell)];
+      q.hearts = Math.min(MAX_HEARTS, q.hearts + FIELD_HEAL_HEARTS);
+      out.push(spellFx(key, p.id, sp.id, p, q, q.id), playerChange(q));
+      break;
+    }
+    case 'hot':
+      out.push(spellFx(key, p.id, sp.id, p));
+      for (const q of friends(sp.radius ?? 4))
+        if (q.hearts < MAX_HEARTS) {
+          q.hearts++;
+          out.push(playerChange(q));
+        }
+      break;
+    case 'revive':
+      return opts.quiet ? [] : [toast(p.id, T.sagaNoneDown)];
+    case 'wall':
+      p.hurtUntil = now + (sp.ms ?? 6000);
+      out.push(spellFx(key, p.id, sp.id, p));
+      break;
+    case 'rage':
+      st.rage = now + (sp.ms ?? 8000);
+      p.boostUntil = st.rage;
+      out.push(spellFx(key, p.id, sp.id, p), playerChange(p));
+      break;
+    case 'blink': {
+      const dir = p.facing === 'left' ? [-1, 0] : p.facing === 'right' ? [1, 0] : p.facing === 'up' ? [0, -1] : [0, 1];
+      let to = { x: p.x, y: p.y };
+      for (let s = 0.5; s <= sp.range; s += 0.5) {
+        const nx = p.x + dir[0]! * s * TILE;
+        const ny = p.y + dir[1]! * s * TILE;
+        if (!inBounds(tileOf(nx), tileOf(ny)) || isSolidForPlayer(area, tileOf(nx), tileOf(ny))) break;
+        to = { x: nx, y: ny };
+      }
+      out.push(spellFx(key, p.id, sp.id, p, to));
+      warp(key, p, 0, 0, out, to);
+      break;
+    }
+  }
+  st.gcd = now + GCD_MS;
+  st.cd[spellId] = now + sp.cd;
+  return tagArea(out, key);
+}
+
+/** A healing potion out in the world: three hearts back. */
+export function drinkFieldPotion(world: WorldState, playerId: string, ctx: SimCtx): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p || !canFieldCast(farm, p)) return [];
+  const st = fieldState(p.id);
+  if (ctx.now < (st.potionAt ?? 0)) return [toast(p.id, T.sagaNotReady)];
+  if (!removeItem(p.inventory, 'healing_potion', 1)) return [toast(p.id, T.sagaNoPotion)];
+  st.potionAt = ctx.now + POTION_CD;
+  p.hearts = Math.min(MAX_HEARTS, p.hearts + FIELD_POTION_HEARTS);
+  return [spellFx(p.area, p.id, 'potion', p), playerChange(p)];
+}
+
+/**
+ * The use key in hero mode out in the world (from performAction): a monster within the attack spell's reach gets the
+ * spell. Pointing at something to open, talk to or pet still does that. Null: do the normal farm action.
+ */
+export function heroAction(world: WorldState, p: PlayerState, tx: number, ty: number, ctx: SimCtx): Change[] | null {
+  const cls = p.saga?.cls;
+  if (!cls || !canFieldCast(world, p)) return null;
+  if (p.inventory[p.selected]?.item === STRENGTH_POTION) return drinkStrength(world, p.id, ctx);
+  const obj = objectAt(world, tx, ty);
+  if (obj && objectDef(obj.kind).interact) return null;
+  const pointed = animalAt(world, tx, ty);
+  if (pointed && !isHostile(pointed)) return null;
+  if (npcAt(world, tx, ty)) return null;
+  const sp = SPELLS[attackSpellOf(cls)]!;
+  const sight = sp.kind !== 'melee' && sp.kind !== 'bash';
+  const inReach = Object.values(world.animals).some((a) => isHostile(a) && dist(a, p) <= sp.range + 0.6 && (!sight || lineOfSight(world, p.x, p.y, a.x, a.y)));
+  if (!inReach) return null;
+  return castFieldSpell(world, p.id, sp.id, pointed?.id, ctx, { quiet: true });
+}
+
+/**
+ * One of Loke's roaming servants is beaten out in the world (by a spell, the sword or anything else): experience,
+ * field tasks and villagers' kill quests for every hero close by, and a world boss leaves its treasure chest.
+ * Returns false for anything that is not a roaming monster (the caller handles it as before).
+ */
+export function roamingDown(area: WorldState, by: PlayerState, mob: AnimalState, ctx: SimCtx, out: Change[]): boolean {
+  const def = ANIMALS[mob.species];
+  if (!def?.mob || !def.wild) return false;
+  const key = area.area ?? 'farm';
+  const there = Object.values(area.players).filter((q) => q.online && q.area === key && (q.id === by.id || dist(q, mob) <= FIELD_SHARE));
+  if (!there.some((q) => q.id === by.id)) there.push(by);
+  for (const q of there) {
+    const prog = q.saga;
+    if (!prog?.cls) continue;
+    giveXp(q, SAGA_XP.field, out);
+    questCredit(area, q, mob.species, ctx, out, false);
+    const ch = SAGA_CHAPTERS[prog.chapter];
+    if (prog.heard && ch?.field?.target === mob.species) {
+      const k = fieldKey(prog.chapter);
+      const n = (prog.quests[k] ?? 0) + 1;
+      if (n <= ch.field.count) {
+        prog.quests[k] = n;
+        out.push(toast(q.id, n >= ch.field.count ? fmt(T.sagaFieldDone, { text: ch.field.text }) : fmt(T.sagaFieldProgress, { text: ch.field.text, n, count: ch.field.count })));
+      }
+    }
+    if (q.id !== by.id) out.push(playerChange(q));
+  }
+  if (def.mob.boss) {
+    // the world boss's chest: one per map, filled again for everyone each time the boss is beaten
+    let chest = Object.values(area.objects).find((o) => o.kind === 'loot_chest' && o.loot === WORLD_BOSS_LOOT) ?? null;
+    if (chest) chest.openedBy = {};
+    else {
+      const tx = tileOf(mob.x);
+      const ty = tileOf(mob.y);
+      for (let r = 0; r <= 2 && !chest; r++)
+        for (let dy = -r; dy <= r && !chest; dy++)
+          for (let dx = -r; dx <= r && !chest; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === r && !isSolidForPlayer(area, tx + dx, ty + dy)) chest = addObject(area, 'loot_chest', tx + dx, ty + dy, { loot: WORLD_BOSS_LOOT });
+    }
+    if (chest) out.push({ t: 'object', id: chest.id, obj: chest });
+    bump(by, 'worldBoss', 1, out);
+    out.push(toast(null, fmt(T.sagaWorldBossDown, { names: there.map((q) => q.name).join(' och '), boss: mob.name })));
+  } else out.push(toast(by.id, fmt(T.sagaRoamDown, { name: mob.name })));
+  out.push(playerChange(by));
+  return true;
+}
+/** The loot table of a world boss's chest (LOOT in data.ts). */
+const WORLD_BOSS_LOOT = 'worldboss';
