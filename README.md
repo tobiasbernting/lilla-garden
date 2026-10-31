@@ -64,6 +64,20 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
   ger bara 1,5 % mer kraft och hälsa (med tak, så en vuxen aldrig blir mycket starkare än barnen), men belöningen
   är det man ser: glödande kappor och kronor som lyser i mörkret, Lyktfén, Ljushjorten, titlar, och sken omkring
   dig från nivå 10 och regnbågsskimmer på nivå 20.
+- Större vildmark och landmärken: kartorna ute i världen är 96×96 rutor (gården, Köpingen, rymdbasen, grottorna och
+  fängelsehålorna är kvar som förut). På varje karta gömmer sig två märkliga platser – Stencirkeln, Jätteeken, det
+  frusna skeppet, Dvärgporten, Oasen, Apkungens tron, Eldbrunnen, Glasstornet med flera, 26 sorter – och den som rör
+  vid en hittar den: en stjärna, kr, material till Smedjan och en berättelse. Dagbokens flik 🧭 Upptäckter listar dem,
+  världskartan visar ❓ för en plats man har sett men inte rört och 🧭 för en man har hittat, och 5, 15 och 26 fynd
+  ger prestationer.
+- Smedjan: Smed-Stina i Köpingen smider varje vapen, sköld och amulett från +1 till +5 (kraft, skydd och hälsa) för
+  material som blir ovanligare ju längre bort de finns: sten, guld och kristall nära gården, sällsynta fynd långt bort,
+  monsteressens från fängelsehålornas monster och drakfjäll från de sista bossarna. Hon gör också en startuppsättning
+  (Järnsvärd, Järnyxa, Ekstav, Jaktbåge, Träsköld, Stenamulett) åt den som inte har några skatter. Kraftgränsen är 2,0
+  med smidet inräknat.
+- Spela fängelsehålorna igen: bossens fulla skattkista kommer en gång per speldygn för var och en, därefter en
+  ersättningskista med material (och drakfjäll från de sista bossarna), monstren släpper ibland monsteressens, och
+  familjens bästa tid genom varje fängelsehåla sparas och visas i dagboken.
 
 ## Develop
 
@@ -155,7 +169,9 @@ There is still no text chat: players can only use emotes.
 
 ## Layout
 
-- `packages/shared` – game data, world simulation, Swedish strings (no I/O). Vitest covers the sim.
+- `packages/shared` – game data, world simulation, Swedish strings (no I/O). The saga lives in
+  `saga.ts` (data, forge tables) and `sagasim.ts` (rules), the wild maps' landmarks in `landmarks.ts` (the table) and
+  `explore.ts` (discovery, seen, old saves). Vitest covers the sim.
 - `packages/server` – WebSocket game server (20 Hz), Postgres via Drizzle, `/api/players`, `/admin`, `/health`
 - `packages/clientljs` – the game, drawn with [LittleJS](https://github.com/KilledByAPixel/LittleJS): light and
   shadow, animation and the cozy extras (see below). PWA, landscape. Its HUD, menus, networking, sounds and pixel art
