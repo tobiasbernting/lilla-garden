@@ -1,6 +1,7 @@
 // The wider world: biomes, caves, treasure, fairy rings, the rocket to the moon, dragon eggs and regrowth.
 import { describe, expect, it } from 'vitest';
 import {
+  ACHIEVEMENTS,
   ANIMALS,
   AREA_GEN,
   BASE_ROCKET,
@@ -50,6 +51,17 @@ import {
   tileIndex,
   travel,
   wildSpeciesOf,
+  LANDMARKS,
+  LANDMARK_IDS,
+  LANDMARK_SEEN_TILES,
+  ensureLandmarks,
+  landmarkOfKind,
+  landmarksOf,
+  noticeLandmarks,
+  removeObject,
+  seenKey,
+  T,
+  type WorldObject,
   type Change,
   type PlayerState,
   type SimCtx,
@@ -77,6 +89,9 @@ function goTo(world: WorldState, p: PlayerState, k: string, x: number, y: number
   a.players[p.id] = p;
   return a;
 }
+
+/** The landmarks (Upptäcktsboken) on a map. */
+const landmarksIn = (a: WorldState): WorldObject[] => Object.values(a.objects).filter((o) => landmarkOfKind(o.kind));
 
 /** An open grass tile away from the edges (with an extra condition). */
 function openSpot(a: WorldState, ok: (x: number, y: number) => boolean = () => true): { x: number; y: number } {
@@ -135,6 +150,17 @@ describe('biomerna', () => {
           expect(reach[tileIndex(a, t.x, t.y)], `${b} (${ax},${ay}) opening ${side}`).toBe(1);
         }
         for (const f of landmarkFronts(a)) expect(reach[tileIndex(a, f.x, f.y)], `${b} (${ax},${ay}) landmark front ${f.x},${f.y}`).toBe(1);
+        // Upptäcktsboken: both of the biome's landmarks on a wild map (the space base has its one), far apart,
+        // out of the crossroads, and each can be walked up to
+        const lms = landmarksIn(a);
+        expect(lms.map((o) => landmarkOfKind(o.kind)).sort(), `${b} (${ax},${ay}) landmarks`).toEqual(landmarksOf(b).map((d) => d.id).sort());
+        for (const o of lms) {
+          const d = objectDef(o.kind);
+          expect(reach[tileIndex(a, o.x + Math.floor((d.w - 1) / 2), o.y + d.h)], `${o.kind} front`).toBe(1);
+          for (let dy = 0; dy < d.h; dy++) for (let dx = 0; dx < d.w; dx++) expect(inEdgeGap(a, o.x + dx, o.y + dy)).toBe(false);
+          expect(Math.abs(o.x + d.w / 2 - mapW(a) / 2) >= 4 + d.w / 2 && Math.abs(o.y + d.h / 2 - mapH(a) / 2) >= 3 + d.h / 2, `${o.kind} out of the crossroads`).toBe(true);
+        }
+        if (lms.length === 2) expect(Math.hypot(lms[0]!.x - lms[1]!.x, lms[0]!.y - lms[1]!.y), `${b} landmarks apart`).toBeGreaterThan(20);
         for (const o of Object.values(a.objects)) {
           if (o.kind === 'loot_chest') {
             const around = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => reach[tileIndex(a, o.x + dx!, o.y + dy!)]);
@@ -374,7 +400,7 @@ describe('rymden', () => {
   it('the moon has aliens, cheese, star crystals, a UFO with a chest and a cave, all reachable', () => {
     const m = generateMoon();
     const kinds = new Set(Object.values(m.objects).map((o) => o.kind));
-    for (const k of ['moon_cheese', 'star_crystal', 'moon_rock', 'ufo', 'loot_chest', 'cave_mouth', 'earth', 'rocket']) expect(kinds).toContain(k);
+    for (const k of ['moon_cheese', 'star_crystal', 'moon_rock', 'ufo', 'loot_chest', 'cave_mouth', 'earth', 'rocket', 'lm_manporten']) expect(kinds).toContain(k);
     expect(Object.values(m.animals).some((a) => a.species === 'alien')).toBe(true);
     const reach = reachableFrom(m, rocketFront(MOON_ROCKET));
     for (const f of landmarkFronts(m)) expect(reach[tileIndex(m, f.x, f.y)], `${f.x},${f.y}`).toBe(1);
@@ -489,7 +515,7 @@ describe('gamla kartor', () => {
 describe('stora kartor', () => {
   /** A wild map as the server saved it before maps grew: 64×64, built by the gen 2 painters, through JSON. */
   const saved64 = (ax: number, ay: number): WorldState => {
-    const a = generateArea(ax, ay, 1337, MAP_W);
+    const a = generateArea(ax, ay, 1337, MAP_W, { landmarks: false });
     a.gen = 2;
     const back = JSON.parse(JSON.stringify({ ...a, players: {} })) as WorldState;
     back.area = areaKey(ax, ay);
@@ -643,9 +669,136 @@ describe('stora kartor', () => {
   });
 });
 
+describe('Upptäcktsboken', () => {
+  it('has the 26 landmarks: two for each wild biome, one each for the space base and the moon, all named', () => {
+    expect(LANDMARK_IDS.length).toBe(26);
+    for (const b of DISCOVERABLE) {
+      if (b === 'by') continue;
+      expect(landmarksOf(b).length, b).toBe(b === 'rymdbas' || b === 'mane' ? 1 : 2);
+    }
+    for (const d of Object.values(LANDMARKS)) {
+      const def = objectDef(`lm_${d.id}`);
+      expect([def.w, def.h, def.solid, def.interact, def.breakWith]).toEqual([d.w ?? 3, 3, true, 'landmark', undefined]);
+      expect(d.name.length && d.lore.length && d.cache.length).toBeTruthy();
+    }
+    expect(objectDef('lm_blomsterlabyrint').w).toBe(4);
+    expect(objectDef('lm_eldbrunn').light).toBe(true);
+    expect(objectDef('lm_stencirkel').light).toBeUndefined();
+  });
+
+  it('a 64 map gets one landmark of its biome, and a map built as before them gets none', () => {
+    const small = generateArea(0, -1, 1337, MAP_W);
+    expect(landmarksIn(small).length).toBe(1);
+    expect(landmarksIn(generateArea(0, -1, 1337, MAP_W, { landmarks: false })).length).toBe(0);
+    // the rest of the map is laid out as it was: the same ground under every tree and pond
+    const without = generateArea(0, -1, 1337, WILD_MAP, { landmarks: false });
+    const withLm = generateArea(0, -1);
+    const same = without.terrain.filter((t, i) => withLm.terrain[i] === t).length;
+    expect(same / without.terrain.length).toBeGreaterThan(0.97);
+  });
+
+  /** A player standing in front of a landmark on a forest map. */
+  const atLandmark = () => {
+    const { world, p } = setup();
+    const k = areaKey(0, -1);
+    const a = getArea(world, k)!;
+    const lm = landmarksIn(a)[0]!;
+    const d = objectDef(lm.kind);
+    const front = { x: lm.x + Math.floor((d.w - 1) / 2), y: lm.y + d.h };
+    goTo(world, p, k, front.x, front.y);
+    return { world, p, a, lm, id: landmarkOfKind(lm.kind)!, touch: () => performAction(a, p.id, front.x, front.y - 1, ctx()) };
+  };
+
+  it('touching one the first time finds it: a star, the cache, a banner with its lore; later only the lore', () => {
+    const { p, a, id, touch } = atLandmark();
+    const def = LANDMARKS[id]!;
+    const stars = p.stars;
+    const coins = p.coins;
+    const have = (item: string) => p.inventory.reduce((n, s) => n + (s?.item === item ? s.count : 0), 0);
+    const before = def.cache.map(([item]) => have(item));
+    const ch = touch();
+    expect(p.saga?.discovered).toEqual([id]);
+    expect(p.stars).toBe(stars + 1);
+    expect(p.coins).toBe(coins + def.coins);
+    def.cache.forEach(([item, n], i) => expect(have(item), item).toBe(before[i]! + n));
+    expect(p.stats.landmarks).toBe(1);
+    const banner = ch.find((c) => c.t === 'banner');
+    expect(banner && banner.t === 'banner' && [banner.kind, banner.text, banner.sub, banner.to]).toEqual(['reward', `Du hittade ${def.name}!`, def.lore, p.id]);
+    expect(p.saga?.seen).toContain(seenKey(a.area!, id));
+    // again: the lore as a toast, nothing more
+    const again = touch();
+    expect(again.some((c) => c.t === 'banner')).toBe(false);
+    expect(toasts(again).some((t) => t.includes(def.lore))).toBe(true);
+    expect([p.stars, p.coins, p.stats.landmarks, p.saga?.discovered]).toEqual([stars + 1, coins + def.coins, 1, [id]]);
+  });
+
+  it('five found give Upptäcktsresande; the badges go to 26', () => {
+    const { p, id, touch } = atLandmark();
+    p.saga = { chapter: 0, heard: false, cleared: [], titles: [], quests: {}, done: [], found: [], discovered: LANDMARK_IDS.filter((x) => x !== id).slice(0, 4) };
+    p.stats.landmarks = 4;
+    touch();
+    expect(p.achievements).toContain('landmarks_5');
+    expect(p.achievements).not.toContain('landmarks_15');
+    expect(ACHIEVEMENTS.filter((a) => a.stat === 'landmarks').map((a) => a.goal)).toEqual([5, 15, 26]);
+  });
+
+  it('coming within 12 tiles of one notes it as seen (for the world map), once', () => {
+    const { world, p, a, lm, id } = atLandmark();
+    const d = objectDef(lm.kind);
+    const cx = (lm.x + d.w / 2) * TILE;
+    const cy = (lm.y + d.h / 2) * TILE;
+    // just too far
+    p.x = cx;
+    p.y = cy + (LANDMARK_SEEN_TILES + 1) * TILE;
+    expect(noticeLandmarks(world)).toEqual([]);
+    expect(p.saga?.seen ?? []).not.toContain(seenKey(a.area!, id));
+    p.y = cy + (LANDMARK_SEEN_TILES - 2) * TILE;
+    const ch = noticeLandmarks(world);
+    expect(ch.some((c) => c.t === 'player' && c.id === p.id)).toBe(true);
+    expect(p.saga!.seen).toContain(seenKey(a.area!, id));
+    expect(p.saga!.discovered ?? []).toEqual([]);
+    expect(noticeLandmarks(world)).toEqual([]);
+    // offline players and those at home see nothing
+    setOnline(world, p.id, false);
+    p.saga!.seen = [];
+    expect(noticeLandmarks(world)).toEqual([]);
+  });
+
+  it('a kept old map without landmarks gets its own where there is room, reachable, cutting nothing off', () => {
+    const k = areaKey(0, -1);
+    const a = generateArea(0, -1, 1337, MAP_W, { landmarks: false });
+    a.area = k;
+    const spot = openSpot(a);
+    expect(addObject(a, 'chest', spot.x, spot.y, { by: 'kid' })).not.toBeNull();
+    expect(landmarksIn(a).length).toBe(0);
+    const was = reachableFrom(a, arrivalTile(a, 'n'));
+    const fronts = landmarkFronts(a).filter((f) => was[tileIndex(a, f.x, f.y)]);
+    expect(fronts.length).toBeGreaterThan(0);
+    expect(ensureLandmarks(a)).toBe(true);
+    const lms = landmarksIn(a);
+    expect(lms.length).toBe(1);
+    expect(landmarksOf('skog').map((d) => d.id)).toContain(landmarkOfKind(lms[0]!.kind));
+    const reach = reachableFrom(a, arrivalTile(a, 'n'));
+    for (const side of ['s', 'e', 'w'] as const) expect(reach[tileIndex(a, arrivalTile(a, side).x, arrivalTile(a, side).y)]).toBe(1);
+    for (const f of fronts) expect(reach[tileIndex(a, f.x, f.y)], `${f.x},${f.y}`).toBe(1);
+    const lmFront = { x: lms[0]!.x + Math.floor((objectDef(lms[0]!.kind).w - 1) / 2), y: lms[0]!.y + 3 };
+    expect(reach[tileIndex(a, lmFront.x, lmFront.y)]).toBe(1);
+    expect(Object.values(a.objects).some((o) => o.kind === 'chest' && o.by === 'kid')).toBe(true);
+    // once is enough; the moon and a big map work too; a city gets none
+    expect(ensureLandmarks(a)).toBe(false);
+    const moon = generateMoon();
+    for (const o of landmarksIn(moon)) removeObject(moon, o.id);
+    expect(ensureLandmarks(moon)).toBe(true);
+    expect(landmarksIn(moon).map((o) => o.kind)).toEqual(['lm_manporten']);
+    const big = generateArea(0, -2, 1337, WILD_MAP, { landmarks: false });
+    expect(ensureLandmarks(big)).toBe(true);
+    expect(landmarksIn(big).length).toBe(2);
+    expect(ensureLandmarks(generateArea(1, 0))).toBe(false);
+  });
+});
+
 describe('bragder', () => {
   it('the "every kind of place" badge needs exactly all discoverable places', async () => {
-    const { ACHIEVEMENTS } = await import('./index.ts');
     expect(ACHIEVEMENTS.find((a) => a.id === 'biomes_all')?.goal).toBe(DISCOVERABLE.length);
   });
 });

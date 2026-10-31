@@ -66,6 +66,15 @@ import {
   ensureLevelRewards,
   giveXp,
   killXpOf,
+  FORGE_COSTS,
+  FORGE_CRAFTS,
+  ITEMS,
+  POWER_CAP,
+  craftGear,
+  forgeGear,
+  forgeStats,
+  itemName,
+  leaveSaga,
   type AnimalState,
   type Change,
   type DungeonId,
@@ -730,6 +739,7 @@ describe('Lokes list: puzzles and loot', () => {
     let got = false;
     for (let seed = 1; seed < 60 && !got; seed++) {
       delete inst.looted[chest.id];
+      delete p.saga!.chestDay;
       const ch = performAction(d, p.id, tx, ty, ctx(seed));
       got = ch.some((c) => c.t === 'loot' && c.items.some((it) => it.item === 'offhand_helskold'));
     }
@@ -739,6 +749,7 @@ describe('Lokes list: puzzles and loot', () => {
     // all the chest's gear is found: potions instead
     for (let seed = 1; seed < 20; seed++) {
       delete inst.looted[chest.id];
+      delete p.saga!.chestDay;
       const ch = performAction(d, p.id, tx, ty, ctx(seed));
       expect(ch.some((c) => c.t === 'loot' && c.items.some((it) => it.item === 'offhand_helskold' || it.item === 'garmklo'))).toBe(false);
     }
@@ -1111,5 +1122,294 @@ describe('Saga III: hero levels for everyone', () => {
     p.saga = { cls: 'krigare', chapter: 0, heard: false, cleared: [], titles: [], quests: {}, done: [], found: [], xp: XP_LEVELS[19]! };
     expect(gearStats(p).power).toBeCloseTo(1.285);
     expect(fighterMax(p, 'krigare')).toBe(Math.round(CLASSES.krigare.hp * 1.285));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 4: Smedjan at Smed-Stina, and the dungeons' replays
+// ---------------------------------------------------------------------------
+
+/** A hero standing by Smed-Stina in Köpingen. */
+function atStina(cls: keyof typeof CLASSES = 'krigare') {
+  const { world, players } = family();
+  const p = players[0]!;
+  p.saga = { cls, chapter: 4, heard: true, cleared: ['draug', 'frost', 'surt'], titles: [], quests: {}, done: [], found: [], gear: {} };
+  const town = getArea(world, VILLAGE_KEY)!;
+  const st = npcState(town, 'stina');
+  const out: Change[] = [];
+  expect(placeIn(world, p, VILLAGE_KEY, Math.floor(st.x / TILE), Math.floor(st.y / TILE) + 1, 'up', out)).toBe(true);
+  p.x = st.x;
+  p.y = st.y + TILE;
+  p.coins = 0;
+  return { world, p };
+}
+const give = (p: PlayerState, item: string, n: number): void => void addItem(p.inventory, item, n);
+const count = (p: PlayerState, item: string): number => p.inventory.reduce((n, s) => n + (s?.item === item ? s.count : 0), 0);
+const said = (ch: Change[], text: string): boolean => ch.some((c) => c.t === 'toast' && c.text.includes(text));
+
+describe('Smedjan', () => {
+  it('forges a weapon from +1 to +5 for the listed materials and coins, and its power grows by 0.06 a level', () => {
+    const { world, p } = atStina();
+    p.saga!.gear = { weapon: 'runsvard' };
+    const base = gearStats(p).power;
+    expect(base).toBeCloseTo(1.1);
+    // nothing to pay with
+    const poor = forgeGear(world, p.id, 'runsvard');
+    expect(said(poor, 'Du behöver mer')).toBe(true);
+    expect(p.saga!.forge?.runsvard).toBeUndefined();
+    give(p, 'stone', 6);
+    give(p, 'gold', 3);
+    expect(said(forgeGear(world, p.id, 'runsvard'), 'Det kostar 40 kr')).toBe(true);
+    expect([count(p, 'stone'), count(p, 'gold')]).toEqual([6, 3]);
+    // everything for all five levels (the third from two different rare things)
+    p.coins = 40 + 80 + 150 + 250 + 400 + 7;
+    give(p, 'crystal', 4);
+    give(p, 'gold', 2);
+    give(p, 'fire_crystal', 1);
+    give(p, 'obsidian', 1);
+    give(p, 'monsteressens', 8);
+    give(p, 'drakfjall', 2);
+    for (let n = 1; n <= 5; n++) {
+      const ch = forgeGear(world, p.id, 'runsvard');
+      expect(said(ch, `till +${n}`), `+${n}`).toBe(true);
+      expect(p.saga!.forge!.runsvard).toBe(n);
+      expect(gearStats(p).power).toBeCloseTo(1.1 * (1 + 0.06 * n));
+    }
+    expect(p.coins).toBe(7);
+    for (const item of ['stone', 'gold', 'crystal', 'fire_crystal', 'obsidian', 'monsteressens', 'drakfjall']) expect(count(p, item), item).toBe(0);
+    expect(said(forgeGear(world, p.id, 'runsvard'), '+5')).toBe(true);
+    expect(p.saga!.forge!.runsvard).toBe(5);
+    expect(FORGE_COSTS[3]!.anyOf!.items).toEqual(['fire_crystal', 'fairy_dust', 'frostros', 'alvdagg', 'obsidian', 'star_crystal']);
+  });
+
+  it('refuses away from Stina, for gear the hero does not have, and for things that are not gear', () => {
+    const { world, p } = atStina();
+    give(p, 'offhand_helskold', 1);
+    give(p, 'stone', 6);
+    give(p, 'gold', 3);
+    p.coins = 100;
+    expect(said(forgeGear(world, p.id, 'frostbett'), 'Du har inte Frostbett')).toBe(true);
+    expect(said(forgeGear(world, p.id, 'stone'), 'går inte att smida')).toBe(true);
+    // in the bag counts as having it
+    expect(said(forgeGear(world, p.id, 'offhand_helskold'), 'till +1')).toBe(true);
+    // far from Stina
+    p.x += 10 * TILE;
+    give(p, 'crystal', 4);
+    give(p, 'gold', 2);
+    expect(said(forgeGear(world, p.id, 'offhand_helskold'), T.forgeNotNear)).toBe(true);
+    expect(said(craftGear(world, p.id, 'jarnsvard'), T.forgeNotNear)).toBe(true);
+    expect(p.saga!.forge!.offhand_helskold).toBe(1);
+  });
+
+  it('offhands and amulets grow by their own rules', () => {
+    // armor and power both on Tyr's glove; only armor on Hel's shield
+    expect(forgeStats('offhand_tyrshandske', 5)).toEqual({ power: expect.closeTo(0.19), hp: 0, armor: expect.closeTo(0.24) });
+    expect(forgeStats('offhand_helskold', 1)).toEqual({ power: 0, hp: 0, armor: expect.closeTo(0.08) });
+    expect(forgeStats('offhand_alvlykta', 2)).toEqual({ power: expect.closeTo(0.14), hp: 10, armor: 0 });
+    // health on every amulet, power only on those that have it
+    expect(forgeStats('amulet_helring', 3)).toEqual({ power: 0, hp: 44, armor: 0 });
+    expect(forgeStats('amulet_brisingamen', 2)).toEqual({ power: expect.closeTo(0.14), hp: 36, armor: 0 });
+    expect(forgeStats('runsvard', 0)).toEqual({ power: 0, hp: 0, armor: 0 });
+    expect(forgeStats('runsvard', 9).power).toBeCloseTo(0.3);
+    // a forged amulet gives more health in a fight
+    const { p } = atStina('vaktare');
+    p.saga!.gear = { amulet: 'amulet_helring' };
+    const max = fighterMax(p, 'vaktare');
+    p.saga!.forge = { amulet_helring: 2 };
+    expect(fighterMax(p, 'vaktare')).toBe(max + 16);
+  });
+
+  it('a fully forged legendary set reaches the new cap of 2.0', () => {
+    const { p } = atStina('magiker');
+    p.saga!.gear = { weapon: 'lokesstav', offhand: 'offhand_lokesmask', amulet: 'amulet_brisingamen' };
+    expect(POWER_CAP).toBe(2);
+    expect(gearStats(p).power).toBeCloseTo(1.3 * 1.2 * 1.05);
+    p.saga!.forge = { lokesstav: 5, offhand_lokesmask: 5, amulet_brisingamen: 5 };
+    expect(gearStats(p).power).toBe(POWER_CAP);
+    // level 20 alone, without gear, is still +28.5 %
+    p.saga!.gear = {};
+    p.saga!.xp = XP_LEVELS[19]!;
+    expect(gearStats(p).power).toBeCloseTo(1.285);
+  });
+
+  it('makes each piece of the starter set once per hero', () => {
+    const { world, p } = atStina();
+    expect(Object.keys(FORGE_CRAFTS).sort()).toEqual(['ekstav', 'jaktbage', 'jarnsvard', 'jarnyxa', 'stenamulett', 'traskold']);
+    expect(said(craftGear(world, p.id, 'jarnsvard'), 'Du behöver mer')).toBe(true);
+    give(p, 'stone', 16);
+    give(p, 'gold', 8);
+    p.coins = 120;
+    expect(said(craftGear(world, p.id, 'jarnsvard'), 'Järnsvärd')).toBe(true);
+    expect(count(p, 'jarnsvard')).toBe(1);
+    expect([count(p, 'stone'), count(p, 'gold'), p.coins]).toEqual([8, 4, 60]);
+    expect(p.saga!.found).toContain('jarnsvard');
+    // once: not even after it is sold or lost
+    p.inventory[p.inventory.findIndex((s) => s?.item === 'jarnsvard')] = null;
+    expect(said(craftGear(world, p.id, 'jarnsvard'), 'Du har redan Järnsvärd')).toBe(true);
+    expect([count(p, 'stone'), p.coins]).toEqual([8, 60]);
+    // the shield is an uncommon offhand with a little armor, and it can be put on and forged
+    give(p, 'wood', 8);
+    give(p, 'gold', 2);
+    expect(said(craftGear(world, p.id, 'traskold'), 'Träsköld')).toBe(true);
+    equipGear(world, p.id, 'offhand', 'traskold');
+    expect(gearStats(p).armor).toBeCloseTo(0.04);
+    expect(craftGear(world, p.id, 'runsvard')).toEqual([]);
+  });
+
+  it('the forge materials stack and sell for a little', () => {
+    expect(ITEMS.monsteressens).toMatchObject({ category: 'material', stack: 99 });
+    expect(ITEMS.drakfjall!.sell).toBeGreaterThan(ITEMS.monsteressens!.sell!);
+    expect(itemName('drakfjall')).toBe('Drakfjäll');
+  });
+});
+
+/** The family at the Draug King with him nearly beaten; returns how to finish him. */
+function draugKing(n = 1) {
+  const { world, players } = family(n);
+  const d = inside(world, players[0]!, 'magiker');
+  for (const q of players.slice(1)) inside(world, q, 'helare');
+  const inst = d.saga!;
+  const boss = d.animals[inst.boss]!;
+  players.forEach((q, i) => {
+    q.x = boss.x - (3 + i) * TILE;
+    q.y = boss.y;
+  });
+  return {
+    world,
+    d,
+    inst,
+    players,
+    run: (ms: number) => run(world, ms),
+    finish: () => {
+      inst.mobs[inst.boss]!.hp = 1;
+      return castSpell(world, players[0]!.id, 'eldboll', inst.boss, ctx());
+    },
+  };
+}
+
+describe('the dungeons, again and again', () => {
+  it('a boss chest gives its full loot once a game day; after that the replay chest, and the full one again tomorrow', () => {
+    const { world, d, inst, players, run: go, finish } = draugKing();
+    const p = players[0]!;
+    go(100);
+    finish();
+    const chest = Object.values(d.objects).find((o) => o.kind === 'saga_chest' && o.variant === 2)!;
+    p.x = px(chest.x);
+    p.y = px(chest.y) + TILE;
+    const stars = p.stars;
+    const first = performAction(d, p.id, chest.x, chest.y, ctx(5)).find((c) => c.t === 'loot');
+    expect(first && first.t === 'loot' && first.replay).toBeUndefined();
+    expect(first && first.t === 'loot' && first.items.some((it) => it.item === 'drakfjall' && it.count === 1)).toBe(true);
+    expect(p.stars).toBe(stars + SAGA_LOOT.draugkung!.stars);
+    expect(p.saga!.chestDay).toEqual({ draugkung: world.day });
+    // the same day, another run: the replay chest (the chest badges are had already, so no stars from them either)
+    p.achievements.push('loot_5', 'loot_25');
+    for (let seed = 1; seed < 8; seed++) {
+      delete inst.looted[chest.id];
+      const before = { coins: p.coins, stars: p.stars, ess: count(p, 'monsteressens'), fj: count(p, 'drakfjall') };
+      const again = performAction(d, p.id, chest.x, chest.y, ctx(seed));
+      const loot = again.find((c) => c.t === 'loot');
+      if (!loot || loot.t !== 'loot') throw new Error('no loot');
+      expect(loot.replay).toBe(true);
+      expect(loot.stars).toBe(0);
+      expect(loot.coins).toBeLessThanOrEqual(Math.floor(SAGA_LOOT.draugkung!.coins[1] / 3));
+      expect(loot.coins).toBeGreaterThanOrEqual(Math.floor(SAGA_LOOT.draugkung!.coins[0] / 3));
+      const ess = loot.items.find((it) => it.item === 'monsteressens')!.count;
+      expect(ess).toBeGreaterThanOrEqual(2);
+      expect(ess).toBeLessThanOrEqual(4);
+      expect(loot.items.map((it) => it.item)).toEqual(['monsteressens', 'drakfjall']);
+      expect([p.stars, p.coins - before.coins, count(p, 'monsteressens') - before.ess, count(p, 'drakfjall') - before.fj]).toEqual([before.stars, loot.coins, ess, 1]);
+    }
+    // tomorrow: the full chest again
+    world.day++;
+    delete inst.looted[chest.id];
+    const tomorrow = performAction(d, p.id, chest.x, chest.y, ctx(9)).find((c) => c.t === 'loot');
+    expect(tomorrow && tomorrow.t === 'loot' && tomorrow.replay).toBeUndefined();
+  });
+
+  it("the mid-boss's replay chest has essence but no dragon scale; the side room's treasure is not counted", () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    const d = inside(world, p, 'krigare');
+    const inst = d.saga!;
+    const tx = Math.floor(p.x / TILE) + 1;
+    const ty = Math.floor(p.y / TILE);
+    const chest = addObject(d, 'saga_chest', tx, ty, { variant: 1 })!;
+    const full = performAction(d, p.id, tx, ty, ctx(2)).find((c) => c.t === 'loot');
+    expect(full && full.t === 'loot' && full.items.some((it) => it.item === 'drakfjall')).toBe(false);
+    delete inst.looted[chest.id];
+    const replay = performAction(d, p.id, tx, ty, ctx(3)).find((c) => c.t === 'loot');
+    expect(replay && replay.t === 'loot' && [replay.replay, replay.items.map((it) => it.item)]).toEqual([true, ['monsteressens']]);
+    expect(Object.keys(p.saga!.chestDay!)).toEqual([DUNGEONS.draug.mini]);
+  });
+
+  it('dungeon monsters leave a Monsteressens now and then in the bag of whoever beat them; helpers never do', () => {
+    const fight = (rnd: number, kind: 'mob' | 'add') => {
+      const { world, players } = family();
+      const p = players[0]!;
+      const d = inside(world, p, 'magiker');
+      const inst = d.saga!;
+      const m = Object.values(inst.mobs).find((x) => x.kind === 'mob')!;
+      m.kind = kind;
+      const a = d.animals[m.id]!;
+      p.x = a.x - 2 * TILE;
+      p.y = a.y;
+      m.hp = 1;
+      const ch = castSpell(world, p.id, 'eldboll', m.id, { season: 'none', now: clock, rnd: () => rnd });
+      expect(inst.mobs[m.id]).toBeUndefined();
+      return { p, ch };
+    };
+    const lucky = fight(0.05, 'mob');
+    expect(count(lucky.p, 'monsteressens')).toBe(1);
+    expect(said(lucky.ch, 'Monsteressens')).toBe(true);
+    expect(count(fight(0.5, 'mob').p, 'monsteressens')).toBe(0);
+    expect(count(fight(0.05, 'add').p, 'monsteressens')).toBe(0);
+  });
+
+  it("the family's best time is kept from the first one in to the boss's fall, and beaten only by a faster run", () => {
+    const one = draugKing(2);
+    one.run(100);
+    expect(one.inst.startedAt).toBeDefined();
+    const started = one.inst.startedAt!;
+    clock += 10 * 60_000;
+    const ch = one.finish();
+    const best = one.world.sagaBest?.draug;
+    expect(best?.ms).toBe(clock - started);
+    expect(best?.names.sort()).toEqual(['Barn1', 'Barn2']);
+    expect(best?.day).toBe(one.world.day);
+    expect(ch.some((c) => c.t === 'sagaBest' && c.dungeon === 'draug')).toBe(true);
+    // the first time is no record to beat yet: only the family's victory toast
+    expect(ch.some((c) => c.t === 'toast' && c.to === null && c.text.startsWith('⏱️'))).toBe(false);
+
+    // a fresh dungeon: faster beats it, with a toast to everyone
+    const world = one.world;
+    for (const q of one.players) leaveSaga(world, q);
+    delete world.areas![sagaKey('draug')];
+    const p = one.players[0]!;
+    const d = inside(world, p, 'magiker');
+    const inst = d.saga!;
+    expect(inst.startedAt).toBeUndefined();
+    run(world, 100);
+    const boss = d.animals[inst.boss]!;
+    p.x = boss.x - 3 * TILE;
+    p.y = boss.y;
+    run(world, 100);
+    clock += 5 * 60_000;
+    inst.mobs[inst.boss]!.hp = 1;
+    const faster = castSpell(world, p.id, 'eldboll', inst.boss, ctx());
+    expect(world.sagaBest!.draug!.ms).toBe(clock - inst.startedAt!);
+    expect(world.sagaBest!.draug!.ms).toBeLessThan(10 * 60_000);
+    expect(world.sagaBest!.draug!.names).toEqual(['Barn1']);
+    expect(faster.some((c) => c.t === 'toast' && c.to === null && c.text.includes('Nytt rekord') && c.text.includes('Barn1'))).toBe(true);
+  });
+
+  it('a slower run leaves the record alone', () => {
+    const k = draugKing();
+    k.world.sagaBest = { draug: { ms: 1000, names: ['Mamma'], day: 1 } };
+    k.run(100);
+    clock += 60_000;
+    const ch = k.finish();
+    expect(k.world.sagaBest.draug).toEqual({ ms: 1000, names: ['Mamma'], day: 1 });
+    expect(ch.some((c) => c.t === 'sagaBest')).toBe(false);
   });
 });

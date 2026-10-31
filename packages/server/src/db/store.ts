@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureLevelRewards, ensureRoaming, ensureTownDress, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, archFront, rebuildOccupancy, type Change, type DungeonId, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureLevelRewards, ensureRoaming, ensureTownDress, ensureSagaPlaces, ensureCave, ensureCity, ensureLandmarks, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, archFront, rebuildOccupancy, type Change, type DungeonId, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 import { PgAccessStore } from './accessStore.ts';
 
@@ -90,6 +90,8 @@ export class PgStore implements Store {
       animals: {},
       players: {},
     };
+    // the family's best dungeon times (missing in saves from before them)
+    if (row.sagaBest) world.sagaBest = row.sagaBest;
     const loadedObjectIds: number[] = [];
     /** Players who were inside a dungeon: they go in front of its arch, wherever it stands in its map. */
     const outOfDungeon: [string, DungeonId][] = [];
@@ -188,6 +190,12 @@ export class PgStore implements Store {
         this.dirtyAreas.add(k);
         console.log(`Loke's servants now roam ${k}`);
       }
+      if (ensureLandmarks(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`put Upptäcktsboken's landmarks on ${k}`);
+        // anyone who logged out where one now stands steps out in front of it
+        for (const p of Object.values(world.players)) if (p.area === k) settlePlayer(a, p);
+      }
     }
     for (const [id, sagaId] of outOfDungeon) {
       const front = archFront(world, sagaId);
@@ -228,6 +236,7 @@ export class PgStore implements Store {
       switch (c.t) {
         case 'terrain':
         case 'day':
+        case 'sagaBest':
           this.worldDirty = true;
           break;
         case 'crop':
@@ -310,6 +319,7 @@ export class PgStore implements Store {
           seasonOverride: world.seasonOverride,
           terrain: world.terrain,
           drops: world.drops,
+          sagaBest: world.sagaBest ?? null,
           updatedAt: new Date(),
         };
         await tx

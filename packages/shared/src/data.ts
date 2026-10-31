@@ -1,4 +1,5 @@
 import { ARCADE_GAMES, cartOf } from './arcade.ts';
+import { LANDMARKS, landmarkKind } from './landmarks.ts';
 import { SAGA_BOSSES, SAGA_ITEMS, SAGA_MOBS, VOLVA_ID, VOLVA_SPOT } from './saga.ts';
 import { TILE, type Achievement, type AnimalDef, type CropDef, type ItemDef, type NpcDef, type ObjectDef, type RecipeDef } from './types.ts';
 
@@ -282,6 +283,8 @@ for (const s of SAGA_ITEMS) {
   else if (s.kind === 'pet' || s.kind === 'mount') add(I(s.id, 'animal', { species: s.species, stack: 1 }));
   else if (s.kind === 'potion') add(I(s.id, 'material', { food: { boostMs: 0 }, sell: 10, stack: 20 }));
   else if (s.kind === 'quest') add(I(s.id, 'material'));
+  // Smedjan's materials: they stack like the villagers' things, and Stina's customers pay a little for them
+  else if (s.kind === 'material') add(I(s.id, 'material', { sell: s.rarity === 'rare' ? 20 : 5 }));
   else if (s.kind === 'decor') add(I(s.id, 'placeable', { places: s.id, stack: 1 }));
 }
 found('hat_ice_crown', 'hat', 'crown', '#bfe3f5');
@@ -520,6 +523,8 @@ addO(O('saga_starlamp', { solid: false, breakWith: undefined, light: true }));
 addO(O('saga_runepillar', { breakWith: undefined }));
 // the Act II chapters' keepsakes for home (they all glow)
 for (const s of SAGA_ITEMS) if (s.kind === 'decor' && !OBJECTS[s.id]) built(s.id, { light: true });
+// Upptäcktsboken: the wild maps' landmarks, solid and touched to be found (3×3, a few 4×3)
+for (const d of Object.values(LANDMARKS)) addO(O(landmarkKind(d.id), { w: d.w ?? 3, h: 3, interact: 'landmark', breakWith: undefined, ...(d.light ? { light: true } : {}) }));
 built('plush_cow');
 built('plush_hen');
 built('plush_dragon');
@@ -1069,6 +1074,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('saga_level_5', 'sagaLevel', 5, 3, 'amulet_vegvisir'),
   A('saga_level_10', 'sagaLevel', 10, 6, 'amulet_brisingamen'),
   A('saga_gear_legendary', 'sagaLegendary', 1, 4, 'offhand_tyrshandske'),
+  A('landmarks_5', 'landmarks', 5, 2, 'signpost'),
+  A('landmarks_15', 'landmarks', 15, 4, 'gem'),
+  A('landmarks_26', 'landmarks', 26, 6, 'star_crystal'),
   A('rally_1', 'rallyRaces', 1, 1, 'vehicle_car_red'),
   A('rally_wins_10', 'rallyWins', 10, 3, 'trophy'),
   A('rally_style', 'rallyStyle', 1, 1, 'brush'),

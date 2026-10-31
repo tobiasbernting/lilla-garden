@@ -13,6 +13,7 @@ import { INDOOR_EXIT, familyBest, familyGames, generateHall, hallDoorTile, hallK
 import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { DUNGEONS, VOLVA_ID, dungeonOfKey, isSagaKey, sagaItem } from './saga.ts';
 import { generateSaga } from './sagamap.ts';
+import { discoverLandmark } from './explore.ts';
 import { garageOf, healCars } from './rallysim.ts';
 import { enterSaga, ensureSagaPlaces, heroAction, idleSaga, isSagaMob, killXp, roamingDown, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, quickStack, removeItem, sortInventory, takeFromSlot } from './inventory.ts';
@@ -963,6 +964,9 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
       return;
     case 'fairy':
       danceInRing(world, p, obj, ctx, out);
+      return;
+    case 'landmark':
+      out.push(...discoverLandmark(world, p, obj));
       return;
     case 'rocket':
       out.push(...flyRocket(world, p.id));

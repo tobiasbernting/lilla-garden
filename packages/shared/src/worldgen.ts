@@ -203,6 +203,8 @@ export class Painter {
   }
   /** Maps right around the farm show off their landmark (a pyramid, a temple, a cave…) every time. */
   showcase = false;
+  /** Put the biome's landmarks (Upptäcktsboken) down; off when an old map is built again only to compare with it. */
+  landmarks = true;
   /** A landmark's chance: always yes on a showcase map (it still draws a number, so the rest stays the same). */
   lucky(p: number): boolean {
     return this.chance(p) || this.showcase;

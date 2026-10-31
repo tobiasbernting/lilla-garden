@@ -29,3 +29,6 @@ export * from './hall.ts';
 export * from './saga.ts';
 export * from './sagamap.ts';
 export * from './sagasim.ts';
+export * from './landmarks.ts';
+export * from './explore.ts';
+export { placeLandmarks } from './painters.ts';

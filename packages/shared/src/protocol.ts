@@ -13,7 +13,7 @@ import type {
   WorldObject,
   WorldState,
 } from './types.ts';
-import type { SagaZone } from './saga.ts';
+import type { DungeonId, SagaBest, SagaZone } from './saga.ts';
 import type { SagaSnap } from './sagasim.ts';
 import type { CarBody, CarPart, CarSnap, CarStyle, GarageCar, RaceResultLine, RaceRules, RoomInfo } from './rally.ts';
 import type { IceServer, VoiceState } from './voice.ts';
@@ -51,7 +51,10 @@ export type Change =
   /** Big words across the screen: a dungeon's name, a boss beaten (celebrate!), a new chapter, a rest stone, everyone fallen. */
   | { t: 'banner'; to: string | null; area?: string; text: string; sub?: string; kind?: 'enter' | 'boss' | 'cleared' | 'chapter' | 'reward' | 'rest' | 'wipe' | 'level' }
   /** What a dungeon chest gave you (a loot window in rarity colours). */
-  | { t: 'loot'; to: string; from: string; items: { item: string; count: number }[]; coins: number; stars: number }
+  /** A chest's loot for one player; `replay` when it was the smaller replay chest (the full one was taken today). */
+  | { t: 'loot'; to: string; from: string; items: { item: string; count: number }[]; coins: number; stars: number; replay?: true }
+  /** The family beat its best time through a dungeon (also on the farm WorldState's sagaBest). */
+  | { t: 'sagaBest'; dungeon: DungeonId; best: SagaBest }
   /** Hero experience gained (anywhere): the client floats "+n xp" from where the player stood (pixels; area left out on the farm). */
   | { t: 'xp'; to: string; n: number; x: number; y: number; area?: string };
 
@@ -103,6 +106,9 @@ export type ClientMsg =
   | { t: 'saga'; a: 'equip'; slot: 'weapon' | 'offhand' | 'amulet'; item: string | null }
   /** Hero mode: walk the world as your class (spells, weapon drawn, hero outfit), or as a farmer again. */
   | { t: 'saga'; a: 'hero'; on: boolean }
+  /** Smedjan at Smed-Stina: forge a piece one level up, or have her make a piece of the starter set. */
+  | { t: 'saga'; a: 'forge'; item: string }
+  | { t: 'saga'; a: 'craft'; item: string }
   /** Jump to a family member, wherever they are. */
   | { t: 'jump'; to: string }
   /** Rallyvärlden, the garage: buy a car, pick the one you drive, buy the next level of a part, change the style (the server charges for what changed), repair, rename, sell. */

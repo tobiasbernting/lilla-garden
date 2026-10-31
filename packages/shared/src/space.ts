@@ -5,6 +5,7 @@ import { spawnWildAnimals } from './biomes.ts';
 import { CAVE_THEMES, countRenewables } from './caves.ts';
 import { addObject, emptyWorld, objectAt, removeObject, tileIndex } from './map.ts';
 import { hashString, mulberry32 } from './rng.ts';
+import { placeLandmarks } from './painters.ts';
 import { Painter, connect } from './worldgen.ts';
 import { MAP_H, MAP_W, key, type WorldState } from './types.ts';
 
@@ -89,6 +90,8 @@ export function generateMoon(): WorldState {
   g.scatter('star_crystal', 5, onMoon);
   g.scatter('moon_cheese', 7, onMoon);
   g.scatter('dig_spot', 2, onMoon);
+  // Månporten (Upptäcktsboken), with numbers of its own so the rest of the moon stays as it was
+  placeLandmarks(g, mulberry32(hashString('månporten')));
   connect(g, { trail: null, trails: false, bridge: () => 'moon', pass: 'moon' }, { openings: false, from: rocketFront(r) });
   world.renew = countRenewables(world);
   spawnWildAnimals(world, 'mane', g.rnd);

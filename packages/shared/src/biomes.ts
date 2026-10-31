@@ -229,9 +229,10 @@ function paintCity(world: WorldState, rnd: () => number): void {
 
 /**
  * Builds a biome area for grid coordinates (ax, ay). Deterministic. `size` is the side in tiles (the biome's
- * own size unless asked for another; a 64 map comes out exactly as it did before maps grew).
+ * own size unless asked for another; a 64 map comes out exactly as it did before maps grew). `landmarks: false`
+ * leaves Upptäcktsboken's landmarks out: the map as it was built before they existed (to compare an old save with).
  */
-export function generateArea(ax: number, ay: number, worldSeed = 1337, size?: number): WorldState {
+export function generateArea(ax: number, ay: number, worldSeed = 1337, size?: number, opts: { landmarks?: boolean } = {}): WorldState {
   const biome = biomeAt(ax, ay);
   const rnd = mulberry32(hash(ax, ay, worldSeed));
   const side = biome === 'by' ? MAP_W : (size ?? areaSizeOf(biome));
@@ -243,6 +244,7 @@ export function generateArea(ax: number, ay: number, worldSeed = 1337, size?: nu
   else {
     const g = new Painter(world, rnd, hash(ax, ay, worldSeed + 1));
     g.showcase = !!NEAR_HOME[`${ax},${ay}`] || (ax === SPACEPORT.ax && ay === SPACEPORT.ay);
+    g.landmarks = opts.landmarks ?? true;
     (PAINTERS[biome] ?? PAINTERS.ang!)(g);
     world.renew = countRenewables(world);
   }

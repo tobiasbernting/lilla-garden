@@ -1,7 +1,7 @@
 // Core shared types. Identifiers are English; all player-facing text lives in sv.ts.
 
 import type { GarageState } from './rally.ts';
-import type { SagaInstance, SagaProgress } from './saga.ts';
+import type { DungeonId, SagaBest, SagaInstance, SagaProgress } from './saga.ts';
 
 export const TILE = 16;
 /** The usual map size: the farm, cities, caves, buildings and dungeons are all 64×64 (and so is any map without a size). */
@@ -161,7 +161,7 @@ export interface ObjectDef {
   /** Housing capacity for a species. */
   houses?: { species: string; capacity: number };
   /** Opens a UI when interacted with. */
-  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores' | 'saga' | 'sagaclass' | 'rest' | 'sagachest' | 'garage';
+  interact?: 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'water' | 'feed' | 'cook' | 'cave' | 'exit' | 'treasure' | 'pizzeria' | 'bath' | 'sleep' | 'bus' | 'train' | 'grotto' | 'loot' | 'rocket' | 'fairy' | 'tv' | 'hall' | 'machine' | 'prizes' | 'scores' | 'saga' | 'sagaclass' | 'rest' | 'sagachest' | 'garage' | 'landmark';
   /** A loot table (LOOT in data.ts) rolled when it is broken, dug up or opened. */
   loot?: string;
   /** Gives light at night (client). */
@@ -485,6 +485,8 @@ export interface WorldState {
   renew?: Record<string, number>;
   /** A dungeon (Sagan om Världsträdet) while the family is in it. */
   saga?: SagaInstance;
+  /** Farm world only (saved with it): the family's best clear time of each dungeon. */
+  sagaBest?: Partial<Record<DungeonId, SagaBest>>;
 }
 
 /** The look of a cave out in the world (each biome has its own). */

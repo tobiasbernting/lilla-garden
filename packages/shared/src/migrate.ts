@@ -38,7 +38,8 @@ function untouchedThings(a: WorldState): boolean {
 function untouchedSinceBuilt(a: WorldState, k: string, ax: number, ay: number): boolean {
   if (!untouchedThings(a)) return false;
   if (a.terrain.some((t) => t === 'soil' || t === 'soil_wet')) return false;
-  const fresh = generateArea(ax, ay, undefined, mapW(a));
+  // (as it was built then: with landmarks only if it has them, since maps from before them get theirs from ensureLandmarks)
+  const fresh = generateArea(ax, ay, undefined, mapW(a), { landmarks: Object.values(a.objects).some((o) => o.kind.startsWith('lm_')) });
   if (fresh.terrain.length !== a.terrain.length) return false;
   fresh.area = k;
   ensureSagaPlaces(k, fresh);

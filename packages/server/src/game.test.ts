@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { addItem, enterCave, type ServerMsg } from '../../shared/src/index.ts';
+import { TICK_HZ, TILE, VILLAGE_KEY, addItem, areaKey, enterCave, getArea, landmarkOfKind, npcState, objectDef, placeIn, type Change, type ServerMsg } from '../../shared/src/index.ts';
 import { Game, type Link } from './game.ts';
 import { MemoryStore } from './db/store.ts';
 
@@ -130,5 +130,50 @@ describe('cave and dropped connections', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('Smedjan: forge and craft messages reach Stina, with a toast for a refusal', async () => {
+    const game = new Game(new MemoryStore(), { autoStart: false });
+    await game.start();
+    const a = game.createPlayer('Astrid', { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })!;
+    const la = fakeLink();
+    const ha = game.connect(la);
+    ha({ t: 'hello', playerId: a.id });
+    const p = game.world.players[a.id]!;
+    p.saga = { cls: 'krigare', chapter: 1, heard: true, cleared: [], titles: [], quests: {}, done: [], found: [], gear: { weapon: 'runsvard' } };
+    const toasts = (): string[] => la.msgs.flatMap((m) => (m.t === 'changes' ? m.changes.filter((c): c is Extract<Change, { t: 'toast' }> => c.t === 'toast').map((c) => c.text) : []));
+    // at home, far from Stina
+    ha({ t: 'saga', a: 'forge', item: 'runsvard' });
+    expect(toasts().some((t) => t.includes('Smed-Stina'))).toBe(true);
+    // by her side, with what it costs
+    const town = getArea(game.world, VILLAGE_KEY)!;
+    const st = npcState(town, 'stina');
+    placeIn(game.world, p, VILLAGE_KEY, Math.floor(st.x / TILE), Math.floor(st.y / TILE) + 1, 'up', []);
+    p.x = st.x;
+    p.y = st.y + TILE;
+    addItem(p.inventory, 'stone', 14);
+    addItem(p.inventory, 'gold', 7);
+    p.coins = 100;
+    ha({ t: 'saga', a: 'forge', item: 'runsvard' });
+    expect(p.saga.forge).toEqual({ runsvard: 1 });
+    ha({ t: 'saga', a: 'craft', item: 'jarnsvard' });
+    expect(p.inventory.some((s) => s?.item === 'jarnsvard')).toBe(true);
+    expect(p.coins).toBe(0);
+  });
+
+  it('notes the landmarks a player out in the world comes close to, once a second', async () => {
+    const game = new Game(new MemoryStore(), { autoStart: false });
+    await game.start();
+    const a = game.createPlayer('Astrid', { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })!;
+    const ha = game.connect(fakeLink());
+    ha({ t: 'hello', playerId: a.id });
+    const p = game.world.players[a.id]!;
+    const k = areaKey(0, -1);
+    const forest = getArea(game.world, k)!;
+    const lm = Object.values(forest.objects).find((o) => landmarkOfKind(o.kind))!;
+    const d = objectDef(lm.kind);
+    placeIn(game.world, p, k, lm.x + 1, lm.y + d.h, 'up', []);
+    for (let i = 0; i < TICK_HZ; i++) game.tick(1000 / TICK_HZ);
+    expect(p.saga?.seen).toContain(`${k}:${landmarkOfKind(lm.kind)}`);
   });
 });

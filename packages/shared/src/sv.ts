@@ -1,4 +1,5 @@
 // All player-facing Swedish strings.
+import { LANDMARKS, landmarkKind } from './landmarks.ts';
 import { SAGA_BOSSES, SAGA_ITEMS, SAGA_MOBS } from './saga.ts';
 
 export const ITEM_NAMES: Record<string, string> = {
@@ -732,6 +733,24 @@ export const T = {
   sagaNoStrength: 'Du har ingen styrkedryck.',
   sagaStrengthKey: 'Styrkedryck',
   lassoMonster: 'Lokes monster går inte att fånga med lasso! Besegra dem i stället.',
+  // Round 4: Upptäcktsboken, Smedjan and the dungeons' replays
+  landmarkFound: 'Du hittade {name}!',
+  landmarkCache: '🧭 I gömman: {items}',
+  landmarkAgain: '🧭 {name}: {lore}',
+  forgeNotNear: 'Gå till Smed-Stina i Köpingen, så smider hon åt dig.',
+  forgeNotOwned: 'Du har inte {item}. Bär den, eller ha den i väskan.',
+  forgeNotGear: '{item} går inte att smida.',
+  forgeAtMax: '{item} är redan smidd så bra det går (+5)!',
+  forgeNeedKr: 'Det kostar {kr} kr, och du har {have} kr.',
+  forgeNeedItems: 'Du behöver mer: {items}.',
+  forgeNeedAnyOf: '{n} av {items}',
+  forged: '🔨 Stina smider {item} till +{n}!',
+  forgeCrafted: '🔨 Stina har smitt {item} åt dig!',
+  forgeCraftedAlready: 'Du har redan {item}. Stina smider bara en åt varje hjälte.',
+  sagaReplayChest: 'Återbesökets kista',
+  sagaReplaySub: 'Dagens stora skatt är redan tagen. I morgon är den tillbaka!',
+  sagaEssens: '🟣 Monstret lämnade en Monsteressens!',
+  sagaBestBeaten: '⏱️ Nytt rekord! {names} klarade {dungeon} på {time}!',
   // the saga's windows and the dungeon HUD
   sagaStoneTitle: 'Kämpastenen',
   sagaStoneIntro: 'Välj din väg! Du får klassens kläder, och kan byta när du vill (fast inte inne i en fängelsehåla).',
@@ -895,6 +914,35 @@ export const T = {
   sagaRewardTitle: 'Titeln {title}',
   sagaRewardAura1: 'Hjälteglöd: ett varmt sken runt dig',
   sagaRewardAura2: 'Regnbågsglöd: du skimrar i alla färger',
+  // Round 4 (client)
+  sagaFindsTab: '🧭 Upptäckter',
+  sagaFindsIntro: 'Ute i de vilda världarna finns märkliga platser. Gå fram till en och rör vid den, så skrivs den in här!',
+  sagaFindsAll: 'Upptäckta platser: {n} av {total}',
+  sagaFindsCount: '{n} / {total}',
+  sagaFindsUnknown: 'Någonstans i {biome} …',
+  mapLandmarkSeen: 'Du har sett en märklig plats här. Gå och rör vid den!',
+  mapLandmarkFound: 'Du har upptäckt platserna här',
+  forgeBtn: '🔨 Smedjan',
+  forgeTitle: 'Smedjan',
+  forgeTabUpgrade: 'Förbättra',
+  forgeTabCraft: 'Smid',
+  forgeIntro: 'Jag kan göra dina vapen, sköldar och smycken starkare! Varje nivå kostar material och kronor. Fem stjärnor är det bästa som finns.',
+  forgeCraftIntro: 'Har du ingen utrustning? Jag smider en enkel sak av varje sort åt dig.',
+  forgeUpgrade: 'Förbättra',
+  forgeCraft: 'Smid',
+  forgeMax: 'Högsta nivån!',
+  forgeOwned: 'Du har den',
+  forgeWorn: 'på dig',
+  forgeLevel: 'Smidd nivå {n} av 5',
+  forgeAnyOf: 'Valfria av: {items}',
+  forgeNone: 'Du har ingen utrustning än. Smid något under Smid, eller hitta det i fängelsehålornas kistor!',
+  sagaChestToday: 'Dagens skatt:',
+  sagaChestLeft: 'kvar',
+  sagaChestTaken: 'tagen',
+  sagaChestLeftTip: 'Bossens stora skatt väntar på dig i dag',
+  sagaChestTakenTip: 'Du har tagit dagens stora skatt. Resten av dagen ger kistan en mindre extrakista.',
+  sagaBestTime: 'Bästa tid: {time} · {names}',
+  sagaNoBestTime: 'Ingen tid än. Klara den hela vägen!',
 };
 
 /** Names animals get until a player renames them. */
@@ -983,6 +1031,9 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   saga_level_5: { title: 'Erfaren hjälte', text: 'Nå hjältenivå 5' },
   saga_level_10: { title: 'Sagans hjälte', text: 'Nå hjältenivå 10' },
   saga_gear_legendary: { title: 'Legendarisk', text: 'Bär något legendariskt' },
+  landmarks_5: { title: 'Upptäcktsresande', text: 'Hitta 5 märkliga platser ute i världen' },
+  landmarks_15: { title: 'Kartritare', text: 'Hitta 15 märkliga platser ute i världen' },
+  landmarks_26: { title: 'Världens kännare', text: 'Hitta alla 26 märkliga platser' },
   rally_1: { title: 'Första racet', text: 'Kör ett race i Rallyvärlden' },
   rally_wins_10: { title: 'Rallymästare', text: 'Vinn 10 race' },
   rally_style: { title: 'Snyggaste bilen', text: 'Ge en bil ny stil i garaget' },
@@ -1078,6 +1129,17 @@ Object.assign(OBJECT_NAMES, {
   saga_starlamp: 'Stjärnlykta',
   saga_runepillar: 'Runpelare',
 });
+
+for (const d of Object.values(LANDMARKS)) OBJECT_NAMES[landmarkKind(d.id)] = d.name;
+
+/** A clear time as minutes and seconds ("12:05"), or hours too when it is long ("1:02:05"). */
+export const fmtDuration = (ms: number): string => {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
 export const objectName = (kind: string): string => OBJECT_NAMES[kind] ?? ITEM_NAMES[kind] ?? kind;
