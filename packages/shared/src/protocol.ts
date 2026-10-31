@@ -65,6 +65,8 @@ export type ClientMsg =
   | { t: 'act'; tx: number; ty: number }
   | { t: 'select'; slot: number }
   | { t: 'swap'; a: SlotRef; b: SlotRef }
+  | { t: 'sort'; chest?: number }
+  | { t: 'quickStack'; chest: number }
   | { t: 'craft'; recipe: string }
   | { t: 'cook'; recipe: string }
   | { t: 'buy'; item: string; qty: number }

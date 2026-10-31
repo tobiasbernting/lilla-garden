@@ -1,5 +1,6 @@
-import { item } from './data.ts';
-import type { Inventory, ItemStack } from './types.ts';
+import { ITEMS, item } from './data.ts';
+import { itemName } from './sv.ts';
+import type { Inventory, ItemCategory, ItemStack } from './types.ts';
 import { MAX_STACK, WATERING_CAN_CHARGES } from './types.ts';
 
 export const makeInventory = (size: number): Inventory => Array.from({ length: size }, () => null);
@@ -96,3 +97,97 @@ export const hasSpace = (inv: Inventory, id: string, count: number): boolean => 
   }
   return room >= count;
 };
+
+export const CATEGORY_ORDER: ItemCategory[] = [
+  'tool',
+  'seed',
+  'crop',
+  'animal_product',
+  'fish',
+  'feed',
+  'material',
+  'placeable',
+  'clothing',
+  'animal',
+  'decor',
+];
+
+/** Stacks that carry per-stack state (paintings, watering can charges) never merge. */
+const mergeable = (s: ItemStack): boolean => {
+  if (s.data !== undefined || s.charges !== undefined) return false;
+  const def = ITEMS[s.item];
+  // Unknown items and corrupt over-max stacks are kept as they are, never merged or split.
+  return def !== undefined && s.count <= Math.min(def.stack, MAX_STACK);
+};
+
+/**
+ * Sorts slots [from, to) in place: merges stacks of the same item, then orders by
+ * category, Swedish item name and count (largest first). Empty slots go last.
+ */
+export function sortInventory(inv: Inventory, from = 0, to = inv.length): void {
+  const end = Math.min(to, inv.length);
+  const start = Math.max(0, from);
+  if (start >= end) return;
+  const merged: ItemStack[] = [];
+  const open = new Map<string, ItemStack>();
+  for (let i = start; i < end; i++) {
+    const s = inv[i];
+    if (!s) continue;
+    if (!mergeable(s)) {
+      merged.push(s);
+      continue;
+    }
+    const max = Math.min(ITEMS[s.item]!.stack, MAX_STACK);
+    let left = s.count;
+    while (left > 0) {
+      const cur = open.get(s.item);
+      if (cur && cur.count < max) {
+        const take = Math.min(max - cur.count, left);
+        cur.count += take;
+        left -= take;
+        if (cur.count >= max) open.delete(s.item);
+      } else {
+        const take = Math.min(max, left);
+        const ns: ItemStack = { ...s, count: take };
+        merged.push(ns);
+        left -= take;
+        if (take < max) open.set(s.item, ns);
+        else open.delete(s.item);
+      }
+    }
+  }
+  const catIndex = (id: string): number => {
+    const cat = ITEMS[id]?.category;
+    const i = cat === undefined ? -1 : CATEGORY_ORDER.indexOf(cat);
+    return i < 0 ? CATEGORY_ORDER.length : i;
+  };
+  merged.sort(
+    (a, b) =>
+      catIndex(a.item) - catIndex(b.item) ||
+      itemName(a.item).localeCompare(itemName(b.item), 'sv') ||
+      a.item.localeCompare(b.item) ||
+      b.count - a.count,
+  );
+  if (merged.length > end - start) return;
+  for (let i = start; i < end; i++) inv[i] = merged[i - start] ?? null;
+}
+
+/**
+ * Moves stacks from `from[fromStart, fromEnd)` into `to`, but only items that already
+ * exist in `to` (never `skipSlot`, e.g. the held stack). Returns the number of items moved.
+ */
+export function quickStack(from: Inventory, fromStart: number, fromEnd: number, to: Inventory, skipSlot = -1): number {
+  let moved = 0;
+  for (let i = Math.max(0, fromStart); i < Math.min(fromEnd, from.length); i++) {
+    if (i === skipSlot) continue;
+    const s = from[i];
+    if (!s || !ITEMS[s.item] || s.data !== undefined || s.charges !== undefined) continue;
+    if (!to.some((t) => t && t.item === s.item && t.data === undefined && t.charges === undefined)) continue;
+    const left = addItem(to, s.item, s.count);
+    const took = s.count - left;
+    moved += took;
+    s.count = left;
+    if (s.count === 0) from[i] = null;
+  }
+  return moved;
+}

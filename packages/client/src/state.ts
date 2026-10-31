@@ -118,6 +118,20 @@ function dropObject(world: WorldState, obj: WorldObject): void {
   delete world.objects[obj.id];
 }
 
+/**
+ * The maps already loaded (other areas, the dungeon) carry their own player lists, which the server fills only
+ * when it sends the whole map. Someone who arrives after that would be missing there, and the view reads the
+ * list of the map it shows: keep every loaded map's list in step with the farm's records.
+ */
+function syncAreaPlayers(id: string, rec: PlayerState | null): void {
+  const maps: [string, WorldState][] = Object.entries(client.areas);
+  if (client.dungeon) maps.push(['dungeon', client.dungeon]);
+  for (const [key, w] of maps) {
+    if (rec && rec.area === key) w.players[id] = rec;
+    else delete w.players[id];
+  }
+}
+
 export function applyChange(c: Change): void {
   const farm = client.world;
   if (!farm) return;
@@ -171,6 +185,7 @@ export function applyChange(c: Change): void {
     case 'player': {
       if (!c.player) {
         delete world.players[c.id];
+        syncAreaPlayers(c.id, null);
         break;
       }
       const old = world.players[c.id];
@@ -184,6 +199,7 @@ export function applyChange(c: Change): void {
         Object.assign(old, { ...c.player, x: old.x, y: old.y, facing: old.facing, moving: old.moving });
       } else if (old) Object.assign(old, c.player);
       else world.players[c.id] = c.player;
+      syncAreaPlayers(c.id, world.players[c.id]!);
       if (c.id === client.me && areaChanged) bus.emit('area', c.player.area);
       break;
     }

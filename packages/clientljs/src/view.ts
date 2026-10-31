@@ -61,7 +61,7 @@ import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
 import { SFX } from '@v1/sound.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '@v1/state.ts';
-import { sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
+import { attackTarget, sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
 import type { HudTarget } from '@v1/ui/hud.ts';
 import { animalSprites, characterSprites, loadSprites, paintingSprite, type ObjectSprites, type Sprites } from './art.ts';
 import type { Sprite } from './atlas.ts';
@@ -282,8 +282,11 @@ export class View implements HudTarget {
     gameEl.addEventListener('pointerdown', (e) => {
       if (this.uiOpen || (e.pointerType === 'mouse' && e.button !== 0)) return;
       const w = this.screenToWorld(e.clientX, e.clientY);
-      // in a dungeon a click on a monster (or a friend) aims at it
-      if (this.sagaFx?.pick(w.x, w.y)) return;
+      // in a dungeon a click on a monster (or a friend) aims at it, and hits a monster in reach
+      if (this.sagaFx?.pick(w.x, w.y)) {
+        attackTarget();
+        return;
+      }
       this.actAt(tileOf(w.x), tileOf(w.y), true);
     });
     gameEl.addEventListener('pointermove', (e) => {
@@ -759,11 +762,11 @@ export class View implements HudTarget {
     this.actFacing();
   }
 
-  /** A quick tap on the joystick's side of a touch screen: in a dungeon, a monster there becomes the target. */
+  /** A quick tap on the joystick's side of a touch screen: in a dungeon, a monster there becomes the target and is hit if in reach. */
   tap(clientX: number, clientY: number): void {
     if (this.uiOpen) return;
     const w = this.screenToWorld(clientX, clientY);
-    this.sagaFx?.pick(w.x, w.y);
+    if (this.sagaFx?.pick(w.x, w.y)) attackTarget();
   }
 
   private actFacing(): void {
