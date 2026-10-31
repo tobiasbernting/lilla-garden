@@ -39,6 +39,7 @@ import {
   PLAYER_HALF_W,
   REACH,
   rideSpeedMul,
+  sagaItem,
   stepPlayer,
   T,
   TILE,
@@ -56,12 +57,12 @@ import {
 } from '@lilla-garden/shared';
 import { ANIMAL_SIZE, ANIMAL_VARIANTS, RIDE_LIFT } from '@v1/art/animals.ts';
 import { CHAR_H, dirOf, frameIndex, HEADROOM } from '@v1/art/characters.ts';
-import { SAGA_STEPPED } from '@v1/art/saga.ts';
+import { SAGA_LOOKS, SAGA_STEPPED } from '@v1/art/saga.ts';
 import { EMOTE_GLYPH, PAINT_COLORS } from '@v1/art/world.ts';
 import { net } from '@v1/net.ts';
 import { SFX } from '@v1/sound.ts';
 import { activeWorld, bus, client, myArea, myPlayer, serverNow } from '@v1/state.ts';
-import { attackTarget, sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
+import { attackTarget, heroOn, sagaMarker, sagaSpeed, titleOf } from '@v1/saga.ts';
 import type { HudTarget } from '@v1/ui/hud.ts';
 import { animalSprites, characterSprites, loadSprites, paintingSprite, type ObjectSprites, type Sprites } from './art.ts';
 import type { Sprite } from './atlas.ts';
@@ -117,9 +118,11 @@ const SWAY: Record<string, number> = {
 /** Small things that cast no sun shadow. */
 const FLAT_LOOKING = new Set(['grass_tuft', 'flower', 'wild_flower_mid', 'rock_small', 'mushroom', 'shell', 'rug', 'painting', 'clock', 'stump', 'ore', 'egg_basket', 'wild_pumpkin', 'iceberry', 'cloudberry', 'moon_rock', 'moon_cheese', 'gold_vein', 'gem_vein', 'fossil_rock', 'obsidian_rock', 'dragon_egg', 'wisp', 'loot_chest']);
 /** How far above the middle of its footprint a thing's light sits (pixels): the glowing part is up high. */
-const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, rally_garage: 12, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8, saga_torch: 22, saga_rest: 6, saga_portal: 6, saga_stone: 12, saga_candles: 4, saga_icecrystal: 6, saga_brazier: 12, solruna: 6, yggdrasil: 14 };
+const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, rally_garage: 12, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8, saga_torch: 22, saga_rest: 6, saga_portal: 6, saga_stone: 12, saga_candles: 4, saga_icecrystal: 6, saga_brazier: 12, solruna: 6, yggdrasil: 14, saga_ghostlight: 10, saga_goldpile: 4, saga_minelamp: 12, saga_pearl: 5, saga_glowshroom: 9, saga_fairylight: 12, saga_rainbowshard: 9, saga_starlamp: 14, hels_lykta: 8, dvargstaty: 8, ormtand: 8, alvlykta: 8, fenrislanka: 6, bifrostbit: 8 };
 /** Things hung on the wall above their tile: they sort with the wall, behind whoever stands in front of them. */
 const ON_WALL = new Set(['saga_torch']);
+/** The dungeon looks whose torches burn with a real flame (the crypt, the forge, the mines, Fenrir's cold fire). */
+const FLAME_LOOKS = new Set([0, 2, 4, 7]);
 /** Places where the trees never turn: the tropics, the desert, the volcano, candy land, the moon, the caves. */
 const TIMELESS = new Set(['djungel', 'oken', 'strand', 'dino', 'vulkan', 'godis', 'rymdbas', 'mane']);
 /** How high animals hop as they walk (pixels). */
@@ -192,6 +195,9 @@ interface Actor {
   whistled?: number;
   /** A lantern carried at night. */
   lamp?: Lamp;
+  /** A hero's glowing weapon at night, and the colour it was made for. */
+  weaponLamp?: Lamp;
+  weaponGlow?: string;
   /** Seconds to the next puff of dust while running. */
   dust: number;
   seed: number;
@@ -451,7 +457,7 @@ export class View implements HudTarget {
     } else if (o.kind === 'saga_gate') {
       // the dungeon's look in o.variant; across a corridor that runs sideways it stands on end
       const m = this.linkMask(o.x, o.y, (k) => k === 'saga_gate' || k === 'saga_wall');
-      variant = ((o.variant ?? 0) % 3) * 2 + (m & 5 && !(m & 10) ? 1 : 0);
+      variant = ((o.variant ?? 0) % SAGA_LOOKS) * 2 + (m & 5 && !(m & 10) ? 1 : 0);
     } else if (isWall) {
       // painted colour in o.variant; orientation from the neighbours
       const colour = (o.variant ?? 0) % PAINT_COLORS.length;
@@ -612,6 +618,7 @@ export class View implements HudTarget {
     const a = this.players.get(id);
     if (!a) return;
     a.lamp?.destroy();
+    a.weaponLamp?.destroy();
     a.label.remove();
     a.bubble?.remove();
     this.players.delete(id);
@@ -681,6 +688,16 @@ export class View implements HudTarget {
         const p = c.player ?? world.players[c.id];
         if (!c.player || !p || !p.online || (p.area ?? 'farm') !== this.area) this.removePlayer(c.id);
         else this.putPlayer(world.players[c.id] ?? p);
+        break;
+      }
+      case 'spell': {
+        // a hero swings their weapon (or staff) with every spell, like the ✋ button
+        if (typeof c.by !== 'string' || c.area !== this.area || c.spell.startsWith('cast_') || c.spell.startsWith('land_') || c.spell === 'potion') break;
+        const a = this.players.get(c.by);
+        if (a) {
+          a.swing = 0.26;
+          a.squashV += 1.6;
+        }
         break;
       }
       case 'warp': {
@@ -1025,8 +1042,8 @@ export class View implements HudTarget {
     let best = 0;
     for (const ov of this.objects.values()) {
       const k = ov.o.kind;
-      // (the frost castle's lanterns hold a crystal, not a flame)
-      if (k !== 'torch' && k !== 'cave_torch' && k !== 'stove' && k !== 'saga_brazier' && !(k === 'saga_torch' && ov.o.variant !== 1)) continue;
+      // (of the dungeons' torches only some are flames: the others hold a crystal, a ghost-light, a pearl, a fairy light…)
+      if (k !== 'torch' && k !== 'cave_torch' && k !== 'stove' && k !== 'saga_brazier' && !(k === 'saga_torch' && FLAME_LOOKS.has((ov.o.variant ?? 0) % SAGA_LOOKS))) continue;
       const d = Math.hypot(ov.o.x * TILE + TILE / 2 - me.x, ov.o.y * TILE + TILE / 2 - me.y);
       if (d < 96) best = Math.max(best, 1 - d / 96);
     }
@@ -1182,6 +1199,7 @@ export class View implements HudTarget {
       a.lamp.level += (carried - a.lamp.level) * Math.min(1, dt * 3);
       a.lamp.moveTo(a.x, a.y - 6);
       a.lamp.update(lit, this.t);
+      if (p) this.updateWeaponLamp(a, p, lit);
     }
     for (const [id, a] of this.animals) {
       if (!a.lamp) continue;
@@ -1627,15 +1645,49 @@ export class View implements HudTarget {
     this.queue.push(a.y + 4 + (lift > 0 ? 2 : 0), s, a.x, footY - h / 2, w, h, 0, WHITE, 0, part);
   }
 
-  /** The item in someone's hand (tools, weapons, food… everything), swung when used. */
+  /**
+   * A hero's weapon: the one they wear while hero mode is on (or in a dungeon, where everyone is their class).
+   * Other players' snapshots carry it as `held` too, for a record that has not caught up yet.
+   */
+  private weaponOf(p: PlayerState): string | null {
+    if (!heroOn(p) && !isSagaKey(p.area)) return null;
+    const worn = p.saga?.gear?.weapon;
+    if (worn) return worn;
+    const held = client.snaps.players.get(p.id)?.held;
+    return held && sagaItem(held)?.kind === 'weapon' ? held : null;
+  }
+
+  /** A hero's weapon glows in its own colour at night (a rainbow one shifts through them all). */
+  private updateWeaponLamp(a: Actor, p: PlayerState, lit: number): void {
+    const id = this.weaponOf(p);
+    const glow = id && !p.sleeping ? (sagaItem(id)?.glow ?? null) : null;
+    if (glow !== (a.weaponGlow ?? null)) {
+      a.weaponLamp?.destroy();
+      a.weaponLamp = undefined;
+      a.weaponGlow = glow ?? undefined;
+      if (glow) {
+        const rainbow = glow === 'rainbow';
+        const n = rainbow ? 0xffffff : parseInt(glow.slice(1), 16);
+        const color: [number, number, number] = [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+        a.weaponLamp = new Lamp(a.x, a.y, { color, radius: 1.8, strength: 0.55, flicker: 0.2, glow: 0.6, twinkle: rainbow });
+      }
+    }
+    if (!a.weaponLamp) return;
+    const s = p.facing === 'left' ? -1 : p.facing === 'right' ? 1 : p.facing === 'down' ? 0.8 : -0.8;
+    a.weaponLamp.moveTo(a.x + s * 6, a.y - 8);
+    a.weaponLamp.update(lit, this.t);
+  }
+
+  /** The item in someone's hand (tools, weapons, food… everything), swung when used; a hero's weapon in hero mode. */
   private queueHeld(a: Actor, p: PlayerState, swimming: boolean, lift: number): void {
-    const stack = heldItem(p);
+    const weapon = this.weaponOf(p);
+    const stack = weapon ? { item: weapon, count: 1 } : heldItem(p);
     const driving = p.riding !== undefined && !!this.world!.animals[p.riding] && isVehicle(this.world!.animals[p.riding]!);
     const icon = stack && !swimming && !p.sleeping && !driving ? this.art.icons[stack.item] : undefined;
     if (!icon) return;
     const f = p.facing;
     const bob = p.moving ? Math.round(Math.sin(this.t * 11)) : 0;
-    const tool = ITEMS[stack!.item]?.category === 'tool';
+    const tool = !!weapon || ITEMS[stack!.item]?.category === 'tool';
     const swing = a.swing > 0 ? Math.sin((1 - a.swing / 0.26) * Math.PI) : 0;
     const w = icon.w * 0.55;
     const h = icon.h * 0.55;

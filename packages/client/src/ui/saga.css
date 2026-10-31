@@ -5,9 +5,9 @@
   display: none !important;
 }
 
-/* no hotbar in a dungeon: the spell bar takes its place */
-body.in-saga .hotbar,
-body.in-saga .hud-name {
+/* no hotbar in a fight (a dungeon, or hero mode out in the world): the spell bar takes its place */
+body.saga-fight .hotbar,
+body.saga-fight .hud-name {
   display: none;
 }
 
@@ -31,13 +31,13 @@ body.touch .saga-bar {
   transform: none;
   --s: calc(25 * var(--u));
 }
-body.touch.in-saga .act-btn {
+body.touch.saga-fight .act-btn {
   bottom: calc(36 * var(--u));
   width: calc(24 * var(--u));
   height: calc(24 * var(--u));
   font-size: calc(8 * var(--u));
 }
-body.touch.in-saga .run-btn {
+body.touch.saga-fight .run-btn {
   bottom: calc(36 * var(--u));
   right: calc(32 * var(--u));
 }
@@ -219,7 +219,7 @@ body.touch .saga-units {
   bottom: auto;
   top: calc(17 * var(--u));
 }
-body.in-saga:not(.touch) .toasts {
+body.saga-fight:not(.touch) .toasts {
   bottom: calc(46 * var(--u));
 }
 .saga-unit,
@@ -1400,4 +1400,357 @@ button.pick {
   width: calc(14 * var(--u));
   height: calc(1.8 * var(--u));
   background: #1a2a1a;
+}
+
+/* ---- hero mode and the gear button (in the HUD's top row) ---- */
+.hud-right .round[hidden] {
+  display: none;
+}
+.round.hero-btn.on {
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--c, #ffd23f) 55%, #fff), var(--c, #ffd23f) 75%);
+  box-shadow:
+    0 var(--u) 0 var(--ink),
+    0 0 calc(3 * var(--u)) var(--c, #ffd23f);
+}
+
+/* a level up: big golden words */
+.saga-banner.level .big {
+  font-size: calc(19 * var(--u));
+  background: linear-gradient(#fffbe0, #ffd23f 55%, #e89a1a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 calc(1 * var(--u)) 0 #3a1a00) drop-shadow(0 0 calc(5 * var(--u)) rgba(255, 210, 80, 0.9));
+  animation: saga-glow 0.9s ease-in-out infinite alternate;
+}
+.saga-banner.level .sub {
+  color: #ffe98a;
+}
+
+/* golden sparkles when the rune plates all light up */
+.saga-confetti.sparkle > i {
+  width: calc(2 * var(--u));
+  height: calc(2 * var(--u));
+  border-radius: 50%;
+  background: #fff3a0;
+  box-shadow:
+    0 0 calc(2 * var(--u)) #ffd23f,
+    0 0 calc(4 * var(--u)) #ffb83a;
+}
+
+/* caught in a spider's web */
+.saga-down.web {
+  background:
+    repeating-conic-gradient(from 10deg at 50% 45%, rgba(255, 255, 255, 0.16) 0 1.2deg, transparent 1.2deg 30deg),
+    radial-gradient(ellipse at center, rgba(240, 240, 255, 0.04) 35%, rgba(220, 220, 235, 0.5));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.saga-down.web .box {
+  border-color: #e8e8f4;
+  background: rgba(40, 36, 52, 0.85);
+}
+
+/* the journal: Act II's heading, and a chapter's parts */
+.saga-list .act {
+  margin: calc(2 * var(--u)) 0 calc(0.5 * var(--u));
+  font-weight: 900;
+  font-size: calc(4.4 * var(--u));
+  color: #7a3ac0;
+}
+.saga-list .part {
+  display: block;
+  font-size: calc(3.8 * var(--u));
+  font-weight: 700;
+  color: #5a4a30;
+}
+.saga-list .part.done {
+  color: #2f8a3a;
+}
+
+/* ---- the gear window ---- */
+.saga-panel.gear {
+  width: calc(280 * var(--u));
+}
+.saga-gear {
+  display: grid;
+  grid-template-columns: calc(112 * var(--u)) 1fr;
+  gap: calc(3 * var(--u));
+}
+.saga-gear .hero {
+  display: flex;
+  gap: calc(2 * var(--u));
+  background: #241c2e;
+  color: #f4ead8;
+  border: calc(0.75 * var(--u)) solid #0d0a12;
+  border-left: calc(2 * var(--u)) solid var(--c, #c8a95a);
+  border-radius: calc(3 * var(--u));
+  padding: calc(2 * var(--u));
+}
+.saga-gear .portrait {
+  width: calc(32 * var(--u));
+  height: calc(48 * var(--u));
+  object-fit: contain;
+  object-position: top;
+  image-rendering: pixelated;
+  flex: none;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--c, #c8a95a) 40%, transparent), transparent 70%);
+  border-radius: calc(2 * var(--u));
+}
+.saga-gear .who {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.6 * var(--u));
+  min-width: 0;
+  flex: 1;
+  font-size: calc(3.8 * var(--u));
+}
+.saga-gear .who .nm {
+  font-size: calc(5.6 * var(--u));
+  color: #fff;
+}
+.saga-gear .who .ttl {
+  color: #ffd27a;
+}
+.saga-gear .who .lvl {
+  font-weight: 900;
+  color: #ffe08a;
+}
+.saga-gear .saga-meter.xp {
+  background: #3a2e48;
+  border-color: #0d0a12;
+  margin-top: 0;
+}
+.saga-gear .saga-meter.xp i {
+  background: linear-gradient(#ffe98a, #e8a82a);
+}
+.saga-gear .saga-meter.xp span {
+  color: #fff;
+  font-size: calc(3.2 * var(--u));
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+}
+.saga-gear .totals {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.3 * var(--u));
+  font-weight: 800;
+}
+.saga-gear .totals .pow {
+  color: #ffb08a;
+}
+.saga-gear .totals .hp {
+  color: #9fff8a;
+}
+.saga-gear .totals .arm {
+  color: #9ad0ff;
+}
+.saga-gear .hero .q-act {
+  margin-top: auto;
+  justify-content: flex-start;
+}
+.saga-gear .hero-toggle {
+  font-size: calc(4 * var(--u));
+}
+.saga-gear .slots {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.5 * var(--u));
+}
+.saga-gear .gslot {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(18 * var(--u)) 1fr;
+  grid-template-rows: auto auto auto;
+  column-gap: calc(2 * var(--u));
+  align-items: center;
+  min-height: calc(22 * var(--u));
+  background: #1c1624;
+  color: #f4ead8;
+  border: calc(0.9 * var(--u)) solid var(--r, #6a5a7a);
+  border-radius: calc(3 * var(--u));
+  padding: calc(1 * var(--u)) calc(2.5 * var(--u));
+  cursor: pointer;
+  box-shadow: 0 0 calc(3 * var(--u)) color-mix(in srgb, var(--r, transparent) 50%, transparent);
+}
+.saga-gear .gslot.empty {
+  border-style: dashed;
+  border-color: #6a5a7a;
+  cursor: default;
+  box-shadow: none;
+  opacity: 0.85;
+}
+.saga-gear .gslot:not(.empty):active {
+  transform: translateY(var(--u));
+}
+.saga-gear .slot-name {
+  position: absolute;
+  right: calc(2 * var(--u));
+  top: calc(0.8 * var(--u));
+  font-size: calc(3 * var(--u));
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: calc(0.3 * var(--u));
+  color: #a89ab8;
+}
+.saga-gear .gslot .pic,
+.saga-gearbag .pic {
+  grid-row: 1 / span 3;
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--r, #6a5a7a) 45%, transparent), transparent 70%);
+}
+.saga-gear .pic img,
+.saga-gearbag .pic img {
+  width: calc(15 * var(--u));
+  height: calc(15 * var(--u));
+  image-rendering: pixelated;
+}
+.saga-gear .pic .em,
+.saga-gearbag .pic .em {
+  font-size: calc(10 * var(--u));
+}
+.saga-gear .gslot.empty .pic .em {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+.saga-gear .gslot .nm {
+  color: var(--r, #fff);
+  font-size: calc(5 * var(--u));
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+  padding-right: calc(14 * var(--u));
+}
+.saga-gear .gslot .st,
+.saga-gearbag .st {
+  font-size: calc(3.6 * var(--u));
+  font-weight: 800;
+  color: #ffe08a;
+}
+.saga-gear .gslot .off {
+  font-size: calc(3.2 * var(--u));
+  color: #a89ab8;
+}
+.saga-gear .gslot .tx {
+  grid-row: 1 / span 3;
+  font-size: calc(3.8 * var(--u));
+  color: #b8acc8;
+}
+.saga-gear .clothes {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  background: var(--panel-dark);
+  border-radius: calc(3 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2.5 * var(--u));
+  min-height: calc(18 * var(--u));
+}
+.saga-gear .clothes .slot-name {
+  position: static;
+  color: #6a4a1a;
+}
+.saga-gear .clothes .cl {
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(8 * var(--u));
+}
+.saga-gear .clothes .cl.none {
+  opacity: 0.35;
+}
+.saga-gear .clothes .cl img {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+  image-rendering: pixelated;
+}
+.saga-gear .clothes button {
+  margin-left: auto;
+}
+.saga-gearbag {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(84 * var(--u)), 1fr));
+  gap: calc(1.5 * var(--u));
+}
+.saga-gearbag .gitem {
+  position: relative;
+  display: flex;
+  gap: calc(2 * var(--u));
+  align-items: center;
+  min-height: calc(24 * var(--u));
+  background: #1c1624;
+  color: #f4ead8;
+  border: calc(0.9 * var(--u)) solid var(--r, #888);
+  border-radius: calc(3 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2 * var(--u));
+  cursor: pointer;
+}
+.saga-gearbag .gitem:active {
+  transform: translateY(var(--u));
+}
+.saga-gearbag .pic {
+  flex: none;
+}
+.saga-gearbag .col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-right: calc(8 * var(--u));
+}
+.saga-gearbag .nm {
+  color: var(--r, #fff);
+  font-size: calc(4.6 * var(--u));
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+}
+.saga-gearbag .rar {
+  font-size: calc(3 * var(--u));
+  color: var(--r, #aaa);
+  text-transform: uppercase;
+  letter-spacing: calc(0.3 * var(--u));
+}
+.saga-gearbag .fit {
+  font-size: calc(3.4 * var(--u));
+  color: #a89ab8;
+}
+.saga-gearbag .fits .fit {
+  color: #9fff8a;
+  font-weight: 900;
+}
+.saga-gearbag .tx {
+  font-size: calc(3.3 * var(--u));
+  color: #b8acc8;
+  font-style: italic;
+}
+.saga-gearbag .put {
+  position: absolute;
+  right: calc(2 * var(--u));
+  top: 50%;
+  transform: translateY(-50%);
+  width: calc(9 * var(--u));
+  height: calc(9 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--r, #888) 40%, #1c1624);
+  font-size: calc(5 * var(--u));
+  font-weight: 900;
+  color: #fff;
+}
+.saga-gearbag .rar-epic .pic,
+.saga-gearbag .rar-legendary .pic,
+.saga-gear .gslot.rar-epic .pic,
+.saga-gear .gslot.rar-legendary .pic {
+  animation: saga-shine 1.2s ease-in-out infinite alternate;
+}
+/* a screen held upright: the hero above the slots */
+@media (max-aspect-ratio: 1/1) {
+  .saga-gear {
+    grid-template-columns: 1fr;
+  }
 }

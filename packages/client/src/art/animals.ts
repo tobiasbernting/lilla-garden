@@ -1,6 +1,6 @@
 // Animals: side view facing right (flip for left), 2 walk frames, adult + baby, optional tomteluva.
 import { Px, shade } from './px.js';
-import { SAGA_AFTER, SAGA_ANIMAL_SIZE, SAGA_DRAW, SAGA_HAT_POS, SAGA_OUTLINE, SAGA_RIDE_LIFT } from './sagaanimals.ts';
+import { SAGA_AFTER, SAGA_ANIMAL_SIZE, SAGA_DRAW, SAGA_HAT_POS, SAGA_OUTLINE, SAGA_RIDE_LIFT, SAGA_VARIANTS } from './sagaanimals.ts';
 import { OUTLINE } from './world.js';
 
 export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
@@ -485,6 +485,8 @@ export const ANIMAL_VARIANTS: Record<string, number> = {
   parrot: PARROT_COLORS.length,
   dino: DINO_COLORS.length,
   gummy: GUMMY_COLORS.length,
+  // Loke's illusions on Bifrost: the saga's monsters drawn ghostly (variant 1)
+  ...SAGA_VARIANTS,
 };
 const CAR_COLORS = ['#d9453b', '#3b6fd9', '#f0c030'];
 const MOTO_COLORS = ['#d9453b', '#f08a2a', '#2f7a3a'];
