@@ -37,6 +37,11 @@ export interface GameContext {
   end(score: number, detail?: string): void;
   /** Ask the shell to pause (shows the pause card), e.g. when the mouse lock was lost. */
   requestPause(): void;
+  /**
+   * Game-specific options from whoever opened the arcade (Rallyvärlden passes a RallyOptions: course, rules,
+   * cars, network hooks). Undefined on the TV and in Spelhallen: the game plays its arcade default.
+   */
+  options?: unknown;
 }
 
 export interface GameInstance {
@@ -74,7 +79,8 @@ export interface GameMeta {
   dims: '2D' | '3D';
   /** How to play: a few short Swedish lines for keyboard (and gamepad) players and for touch screens. */
   howTo: { keys: string[]; touch: string[] };
-  touch: TouchLayout;
+  /** The touch controls, or a function of `ctx.options` when they depend on what is played (the rally's nitro). */
+  touch: TouchLayout | ((options: unknown) => TouchLayout);
 }
 
 export interface GameInfo extends GameMeta {

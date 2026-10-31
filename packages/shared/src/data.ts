@@ -454,6 +454,8 @@ addO(O('prize_counter', { w: 3, h: 1, interact: 'prizes', breakWith: undefined, 
 addO(O('score_board', { w: 2, h: 1, interact: 'scores', breakWith: undefined, light: true }));
 addO(O('hall_wall', { breakWith: undefined }));
 addO(O('hall_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
+// Rallyvärlden: the garage on the farm (cars, styling, races and free roam open from here)
+addO(O('rally_garage', { w: 3, h: 2, interact: 'garage', breakWith: undefined, light: true }));
 // Dungeons: walls and the gate after the mid-boss (one look per dungeon: variant), torches, the way out,
 // rest stones, chests, the arches out in the world, Kämpastenen where you pick a class, and things to see
 addO(O('saga_wall', { breakWith: undefined }));
@@ -948,6 +950,10 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('saga_surt', 'sagaSurt', 1, 5, 'surtsvard'),
   A('saga_mobs_50', 'sagaMobs', 50, 2, 'draugyxa'),
   A('saga_quests_6', 'sagaQuests', 6, 3, 'healing_potion'),
+  A('rally_1', 'rallyRaces', 1, 1, 'vehicle_car_red'),
+  A('rally_wins_10', 'rallyWins', 10, 3, 'trophy'),
+  A('rally_style', 'rallyStyle', 1, 1, 'brush'),
+  A('rally_coins_100', 'rallyCoins', 100, 2, 'old_coin'),
 ];
 
 /** Fish and how likely they bite (weights). */

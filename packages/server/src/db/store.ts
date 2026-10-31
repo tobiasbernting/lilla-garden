@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 import { PgAccessStore } from './accessStore.ts';
 
@@ -23,7 +23,9 @@ export interface Store {
 export class MemoryStore implements Store {
   constructor(private seed = 1337) {}
   async load(): Promise<WorldState> {
-    return generateWorld(this.seed);
+    const world = generateWorld(this.seed);
+    ensureGarage(world);
+    return world;
   }
   noteChanges(): void {}
   markAllDirty(): void {}
@@ -67,6 +69,7 @@ export class PgStore implements Store {
     const row = rows[0];
     if (!row) {
       const world = generateWorld();
+      ensureGarage(world);
       this.markAllDirty(world);
       await this.flush(world);
       return world;
@@ -176,6 +179,7 @@ export class PgStore implements Store {
     if (ensureCave(world)) console.log('added the cave to the saved world');
     ensureFarmExits(world);
     if (ensureFarmBusStop(world)) console.log('added the bus stop to the farm');
+    if (ensureGarage(world)) console.log('built the rally garage on the farm');
     // Objects removed by the repairs above must also leave the database
     for (const id of loadedObjectIds) if (!world.objects[id]) this.gone.objects.add(id);
     if (Object.keys(world.objects).length !== before || this.gone.objects.size > 0 || before === 0) {
