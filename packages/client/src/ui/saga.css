@@ -1899,3 +1899,418 @@ button.pick {
   background-clip: text;
   color: transparent;
 }
+
+/* ---- Round 4: Upptäcktsboken (the journal's discoveries) ---- */
+.saga-panel.finds {
+  width: calc(270 * var(--u));
+}
+.saga-meter.finds-all {
+  height: calc(7 * var(--u));
+  margin-bottom: calc(2 * var(--u));
+}
+.saga-meter.finds-all i {
+  background: linear-gradient(90deg, #5fd38d, #ffd23f);
+}
+.saga-meter.finds-all span {
+  font-size: calc(4.2 * var(--u));
+  font-weight: 900;
+}
+.saga-finds {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--u));
+}
+.saga-finds .biome {
+  background: var(--panel-dark);
+  border-radius: calc(2.5 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u));
+}
+.saga-finds .biome.all {
+  background: #e8f0d0;
+  box-shadow: inset 0 0 0 calc(0.6 * var(--u)) #9cc070;
+}
+.saga-finds .bhead {
+  display: flex;
+  align-items: center;
+  gap: calc(1.5 * var(--u));
+  font-size: calc(4.6 * var(--u));
+  margin-bottom: calc(1 * var(--u));
+}
+.saga-finds .bhead .em {
+  font-size: calc(6 * var(--u));
+}
+.saga-finds .bhead .count {
+  margin-left: auto;
+  font-weight: 900;
+  color: var(--accent-dark);
+}
+.saga-finds .lms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(110 * var(--u)), 1fr));
+  gap: calc(1.5 * var(--u));
+}
+.saga-finds .lm {
+  display: flex;
+  gap: calc(2 * var(--u));
+  align-items: center;
+  background: #1c1624;
+  color: #f4ead8;
+  border: calc(0.8 * var(--u)) solid #c8a95a;
+  border-radius: calc(3 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2 * var(--u));
+}
+.saga-finds .lm .pic {
+  flex: none;
+  width: calc(22 * var(--u));
+  height: calc(26 * var(--u));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: calc(2 * var(--u));
+  background: radial-gradient(ellipse at 50% 80%, rgba(255, 210, 120, 0.35), transparent 70%);
+}
+.saga-finds .lm .pic img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+}
+.saga-finds .lm .pic .em {
+  font-size: calc(10 * var(--u));
+}
+.saga-finds .lm .col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.saga-finds .lm .nm {
+  color: #ffd86a;
+  font-size: calc(4.4 * var(--u));
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+}
+.saga-finds .lm .lore {
+  font-size: calc(3.4 * var(--u));
+  font-style: italic;
+  color: #d8cce8;
+}
+.saga-finds .lm.unknown {
+  background: #3a3444;
+  border-style: dashed;
+  border-color: #6a5a7a;
+  filter: grayscale(0.6);
+  opacity: 0.75;
+}
+.saga-finds .lm.unknown .pic {
+  align-items: center;
+  background: #2a2434;
+}
+.saga-finds .lm.unknown .q {
+  font-size: calc(12 * var(--u));
+  font-weight: 900;
+  color: #8a7a9a;
+}
+.saga-finds .lm.unknown .nm {
+  color: #a89ab8;
+}
+
+/* the world map: a landmark seen but not yet touched (?) or all found (🧭) */
+.worldmap .cell {
+  position: relative;
+}
+.worldmap .cell .lm-mark {
+  position: absolute;
+  top: calc(-1.5 * var(--u));
+  right: calc(-1.5 * var(--u));
+  min-width: calc(6.5 * var(--u));
+  height: calc(6.5 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: calc(4 * var(--u));
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+.worldmap .cell .lm-mark.seen {
+  background: #ffd23f;
+  color: #4a2a00;
+  border: calc(0.6 * var(--u)) solid #4a2a00;
+  animation: lm-pulse 1.1s ease-in-out infinite alternate;
+}
+.worldmap .cell .lm-mark.found {
+  background: #fff6c8;
+  border: calc(0.6 * var(--u)) solid #9cc070;
+  font-size: calc(3.6 * var(--u));
+}
+@keyframes lm-pulse {
+  to {
+    transform: scale(1.18);
+  }
+}
+
+/* ---- Round 4: the journal's dungeon cards (today's treasure, the family's best time) ---- */
+.saga-dungeon .chests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(1 * var(--u)) calc(2 * var(--u));
+  margin-top: calc(1 * var(--u));
+  font-size: calc(3.6 * var(--u));
+}
+.saga-dungeon .chest-day {
+  background: #fff6d8;
+  border-radius: calc(2 * var(--u));
+  padding: calc(0.3 * var(--u)) calc(1.5 * var(--u));
+}
+.saga-dungeon .chest-day.left b {
+  color: #2a8a3a;
+}
+.saga-dungeon .chest-day.taken {
+  opacity: 0.75;
+}
+.saga-dungeon .chest-day.taken b {
+  color: #8a6a4a;
+}
+.saga-dungeon .best {
+  font-weight: 800;
+  color: #6a4a1a;
+  padding: calc(0.3 * var(--u)) 0;
+}
+.saga-dungeon .best.none {
+  font-weight: 600;
+  color: #8a7a60;
+}
+
+/* ---- Round 4: the replay chest (plainer: no rays, a calm glow) ---- */
+.saga-panel.loot.replay {
+  box-shadow:
+    0 0 0 calc(0.5 * var(--u)) #000,
+    0 0 calc(4 * var(--u)) color-mix(in srgb, var(--r, #fff) 50%, transparent);
+  animation-duration: 0.3s;
+}
+.saga-panel.loot.replay .chest {
+  animation: none;
+}
+.saga-panel.loot .replay-note {
+  margin: 0 0 calc(1.5 * var(--u));
+  font-size: calc(3.6 * var(--u));
+  color: #c8bcd8;
+  text-align: center;
+}
+
+/* ---- Round 4: forged gear (stars, and a halo that grows with the level) ---- */
+.saga-gear .gslot .stars,
+.saga-gearbag .stars,
+.forge-card .stars {
+  display: inline-block;
+  margin-left: calc(1.5 * var(--u));
+  font-size: calc(3.4 * var(--u));
+  letter-spacing: calc(0.2 * var(--u));
+  color: #ffd23f;
+  text-shadow: 0 0 calc(1.5 * var(--u)) rgba(255, 190, 40, 0.8);
+}
+.forge-card .stars {
+  margin-left: 0;
+  font-size: calc(4.4 * var(--u));
+}
+.saga-gear .gslot.forged .pic,
+.saga-gearbag .forged .pic,
+.forge-card.forged .pic {
+  box-shadow: 0 0 calc((1.5 + 1.6 * var(--fl, 0)) * var(--u)) color-mix(in srgb, var(--r, #ffd86a) 75%, #fff2b0);
+  background: radial-gradient(circle, color-mix(in srgb, var(--r, #6a5a7a) calc(45% + 8% * var(--fl, 0)), transparent), transparent 72%);
+}
+
+/* ---- Round 4: Smedjan ---- */
+.saga-panel.forge {
+  width: calc(290 * var(--u));
+}
+.saga-panel.forge h2 .price {
+  font-size: calc(4.2 * var(--u));
+}
+.forge-intro {
+  display: flex;
+  gap: calc(2 * var(--u));
+  align-items: center;
+  margin-bottom: calc(2 * var(--u));
+}
+.forge-intro .portrait {
+  width: auto;
+  height: calc(24 * var(--u));
+  flex: none;
+  image-rendering: pixelated;
+}
+.forge-intro p {
+  margin: 0;
+  font-size: calc(4 * var(--u));
+  color: #5a5040;
+  background: #fff6d8;
+  border-radius: calc(3 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2.5 * var(--u));
+}
+.forge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(130 * var(--u)), 1fr));
+  gap: calc(2 * var(--u));
+}
+.forge-card {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.2 * var(--u));
+  background: #1c1624;
+  color: #f4ead8;
+  border: calc(0.9 * var(--u)) solid var(--r, #888);
+  border-radius: calc(3 * var(--u));
+  padding: calc(2 * var(--u));
+  box-shadow: 0 0 calc(3 * var(--u)) color-mix(in srgb, var(--r, transparent) 40%, transparent);
+}
+.forge-card.max {
+  background: linear-gradient(160deg, #2a2030, #3a2c1c);
+}
+.forge-card.owned {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+}
+.forge-card .top {
+  display: flex;
+  gap: calc(2 * var(--u));
+  align-items: center;
+}
+.forge-card .pic {
+  flex: none;
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--r, #6a5a7a) 45%, transparent), transparent 70%);
+}
+.forge-card .pic img {
+  width: calc(15 * var(--u));
+  height: calc(15 * var(--u));
+  image-rendering: pixelated;
+}
+.forge-card .pic .em {
+  font-size: calc(10 * var(--u));
+}
+.forge-card .col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.forge-card .nm {
+  color: var(--r, #fff);
+  font-size: calc(4.8 * var(--u));
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+}
+.forge-card .rar {
+  font-size: calc(3 * var(--u));
+  color: var(--r, #aaa);
+  text-transform: uppercase;
+  letter-spacing: calc(0.3 * var(--u));
+}
+.forge-card .st {
+  font-size: calc(3.6 * var(--u));
+  font-weight: 800;
+  color: #ffe08a;
+}
+.forge-card .stat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(1.5 * var(--u));
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: calc(2 * var(--u));
+  padding: calc(1 * var(--u)) calc(2 * var(--u));
+  font-size: calc(3.8 * var(--u));
+}
+.forge-card .stat .now {
+  color: #c8bcd8;
+}
+.forge-card .stat .arrow {
+  color: #ffd23f;
+  font-weight: 900;
+}
+.forge-card .stat .next {
+  color: #9fff8a;
+}
+.forge-cost {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(1.2 * var(--u));
+}
+.forge-cost .chip-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(1 * var(--u));
+  border-radius: calc(2 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
+  font-size: calc(3.8 * var(--u));
+  background: rgba(255, 255, 255, 0.08);
+  border: calc(0.5 * var(--u)) solid transparent;
+}
+.forge-cost .chip-cost.ok {
+  color: #9fff8a;
+  border-color: rgba(120, 230, 110, 0.5);
+}
+.forge-cost .chip-cost.no {
+  color: #ff8a7a;
+  border-color: rgba(255, 110, 90, 0.55);
+}
+.forge-cost .pics {
+  display: inline-flex;
+}
+.forge-cost .pics img {
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  image-rendering: pixelated;
+}
+.forge-cost .pics.any img {
+  width: calc(6 * var(--u));
+  height: calc(6 * var(--u));
+  margin-right: calc(-1 * var(--u));
+}
+.forge-cost .pics .em,
+.forge-cost .chip-cost .em {
+  font-size: calc(5 * var(--u));
+}
+.forge-card .q-act {
+  margin-top: auto;
+}
+.forge-card .q-act button {
+  width: 100%;
+  min-height: calc(12 * var(--u));
+  font-size: calc(4.6 * var(--u));
+}
+.npc-actions .forge-btn {
+  background: linear-gradient(#ffb070, #e0662a);
+  color: #fff;
+  text-shadow: 0 calc(0.4 * var(--u)) 0 #6a2a00;
+}
+
+/* a landmark found: its picture rises over the banner */
+.saga-banner.landmark .lm-pic img {
+  height: calc(40 * var(--u));
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 calc(3 * var(--u)) rgba(255, 220, 120, 0.9));
+  animation: lm-rise 0.8s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.saga-banner.landmark .sub {
+  font-size: calc(4.2 * var(--u));
+  max-width: 100%;
+  font-style: italic;
+}
+@keyframes lm-rise {
+  from {
+    transform: translateY(calc(8 * var(--u))) scale(0.6);
+    opacity: 0;
+  }
+}
+
+.stars b {
+  font-weight: inherit;
+}
+.stars i {
+  font-style: normal;
+  color: #6a5a7a;
+  text-shadow: none;
+}

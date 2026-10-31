@@ -24,6 +24,8 @@ export interface LampSpec {
   cycleSec?: number;
   /** Quick bright glints now and then, 0..1 (light thrown off a mirror ball). */
   sparkle?: number;
+  /** Blinks on and off, once every this many seconds (a beacon on a crashed satellite). */
+  blink?: number;
 }
 
 export class Lamp {
@@ -56,6 +58,7 @@ export class Lamp {
       const n = Math.sin(t * 13 + this.seed) * 0.5 + Math.sin(t * 23.7 + this.seed * 1.7) * 0.3 + Math.sin(t * 5.1 + this.seed * 0.3) * 0.2;
       k = 1 + n * 0.18 * s.flicker;
     }
+    if (s.blink) k *= ((t + this.seed) % s.blink) / s.blink < 0.3 ? 1 : 0.08;
     if (s.sparkle) k += s.sparkle * (Math.max(0, Math.sin(t * 7.3 + this.seed * 5.1)) ** 12 + Math.max(0, Math.sin(t * 11.9 + this.seed * 2.3)) ** 12);
     let [r, g, b] = s.color;
     if (s.twinkle) {
@@ -393,7 +396,32 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       return { color: [1, 0.86, 0.45], radius: 3.4, strength: 0.85, flicker: 0.1, glow: 1.8, always: true };
     case 'yggdrasil':
       return { color: [0.6, 1, 0.55], radius: 3.2, strength: 0.7, flicker: 0.2, glow: 1.6, sparkle: 0.4, always: true };
+    // Upptäcktsboken's landmarks out in the wild: those with a lantern, a fire or a glow of their own
+    case 'lm_jatteek':
+      return { color: hexLight('#ffcc66'), radius: 3.4, strength: 0.8, flicker: 0.4, glow: 1.6 };
+    case 'lm_lykttrad':
+      return { color: hexLight('#ffe08a'), radius: 3.6, strength: 0.85, flicker: 0.3, glow: 1.8, sparkle: 0.3 };
+    case 'lm_dvargport':
+      return { color: hexLight('#ffb347'), radius: 3.4, strength: 0.8, flicker: 0.5, glow: 1.4 };
+    case 'lm_svampring':
+      return { color: hexLight('#d0a0ff'), radius: 3.4, strength: 0.75, flicker: 0.15, glow: 1.6, always: true };
+    case 'lm_eldbrunn':
+      return { color: hexLight('#ff8a3a'), radius: 4.5, strength: 0.95, flicker: 0.8, glow: 2, always: true };
+    case 'lm_vardkase':
+      return { color: FIRE, radius: 4, strength: 0.9, flicker: 1, glow: 1.6 };
+    case 'lm_manporten':
+      return { color: hexLight('#c8d8ff'), radius: 3.5, strength: 0.55, flicker: 0.1, glow: 1.6, sparkle: 0.35, always: true };
+    case 'lm_satellit':
+      return { color: hexLight('#ff4040'), radius: 1.6, strength: 0.9, glow: 0.8, blink: 1.4, always: true };
+    case 'lm_mossaltare':
+      return { color: hexLight('#5af0d0'), radius: 3, strength: 0.75, flicker: 0.6, glow: 1.4, sparkle: 0.25 };
     default:
       return null;
   }
+}
+
+/** A colour written "#ffcc66" as light. */
+function hexLight(c: string): [number, number, number] {
+  const n = parseInt(c.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
