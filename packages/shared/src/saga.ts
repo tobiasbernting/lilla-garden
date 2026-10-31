@@ -83,6 +83,13 @@ export const CLASSES: Record<ClassId, ClassDef> = {
   magiker: { id: 'magiker', name: 'Magiker', role: 'dps', roleName: 'Skada', emoji: '⚡', hp: 110, color: '#b06ef0', blurb: 'Runmagi på avstånd: eld, is och åska. Håll dig bakom tanken!', spells: ['eldboll', 'isspjut', 'askregn', 'blink'], outfit: { hat: 'hat_runhatt', shirt: 'shirt_runmantel' } },
 };
 
+/** Spells aimed at a monster, and at a friend (the rest work around the caster). */
+export const ATTACK_KINDS: ReadonlySet<string> = new Set(['melee', 'bolt', 'lance', 'bash', 'charge', 'storm']);
+export const FRIEND_KINDS: ReadonlySet<string> = new Set(['heal', 'revive']);
+
+/** A class's everyday attack: its first spell aimed at a monster (the healer's light arrow). The use key swings it. */
+export const attackSpellOf = (cls: ClassId): string => CLASSES[cls].spells.find((id) => ATTACK_KINDS.has(SPELLS[id]?.kind ?? '')) ?? CLASSES[cls].spells[0]!;
+
 /** Small pause between any two spells, so mashing keys doesn't fire everything at once. */
 export const GCD_MS = 400;
 /** A fallen player gets up at the last rest stone after this long (unless a healer is quicker). */

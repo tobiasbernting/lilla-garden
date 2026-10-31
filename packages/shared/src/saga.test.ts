@@ -11,10 +11,12 @@ import {
   SAGA_CHAPTERS,
   SAGA_RESET_MS,
   STONE_SPOT,
+  T,
   TILE,
   VILLAGE_KEY,
   VOLVA_SPOT,
   WIPE_MS,
+  attackSpellOf,
   bossHpScale,
   castSpell,
   chooseClass,
@@ -186,6 +188,39 @@ describe('classes and the way in', () => {
 });
 
 describe('fighting', () => {
+  it('the use key next to a monster swings your everyday attack: an axe for a warrior, a light arrow for a healer', () => {
+    expect(attackSpellOf('krigare')).toBe('yxhugg');
+    expect(attackSpellOf('vaktare')).toBe('hugg');
+    expect(attackSpellOf('magiker')).toBe('eldboll');
+    expect(attackSpellOf('helare')).toBe('ljuspil');
+    const { world, players } = family(2);
+    const [axe, healer] = players as [PlayerState, PlayerState];
+    const d = inside(world, axe, 'krigare');
+    inside(world, healer, 'helare');
+    const inst = d.saga!;
+    const first = d.animals[inst.packs[0]!.members[0]!]!;
+    axe.x = first.x - TILE;
+    axe.y = first.y;
+    healer.x = first.x - 4 * TILE;
+    healer.y = first.y;
+    // E, space, the ✋ button and the gamepad's use button all come in as an action on the tile in front
+    const swung = performAction(d, axe.id, Math.floor(first.x / TILE), Math.floor(first.y / TILE), ctx());
+    expect(swung.some((c) => c.t === 'spell' && c.by === axe.id && c.spell === 'yxhugg' && c.on === first.id)).toBe(true);
+    expect(swung.some((c) => c.t === 'hit' && c.on === first.id && c.kind !== 'miss')).toBe(true);
+    expect(inst.mobs[first.id]!.state).toBe('fight');
+    const shot = performAction(d, healer.id, Math.floor(healer.x / TILE) + 1, Math.floor(healer.y / TILE), ctx());
+    expect(shot.some((c) => c.t === 'spell' && c.by === healer.id && c.spell === 'ljuspil')).toBe(true);
+  });
+
+  it('the use key with no monster in reach says nothing, and the spell buttons still do', () => {
+    const { world, players } = family();
+    const p = players[0]!;
+    const d = inside(world, p, 'krigare');
+    // the start of the dungeon is clear of monsters
+    expect(performAction(d, p.id, Math.floor(p.x / TILE), Math.floor(p.y / TILE) - 1, ctx())).toEqual([]);
+    expect(castSpell(world, p.id, 'yxhugg', undefined, ctx())).toEqual([{ t: 'toast', to: p.id, text: T.sagaNoTarget }]);
+  });
+
   it('a warrior beats the first group, and the villager quest counts it', () => {
     const { world, players } = family();
     const p = players[0]!;

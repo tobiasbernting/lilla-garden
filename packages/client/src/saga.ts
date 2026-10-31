@@ -2,6 +2,7 @@
 // snapshots, the monster or friend you aim at, your spells' cooldowns (they start when the server says a spell
 // went off, like the short pause after every spell) and the markers over the villagers' heads.
 import {
+  ATTACK_KINDS,
   CLASSES,
   GCD_MS,
   POTION_CD,
@@ -14,6 +15,7 @@ import {
   T,
   TILE,
   VOLVA_ID,
+  attackSpellOf,
   chapterDone,
   countItem,
   isSagaKey,
@@ -134,8 +136,9 @@ let gcdUntil = 0;
 let potionAt = 0;
 /** A spell on its way to the server (until its answer, or a moment if none comes). */
 let inFlight = 0;
-/** A spell pressed just before it was ready: it goes as soon as it is. */
+/** A spell pressed while it was still cooling: it goes as soon as it is ready (a press this long before). */
 let queued: string | null = null;
+const QUEUE_MS = 1500;
 /** When each spell was last pressed (performance.now), for the button's flash. */
 export const pressedAt: Record<string, number> = {};
 
@@ -165,11 +168,29 @@ export function cast(spell: string): void {
   pressedAt[spell] = performance.now();
   const { left } = cooldown(spell);
   if (left > 0 || performance.now() < inFlight) {
-    // mashing keys still works: a press just before the spell is ready waits for it
-    if (left < 450) queued = spell;
+    // mashing keys still works: a press while the spell is cooling waits for it
+    if (left < QUEUE_MS) queued = spell;
     return;
   }
   send(spell);
+}
+
+/**
+ * A click or tap on a monster: your everyday attack at it, when it is in reach (aiming at a far monster is quiet).
+ * True if a spell went.
+ */
+export function attackTarget(): boolean {
+  const cls = myClass();
+  const me = myPlayer();
+  const t = liveTarget();
+  if (!cls || !me || typeof t !== 'number' || !canAct()) return false;
+  const spell = attackSpellOf(cls.id);
+  const sp = SPELLS[spell];
+  const at = posOf(t);
+  if (!sp || !ATTACK_KINDS.has(sp.kind) || !at) return false;
+  if (Math.hypot(at.x - me.x, at.y - me.y) / TILE > sp.range + 0.6) return false;
+  cast(spell);
+  return true;
 }
 
 function send(spell: string): void {
