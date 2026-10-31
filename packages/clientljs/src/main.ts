@@ -30,7 +30,6 @@ import {
 } from 'littlejsengine';
 import '@v1/style.css';
 import './style.css';
-import { HD } from '@v1/art/style.ts';
 import { net } from '@v1/net.ts';
 import { bus, client, helpSeen, markHelpSeen, rememberPlayer } from '@v1/state.ts';
 import { h } from '@v1/ui/dom.ts';
@@ -53,10 +52,12 @@ const gameEl = document.getElementById('game')!;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 if (isTouch) document.body.classList.add('touch');
 
-// whole-number zoom so the pixel art stays crisp (HD may scale in quarter steps); the HUD uses the same scale
+// whole-number zoom so the pixel art stays crisp; the HUD uses the same scale. A small screen (a phone, under 3×)
+// would lose too much to rounding down, so it zooms in quarter steps instead and draws at the screen's own pixel
+// density, where an art pixel 1.75 wide still looks even.
 function computeZoom(): number {
   const z = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
-  return HD ? Math.max(1, Math.floor(z * 4) / 4) : Math.max(1, Math.floor(z));
+  return z < 3 ? Math.max(1, Math.floor(z * 4) / 4) : Math.floor(z);
 }
 const labels = h('div', { id: 'labels' });
 ui.append(labels);
@@ -64,6 +65,7 @@ const view = new View(labels, gameEl);
 view.touch = isTouch;
 function applyZoom(): void {
   const zoom = computeZoom();
+  setCanvasPixelRatio(Number.isInteger(zoom) ? 1 : Math.min(2, devicePixelRatio || 1));
   document.documentElement.style.setProperty('--z', String(zoom));
   view.setZoom(zoom);
 }
@@ -160,9 +162,8 @@ let startedAt = 0;
 let speedChecked = false;
 setShowSplashScreen(false);
 setSoundEnable(false); // the game's own synthesised sounds play through sound.ts
-setCanvasPixelRatio(1);
-setTilesPixelated(!HD);
-setCanvasPixelated(!HD);
+setTilesPixelated(true);
+setCanvasPixelated(true);
 setCanvasClearColor(rgb(0.165, 0.239, 0.122));
 // the HUD and menus are HTML: leave their clicks, wheel scrolling and touches alone, the view reads its own taps
 setInputPreventDefault(false);

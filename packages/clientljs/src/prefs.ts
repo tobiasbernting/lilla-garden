@@ -1,8 +1,6 @@
-// Imported before anything else: this client starts in "Ny grafik", the pixel style the lights look best on.
-// The art button in the HUD still cycles the styles, and a choice made there is kept.
-const KEY = 'lilla-garden.art';
+// Imported before anything else. There is one art style now; forget the style choice older versions saved.
 try {
-  if (localStorage.getItem(KEY) === null) localStorage.setItem(KEY, 'ny');
+  for (const k of ['lilla-garden.art', 'lilla-garden.art.prev', 'lilla-garden.art.tries']) localStorage.removeItem(k);
 } catch {
-  /* no storage: the 2D game's default */
+  /* no storage */
 }

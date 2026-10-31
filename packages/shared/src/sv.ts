@@ -717,6 +717,7 @@ export const T = {
   inWardrobe: 'i garderoben',
   spaceportRumour: 'Det sägs att det står en raket någonstans här…',
   fullscreen: 'Helskärm',
+  fullscreenIphone: 'På iPhone: tryck på Dela ⬆️ i Safari och välj ”Lägg till på hemskärmen”. Starta spelet därifrån så fyller det hela skärmen.',
   players: 'Spelare',
   nobodyOnline: 'Ingen online – världen är pausad',
   saved: 'Sparat',

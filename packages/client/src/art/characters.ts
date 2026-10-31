@@ -2,8 +2,6 @@
 // Directions: down, up, right (left is right flipped). Frames: 0 stand, 1/2 walk.
 import { ITEMS, type Appearance, type Facing, type Outfit } from '@lilla-garden/shared';
 import { Px, shade } from './px.js';
-import { drawCharacterHD } from './hd.ts';
-import { HD, NEW_ART, R } from './style.ts';
 import { OUTLINE } from './world.js';
 
 export type Dir = 'down' | 'up' | 'right';
@@ -250,13 +248,11 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     }
   }
 
-  if (NEW_ART) {
-    // soft shading: darker right edge of torso and head, hair highlight, eye shine (before the hat, which covers it)
-    p.rect(12, 10 + bob, 1, 7, shade(shirtC, 0.72));
-    p.rect(11, 2 + bob, 1, 7, shade(l.skin, 0.85));
-    if (style !== 'bald') p.rect(hx + 1, hy - 1, 3, 1, shade(l.hair, 1.35));
-    if (dir === 'down') p.px(hx + 2, hy + 4, '#ffffff').px(hx + 6, hy + 4, '#ffffff');
-  }
+  // soft shading: darker right edge of torso and head, hair highlight, eye shine (before the hat, which covers it)
+  p.rect(12, 10 + bob, 1, 7, shade(shirtC, 0.72));
+  p.rect(11, 2 + bob, 1, 7, shade(l.skin, 0.85));
+  if (style !== 'bald') p.rect(hx + 1, hy - 1, 3, 1, shade(l.hair, 1.35));
+  if (dir === 'down') p.px(hx + 2, hy + 4, '#ffffff').px(hx + 6, hy + 4, '#ffffff');
 
   // --- hat ---
   if (l.hat) {
@@ -357,7 +353,7 @@ export function drawCharacter(l: Look, dir: Dir, frame: number): Px {
     }
   }
   p.ctx.setTransform(1, 0, 0, 1, 0, 0);
-  return p.outline(NEW_ART ? '#2a2420' : OUTLINE);
+  return p.outline('#2a2420');
 }
 
 // ---------------------------------------------------------------------------
@@ -595,9 +591,9 @@ function drawNorseHat(p: Px, style: string, C: string, dir: Dir, hx: number, hy:
 
 /** Sprite sheet of 9 frames (3 dirs x 3 frames). */
 export function drawCharacterSheet(l: Look): HTMLCanvasElement {
-  const sheet = new Px(CHAR_W * 9 * R, CHAR_H * R);
+  const sheet = new Px(CHAR_W * 9, CHAR_H);
   DIRS.forEach((dir, di) => {
-    for (let f = 0; f < 3; f++) sheet.blit(HD ? drawCharacterHD(l, dir, f) : drawCharacter(l, dir, f), (di * 3 + f) * CHAR_W * R, 0);
+    for (let f = 0; f < 3; f++) sheet.blit(drawCharacter(l, dir, f), (di * 3 + f) * CHAR_W, 0);
   });
   return sheet.canvas;
 }
@@ -606,13 +602,6 @@ export const frameIndex = (dir: Dir, frame: number): number => DIRS.indexOf(dir)
 
 /** Portrait data URL (down-facing, scaled). */
 export function portrait(l: Look, scale = 4): string {
-  if (HD) {
-    const f = drawCharacterHD(l, 'down', 0);
-    const p = new Px(CHAR_W * scale, CHAR_H * scale);
-    p.ctx.imageSmoothingEnabled = true;
-    p.ctx.drawImage(f.canvas, 0, 0, CHAR_W * scale, CHAR_H * scale);
-    return p.dataUrl();
-  }
   const f = drawCharacter(l, 'down', 0);
   const p = new Px(CHAR_W * scale, CHAR_H * scale).blitScaled(f, 0, 0, CHAR_W * scale, CHAR_H * scale);
   return p.dataUrl();

@@ -1,7 +1,6 @@
 // Terrain tiles, world objects, crops and effects — all drawn in code.
 import { CROPS, type Terrain } from '@lilla-garden/shared';
 import { Px, hash2, shade } from './px.js';
-import { NEW_ART } from './style.ts';
 import { drawBiomeObjects } from './objects2.ts';
 import { caveWallThemed, drawLandmarks } from './landmarks.ts';
 import { drawArcade } from './arcade.ts';
@@ -30,8 +29,6 @@ export interface TerrainTiles {
   waterFrames: [number, number];
   rock: number;
   count: number;
-  /** Whether water/soil need neighbour masks (new style). */
-  edges: boolean;
   /** Which neighbours count as the same ground for a tile's edges (null: it has none). */
   edgeGroup: (t: Terrain) => ((n: Terrain | undefined) => boolean) | null;
 }
@@ -48,29 +45,24 @@ export function drawTerrainTiles(): TerrainTiles {
     }
   };
 
-  // grass x4 (classic) or x8 (new: soft patches, tiny flowers, pebbles)
+  // grass x8: soft patches, tiny flowers, pebbles
   const grass: number[] = [];
-  const GRASS = NEW_ART ? '#64a848' : '#5f9f3c';
-  for (let v = 0; v < (NEW_ART ? 8 : 4); v++) {
+  const GRASS = '#64a848';
+  for (let v = 0; v < 8; v++) {
     const p = new Px(16, 16).rect(0, 0, 16, 16, GRASS);
-    if (NEW_ART) {
-      // soft, organic grass: short tufts in two greens, a few lighter blades, the odd flower or pebble
-      const h = hash2(v * 13, v * 7);
-      const tuftAt = (x: number, y: number, c: string) => p.rect(x, y, 1, 2, c).rect(x + 1, y + 1, 1, 1, c);
-      for (let i = 0; i < 3 + (v % 3); i++) {
-        const t = hash2(h + i * 29, v * 11 + i);
-        tuftAt(t % 14, Math.floor(t / 16) % 13, i % 2 ? '#578f3c' : '#5a9a40');
-      }
-      speck(p, 200 + v, 2 + (v % 2), '#7cc05a', 1);
-      if (v === 2) p.rect(4, 4, 4, 3, '#5c9c40').rect(5, 3, 2, 1, '#5c9c40');
-      if (v === 4) p.rect(9, 9, 5, 3, '#5c9c40').rect(10, 8, 3, 1, '#5c9c40');
-      if (v === 5) p.rect(3, 4, 1, 1, '#ffffff').rect(11, 10, 1, 1, '#ffe66a');
-      if (v === 6) p.rect(7, 12, 2, 1, '#8f8a80');
-      if (v === 7) p.rect(12, 3, 1, 1, '#ff9ac8');
-    } else {
-      speck(p, 100 + v, 5, '#4f8a31', 2);
-      speck(p, 200 + v, 3, '#7ab84f', 1);
+    // soft, organic grass: short tufts in two greens, a few lighter blades, the odd flower or pebble
+    const h = hash2(v * 13, v * 7);
+    const tuftAt = (x: number, y: number, c: string) => p.rect(x, y, 1, 2, c).rect(x + 1, y + 1, 1, 1, c);
+    for (let i = 0; i < 3 + (v % 3); i++) {
+      const t = hash2(h + i * 29, v * 11 + i);
+      tuftAt(t % 14, Math.floor(t / 16) % 13, i % 2 ? '#578f3c' : '#5a9a40');
     }
+    speck(p, 200 + v, 2 + (v % 2), '#7cc05a', 1);
+    if (v === 2) p.rect(4, 4, 4, 3, '#5c9c40').rect(5, 3, 2, 1, '#5c9c40');
+    if (v === 4) p.rect(9, 9, 5, 3, '#5c9c40').rect(10, 8, 3, 1, '#5c9c40');
+    if (v === 5) p.rect(3, 4, 1, 1, '#ffffff').rect(11, 10, 1, 1, '#ffe66a');
+    if (v === 6) p.rect(7, 12, 2, 1, '#8f8a80');
+    if (v === 7) p.rect(12, 3, 1, 1, '#ff9ac8');
     grass.push(add(p));
   }
   // snow grass x2
@@ -81,43 +73,41 @@ export function drawTerrainTiles(): TerrainTiles {
     speck(p, 400 + v, 2, '#ffffff', 1);
     snow.push(add(p));
   }
-  // soil, soil_wet: in the new style 16 edge variants each, with a rounded grass fringe on open sides
+  // soil, soil_wet: 16 edge variants each, with a rounded grass fringe on open sides
   const soilTile = (base: string, dark: string, mask: number) => {
     const p = new Px(16, 16).rect(0, 0, 16, 16, base);
     for (let y = 2; y < 16; y += 4) p.rect(0, y, 16, 1, dark);
     speck(p, 500 + mask, 6, dark, 1);
-    if (NEW_ART) {
-      const g = GRASS;
-      const gd = '#4f8a35';
-      if (mask & 1) p.rect(0, 0, 16, 2, g).rect(0, 2, 16, 1, gd).rect(3, 2, 2, 1, g).rect(10, 2, 3, 1, g);
-      if (mask & 4) p.rect(0, 14, 16, 2, g).rect(0, 13, 16, 1, gd).rect(5, 13, 3, 1, g).rect(12, 13, 2, 1, g);
-      if (mask & 8) p.rect(0, 0, 2, 16, g).rect(2, 0, 1, 16, gd).rect(2, 4, 1, 2, g).rect(2, 11, 1, 2, g);
-      if (mask & 2) p.rect(14, 0, 2, 16, g).rect(13, 0, 1, 16, gd).rect(13, 3, 1, 3, g).rect(13, 10, 1, 2, g);
-      // rounded corners
-      if (mask & 1 && mask & 8) p.rect(0, 0, 4, 4, g).px(3, 3, gd);
-      if (mask & 1 && mask & 2) p.rect(12, 0, 4, 4, g).px(12, 3, gd);
-      if (mask & 4 && mask & 8) p.rect(0, 12, 4, 4, g).px(3, 12, gd);
-      if (mask & 4 && mask & 2) p.rect(12, 12, 4, 4, g).px(12, 12, gd);
-    }
+    const g = GRASS;
+    const gd = '#4f8a35';
+    if (mask & 1) p.rect(0, 0, 16, 2, g).rect(0, 2, 16, 1, gd).rect(3, 2, 2, 1, g).rect(10, 2, 3, 1, g);
+    if (mask & 4) p.rect(0, 14, 16, 2, g).rect(0, 13, 16, 1, gd).rect(5, 13, 3, 1, g).rect(12, 13, 2, 1, g);
+    if (mask & 8) p.rect(0, 0, 2, 16, g).rect(2, 0, 1, 16, gd).rect(2, 4, 1, 2, g).rect(2, 11, 1, 2, g);
+    if (mask & 2) p.rect(14, 0, 2, 16, g).rect(13, 0, 1, 16, gd).rect(13, 3, 1, 3, g).rect(13, 10, 1, 2, g);
+    // rounded corners
+    if (mask & 1 && mask & 8) p.rect(0, 0, 4, 4, g).px(3, 3, gd);
+    if (mask & 1 && mask & 2) p.rect(12, 0, 4, 4, g).px(12, 3, gd);
+    if (mask & 4 && mask & 8) p.rect(0, 12, 4, 4, g).px(3, 12, gd);
+    if (mask & 4 && mask & 2) p.rect(12, 12, 4, 4, g).px(12, 12, gd);
     return add(p);
   };
   const soilVariants: number[] = [];
   const soilWetVariants: number[] = [];
-  for (let m = 0; m < (NEW_ART ? 16 : 1); m++) {
+  for (let m = 0; m < 16; m++) {
     soilVariants.push(soilTile('#9a6a3a', '#7a5028', m));
     soilWetVariants.push(soilTile('#5f3d1d', '#452a12', m));
   }
   const soilI = soilVariants[0]!;
   const soilWetI = soilWetVariants[0]!;
-  // water: 2 frames; in the new style 16 shore variants x 2 frames with shallow water and foam on land sides
+  // water: 2 frames; 16 shore variants x 2 frames with shallow water and foam on land sides
   const water: number[] = [];
   const waterShore: number[][] = [];
   const waterTile = (f: number, mask: number) => {
-    const deep = NEW_ART ? '#3a80d0' : '#3f86d6';
+    const deep = '#3a80d0';
     const p = new Px(16, 16).rect(0, 0, 16, 16, deep);
     const o = f * 2;
     p.rect(2 + o, 3, 4, 1, '#7fb6ee').rect(9 + o, 8, 4, 1, '#7fb6ee').rect(4 - o, 12, 3, 1, '#7fb6ee').rect(11 - o, 1, 3, 1, '#2d6cb8');
-    if (NEW_ART && mask) {
+    if (mask) {
       const shallow = '#6fb3ea';
       const foam = f === 0 ? '#dff2ff' : '#b9dcf7';
       if (mask & 1) p.rect(0, 0, 16, 3, shallow).rect(0, 0, 16, 1, foam).rect(4 + o, 1, 3, 1, foam);
@@ -131,18 +121,18 @@ export function drawTerrainTiles(): TerrainTiles {
     }
     return add(p);
   };
-  for (let m = 0; m < (NEW_ART ? 16 : 1); m++) {
+  for (let m = 0; m < 16; m++) {
     const frames = [waterTile(0, m), waterTile(1, m)];
     waterShore.push(frames);
     if (m === 0) water.push(...frames);
   }
-  // pool (the bath house): bright turquoise, 2 frames; in the new style a pale stone rim on the open sides
+  // pool (the bath house): bright turquoise, 2 frames; a pale stone rim on the open sides
   const poolTile = (f: number, mask: number) => {
     const p = new Px(16, 16).rect(0, 0, 16, 16, '#4fc0e6');
     const o = f * 2;
     p.rect(2 + o, 3, 4, 1, '#bff0ff').rect(9 + o, 8, 4, 1, '#bff0ff').rect(4 - o, 12, 3, 1, '#bff0ff').rect(11 - o, 1, 3, 1, '#2fa0d0');
     speck(p, 700 + f, 3, '#8fe0f8', 1);
-    if (NEW_ART && mask) {
+    if (mask) {
       const rim = '#d8d4c8';
       const rimD = '#a9a59a';
       if (mask & 1) p.rect(0, 0, 16, 2, rim).rect(0, 2, 16, 1, rimD);
@@ -153,7 +143,7 @@ export function drawTerrainTiles(): TerrainTiles {
     return add(p);
   };
   const pool: number[][] = [];
-  for (let m = 0; m < (NEW_ART ? 16 : 1); m++) pool.push([poolTile(0, m), poolTile(1, m)]);
+  for (let m = 0; m < 16; m++) pool.push([poolTile(0, m), poolTile(1, m)]);
   // the city: asphalt with a dashed centre line on the lane edge, sidewalk slabs, zebra crossings, rails
   const ASPHALT = '#4a4a52';
   const roadTile = (mask: number) => {
@@ -228,7 +218,7 @@ export function drawTerrainTiles(): TerrainTiles {
   speck(rockP, 900, 4, '#26252c', 2);
   const rockI = add(rockP);
   // the wider world: cliffs, lava, swamp, moss, candy, the moon…
-  const biome = addBiomeTerrain(add, NEW_ART);
+  const biome = addBiomeTerrain(add);
 
   // several rows: a single row would exceed the GPU's texture width limit
   const cols = 32;
@@ -238,7 +228,6 @@ export function drawTerrainTiles(): TerrainTiles {
     canvas: sheet.canvas,
     count: tiles.length,
     rock: rockI,
-    edges: true,
     edgeGroup,
     waterFrames: [water[0]!, water[1]!],
     index: (t, x, y, snowy, mask = 0, frame = 0) => {
@@ -302,7 +291,7 @@ export interface ObjectArt {
   animated?: boolean;
 }
 
-const treeNew = (kind: 'round' | 'pine' | 'apple', v: number): Px => {
+const tree = (kind: 'round' | 'pine' | 'apple', v: number): Px => {
   const p = new Px(24, 36);
   if (kind === 'pine') {
     p.rect(10, 28, 4, 8, '#5a3d20').rect(10, 28, 1, 8, '#3e2a14');
@@ -341,58 +330,6 @@ const treeNew = (kind: 'round' | 'pine' | 'apple', v: number): Px => {
     }
   }
   return p.outline('#1f2a18');
-};
-
-const tree = (kind: 'round' | 'pine' | 'apple', v = 0): Px => {
-  if (NEW_ART) return treeNew(kind, v);
-  const p = new Px(20, 32);
-  if (kind === 'pine') {
-    p.rect(8, 24, 4, 8, WOOD_D);
-    p.tpl(2, 2, [
-      '.......##.......',
-      '......####......',
-      '.....######.....',
-      '....########....',
-      '.....######.....',
-      '....########....',
-      '...##########...',
-      '..############..',
-      '....########....',
-      '...##########...',
-      '..############..',
-      '.##############.',
-      '################',
-    ], { '#': '#2f7a3a' });
-    p.tpl(2, 2, [
-      '.......##.......',
-      '......#.........',
-      '.....#..........',
-      '....#...........',
-      '.....#..........',
-      '....#...........',
-      '...#............',
-      '..#.............',
-      '....#...........',
-      '...#............',
-      '..#.............',
-      '.#..............',
-    ], { '#': '#5fae55' });
-  } else {
-    p.rect(8, 22, 4, 10, WOOD).rect(8, 22, 1, 10, WOOD_D).rect(7, 30, 6, 2, WOOD_D);
-    p.ellipse(1, 4, 18, 18, LEAF_D);
-    p.ellipse(3, 2, 14, 16, LEAF);
-    p.ellipse(5, 3, 6, 5, LEAF_L).ellipse(10, 9, 5, 4, LEAF_L);
-    if (kind === 'apple') {
-      for (const [x, y] of [
-        [5, 10],
-        [11, 6],
-        [13, 13],
-        [8, 15],
-      ] as const)
-        p.rect(x, y, 2, 2, '#d8363a').px(x, y, '#ff7a7a');
-    }
-  }
-  return p.outline(OUTLINE);
 };
 
 const rock = (big: boolean): Px => {
@@ -795,7 +732,7 @@ const wardrobe = (): Px => {
 const stump = (): Px => new Px(16, 16).ellipse(2, 6, 12, 8, WOOD_D).ellipse(3, 5, 10, 6, WOOD_L).ellipse(5, 6, 6, 3, WOOD).outline(OUTLINE);
 
 const xmasTree = (): Px => {
-  const p = tree('pine');
+  const p = tree('pine', 0);
   const cols = ['#ff4a4a', '#ffe14a', '#4ad0ff', '#ff8ae0'];
   [
     [6, 8],
@@ -873,15 +810,9 @@ const ghostFlag = (): Px => {
 export function drawObjects(): Record<string, ObjectArt> {
   const art: Record<string, ObjectArt> = {};
   const set = (kind: string, frames: Px[], ox = 0, oy = 0, animated = false) => (art[kind] = { frames, ox, oy, animated });
-  if (NEW_ART) {
-    set('tree', [tree('round', 0), tree('round', 1)], -4, -20);
-    set('tree_pine', [tree('pine', 0)], -4, -20);
-    set('tree_apple', [tree('apple', 0)], -4, -20);
-  } else {
-    set('tree', [tree('round')], -2, -16);
-    set('tree_pine', [tree('pine')], -2, -16);
-    set('tree_apple', [tree('apple')], -2, -16);
-  }
+  set('tree', [tree('round', 0), tree('round', 1)], -4, -20);
+  set('tree_pine', [tree('pine', 0)], -4, -20);
+  set('tree_apple', [tree('apple', 0)], -4, -20);
   set('stump', [stump()]);
   set('rock', [rock(true)]);
   set('rock_small', [rock(false)]);
