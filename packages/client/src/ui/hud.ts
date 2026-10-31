@@ -82,7 +82,8 @@ export class Hud {
     bus.on('me', () => this.render());
     bus.on('state', () => this.renderTop());
     bus.on('day', () => this.renderTop());
-    bus.on('toast', (text) => this.toast(text));
+    // long ones (how to let the microphone in) stay long enough to be read
+    bus.on('toast', (text) => this.toast(text, Math.max(3000, text.length * 70)));
     this.render();
   }
 
