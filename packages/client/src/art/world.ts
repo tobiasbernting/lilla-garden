@@ -144,30 +144,87 @@ export function drawTerrainTiles(): TerrainTiles {
   };
   const pool: number[][] = [];
   for (let m = 0; m < 16; m++) pool.push([poolTile(0, m), poolTile(1, m)]);
-  // the city: asphalt with a dashed centre line on the lane edge, sidewalk slabs, zebra crossings, rails
-  const ASPHALT = '#4a4a52';
-  const roadTile = (mask: number) => {
-    const p = new Px(16, 16).rect(0, 0, 16, 16, ASPHALT);
-    speck(p, 1100 + mask, 5, '#555560', 1);
-    const dash = '#f0e6a0';
+  // the market town: cobbles worn lighter down the middle of a street, flagstone pavements, pale slabs to cross on.
+  // Every cobble tile has the same stones in the same places (rows of 3-pixel stones over 1 pixel of mortar,
+  // wrapping at the tile edge) so neighbours run on; only their colours change between the variants.
+  const COBBLES = ['#a39a8c', '#978d80', '#ab9f90', '#9c9184', '#a09a92', '#a8998a'];
+  const COBBLE_ROWS: [number, number[]][] = [
+    [0, [6, 5, 5]],
+    [3, [5, 6, 5]],
+    [1, [5, 5, 6]],
+    [4, [6, 5, 5]],
+  ];
+  const cobbles = (p: Px, seed: number, worn: (x: number, y: number) => number) => {
+    p.rect(0, 0, 16, 16, '#6a6056');
+    COBBLE_ROWS.forEach(([start, widths], r) => {
+      let x = start;
+      widths.forEach((w, i) => {
+        const base = COBBLES[hash2(r * 7 + i * 3 + seed * 11, seed * 5 + r + i) % COBBLES.length]!;
+        const sw = w - 1;
+        for (let sy = 0; sy < 3; sy++)
+          for (let sx = 0; sx < sw; sx++) {
+            if (sy === 0 && (sx === 0 || sx === sw - 1)) continue; // rounded tops
+            const px = (x + sx) % 16;
+            const py = r * 4 + sy;
+            const c = sy === 0 ? shade(base, 1.14) : sy === 2 ? shade(base, 0.8) : sx === sw - 1 ? shade(base, 0.9) : base;
+            const k = worn(px, py);
+            p.px(px, py, k > 0 ? shade(c, 1 + 0.28 * k) : c);
+          }
+        x += w;
+      });
+    });
+    return p;
+  };
+  const roadTile = (mask: number, v: number) => {
+    // the worn middle sits where the dashes were: along the edge between the two lanes of a street
     const up = mask & 1;
     const right = mask & 2;
     const down = mask & 4;
     const left = mask & 8;
-    if (up && !down && !left && !right) p.rect(2, 15, 4, 1, dash).rect(10, 15, 4, 1, dash);
-    else if (down && !up && !left && !right) p.rect(2, 0, 4, 1, dash).rect(10, 0, 4, 1, dash);
-    else if (left && !right && !up && !down) p.rect(15, 2, 1, 4, dash).rect(15, 10, 1, 4, dash);
-    else if (right && !left && !up && !down) p.rect(0, 2, 1, 4, dash).rect(0, 10, 1, 4, dash);
+    const along = (d: number) => (d < 5 ? 1 - d / 6 : 0);
+    const worn = (x: number, y: number): number => {
+      if (up && !down && !left && !right) return along(15 - y);
+      if (down && !up && !left && !right) return along(y);
+      if (left && !right && !up && !down) return along(15 - x);
+      if (right && !left && !up && !down) return along(x);
+      return 0;
+    };
+    const p = cobbles(new Px(16, 16), v * 7 + mask, worn);
+    // a darker kerb row along the pavement
+    if (up) p.rect(0, 0, 16, 1, '#4e463e');
+    if (down) p.rect(0, 15, 16, 1, '#4e463e');
+    if (left) p.rect(0, 0, 1, 16, '#4e463e');
+    if (right) p.rect(15, 0, 1, 16, '#4e463e');
     return add(p);
   };
-  const road = Array.from({ length: 16 }, (_, m) => roadTile(m));
-  const sidewalkP = new Px(16, 16).rect(0, 0, 16, 16, '#cfccc3').rect(0, 0, 16, 1, '#b3b0a7').rect(0, 0, 1, 16, '#b3b0a7').rect(8, 0, 1, 16, '#b3b0a7').rect(0, 8, 16, 1, '#b3b0a7');
-  speck(sidewalkP, 1200, 3, '#dedbd2', 1);
-  const sidewalkI = add(sidewalkP);
+  const road = Array.from({ length: 16 }, (_, m) => [0, 1, 2].map((v) => roadTile(m, v)));
+  // flagstones: mortar along the top and left edge of every tile, the slabs inside split differently per variant
+  const FLAGS: [number, number, number, number][][] = [
+    [[1, 1, 8, 6], [10, 1, 6, 6], [1, 8, 4, 8], [6, 8, 10, 8]],
+    [[1, 1, 7, 9], [9, 1, 7, 4], [9, 6, 7, 10], [1, 11, 7, 5]],
+    [[1, 1, 15, 8], [1, 10, 5, 6], [7, 10, 9, 6]],
+    [[1, 1, 10, 5], [12, 1, 4, 15], [1, 7, 10, 9]],
+  ];
+  const SLABS = ['#c2baa8', '#b8b09e', '#cbc4b2', '#b4ad9d', '#bfb5a0'];
+  const sidewalk = FLAGS.map((slabs, v) => {
+    const p = new Px(16, 16).rect(0, 0, 16, 16, '#8a8478');
+    slabs.forEach(([x, y, w, h], i) => {
+      const c = SLABS[(v * 3 + i * 2) % SLABS.length]!;
+      p.rect(x, y, w, h, c).rect(x, y, w, 1, shade(c, 1.1)).rect(x, y + h - 1, w, 1, shade(c, 0.9)).rect(x + w - 1, y, 1, h, shade(c, 0.92));
+    });
+    speck(p, 1200 + v, 3, '#a8a090', 1);
+    if (v === 1) p.px(4, 4, '#9a9284').px(5, 5, '#9a9284').px(5, 6, '#9a9284'); // a hairline crack
+    return add(p);
+  });
+  // two big pale slabs per tile, laid across the street the way people walk over it
   const crossingTile = (vertical: boolean) => {
-    const p = new Px(16, 16).rect(0, 0, 16, 16, ASPHALT);
-    for (let i = 1; i < 16; i += 3) if (vertical) p.rect(i, 0, 2, 16, '#e8e8e8');
-    else p.rect(0, i, 16, 2, '#e8e8e8');
+    const p = cobbles(new Px(16, 16), 40 + (vertical ? 1 : 0), () => 0);
+    for (const o of [1, 9]) {
+      const [x, y, w, h] = vertical ? [o, 2, 6, 12] : [2, o, 12, 6];
+      p.rect(x, y, w, h, '#ddd6c4').rect(x, y, w, 1, '#efe9d9').rect(x, y + h - 1, w, 1, '#a9a191').rect(x + w - 1, y, 1, h, '#b9b1a0');
+      p.px(x, y, '#6a6056').px(x + w - 1, y, '#6a6056').px(x, y + h - 1, '#6a6056').px(x + w - 1, y + h - 1, '#6a6056');
+      p.px(x + 2, y + 2, '#c9c2b0').px(x + w - 3, y + h - 3, '#c9c2b0');
+    }
     return add(p);
   };
   const crossing = [crossingTile(false), crossingTile(true)];
@@ -264,9 +321,9 @@ export function drawTerrainTiles(): TerrainTiles {
         case 'pool':
           return pool[mask % pool.length]![frame]!;
         case 'road':
-          return road[mask & 15]!;
+          return road[mask & 15]![h % 3]!;
         case 'sidewalk':
-          return sidewalkI;
+          return sidewalk[h % sidewalk.length]!;
         case 'crossing':
           return crossing[mask & 5 ? 0 : 1]!;
         case 'rail':
@@ -569,55 +626,355 @@ const building = (w: number, h: number, wallC: string, roofC: string, door = tru
   return p.outline(OUTLINE);
 };
 
-// ---- the city ----
-const apartment = (v: number): Px => {
-  const wall = ['#d9c7a8', '#c9d4e0', '#e0c0b0', '#d6dcc4'][v % 4]!;
-  const p = new Px(48, 56);
-  p.rect(1, 4, 46, 51, wall).rect(1, 4, 46, 1, shade(wall, 1.2)).rect(1, 54, 46, 1, shade(wall, 0.7));
-  p.rect(0, 2, 48, 3, '#6b6b70').rect(0, 2, 48, 1, '#8a8a90'); // flat roof edge
-  p.rect(6, 0, 4, 3, '#8a8a90'); // chimney / vent
-  for (let floor = 0; floor < 3; floor++) {
-    const wy = 8 + floor * 13;
-    for (let i = 0; i < 4; i++) {
-      const wx = 4 + i * 11;
-      p.rect(wx, wy, 7, 8, '#8fd0f0').rect(wx + 3, wy, 1, 8, shade(wall, 0.6)).rect(wx, wy + 4, 7, 1, shade(wall, 0.6)).box(wx - 1, wy - 1, 9, 10, shade(wall, 0.6));
-      if ((floor * 4 + i + v) % 3 === 0) p.rect(wx, wy, 7, 3, '#f5e6a0'); // a lit curtain
-    }
+// ---- the market town (Köpingen): timber and turf houses, cobbles, lanterns and carts ----
+// Window glass is a pale blue that the LittleJS view recolours to lamp light at night (litWindows in
+// clientljs/src/art.ts takes pixels with blue >= 200, green >= 170, red <= 205 and blue - red >= 30). Nothing else
+// on a lit building may be that colour: the station's runes glow a deeper blue (green < 170) so they stay runes.
+const GLASS = '#9cc8e0';
+const GLASS_L = '#c4e4f4';
+const BEAM = '#4a3020';
+const BEAM_L = '#6a4630';
+const IRON = '#3a3a40';
+const IRON_L = '#6e6e78';
+const BRASS = '#d9a640';
+const BRASS_D = '#9a6a20';
+const BRASS_L = '#f2d27a';
+const FLAME = '#ffd45a';
+const FLAME_L = '#fff1a0';
+const TURF = '#5f8f3a';
+const TURF_D = '#456a2a';
+const TURF_L = '#86b552';
+const RUNE = '#3a9cff';
+const RUNE_L = '#8ac8ff';
+const STEAM = '#eef2f6';
+
+/** A small leaded window: glass (lit at night) in a timber frame, a shine in the top-left pane, optional shutters. */
+const leaded = (p: Px, x: number, y: number, w: number, h: number, frame = BEAM, shutters?: string): void => {
+  if (shutters) {
+    p.rect(x - 4, y - 1, 3, h + 2, shutters).rect(x + w + 1, y - 1, 3, h + 2, shutters);
+    p.rect(x - 4, y + Math.floor(h / 2), 3, 1, shade(shutters, 0.7)).rect(x + w + 1, y + Math.floor(h / 2), 3, 1, shade(shutters, 0.7));
   }
-  p.rect(20, 45, 8, 10, WOOD_D).rect(21, 46, 6, 9, WOOD).px(26, 50, '#f2d35a');
+  p.rect(x - 1, y - 1, w + 2, h + 2, frame).rect(x, y, w, h, GLASS);
+  const mx = x + Math.floor(w / 2);
+  const my = y + Math.floor(h / 2);
+  p.rect(x, y, mx - x, my - y, GLASS_L);
+  p.rect(mx, y, 1, h, frame).rect(x, my, w, 1, frame);
+};
+
+/** A box of red and yellow flowers under a window. */
+const flowerBox = (p: Px, x: number, y: number, w: number): void => {
+  p.rect(x, y, w, 2, WOOD_D).rect(x, y, w, 1, WOOD);
+  for (let i = 0; i < w; i += 2) p.px(x + i, y - 1, i % 4 === 0 ? '#e8502a' : '#f5d94a').px(x + i + 1, y - 1, '#3f8a2e');
+};
+
+/** A plank door with an arched top, iron hinges and a ring. */
+const plankDoor = (p: Px, x: number, y: number, w: number, h: number, c = WOOD): void => {
+  p.rect(x - 1, y, w + 2, h, BEAM).rect(x, y + 1, w, h - 1, c).clear(x - 1, y, 1, 1).clear(x + w, y, 1, 1);
+  p.px(x, y + 1, BEAM).px(x + w - 1, y + 1, BEAM);
+  for (let i = x + 2; i < x + w - 1; i += 2) p.rect(i, y + 2, 1, h - 2, shade(c, 0.78));
+  p.rect(x, y + 4, Math.ceil(w / 2), 1, IRON).rect(x, y + h - 4, Math.ceil(w / 2), 1, IRON);
+  p.px(x + w - 2, y + Math.floor(h / 2) + 1, BRASS);
+};
+
+/** Wooden shingles on a roof seen from the front: rows that step in towards the ridge. */
+const shingleRoof = (p: Px, x: number, y: number, w: number, h: number, c: string, slope: number): void => {
+  for (let yy = 0; yy < h; yy++) {
+    const inset = Math.round(((h - 1 - yy) / Math.max(1, h - 1)) * slope);
+    const row = Math.floor(yy / 3);
+    p.rect(x + inset, y + yy, w - inset * 2, 1, yy % 3 === 2 ? shade(c, 0.78) : yy % 3 === 0 ? shade(c, 1.12) : c);
+    if (yy % 3 === 1) for (let sx = x + inset + ((row * 2) % 4); sx < x + w - inset; sx += 4) p.px(sx, y + yy, shade(c, 0.85));
+  }
+  p.rect(x, y + h - 1, w, 1, shade(c, 0.6));
+  p.rect(x + slope, y, w - slope * 2, 1, shade(c, 0.65)); // ridge
+};
+
+/** A turf roof: a grassy mound over birch bark, tufts hanging over the eaves, the odd flower. */
+const turfRoof = (p: Px, x: number, y: number, w: number, h: number, slope: number, seed: number): void => {
+  const insetAt = (yy: number) => Math.round(slope * Math.pow(1 - yy / Math.max(1, h - 1), 2));
+  for (let yy = 0; yy < h; yy++) p.rect(x + insetAt(yy), y + yy, w - insetAt(yy) * 2, 1, yy < 2 ? TURF_L : yy > h - 4 ? TURF_D : TURF);
+  const inside = (sx: number, sy: number) => sy >= y && sy < y + h && sx >= x + insetAt(sy - y) + 1 && sx < x + w - insetAt(sy - y) - 1;
+  for (let i = 0; i < 30; i++) {
+    const hh = hash2(seed * 13 + i, i * 7 + seed);
+    const sx = x + 2 + (hh % (w - 4));
+    const sy = y + 3 + (Math.floor(hh / 7) % Math.max(1, h - 5));
+    if (inside(sx, sy) && inside(sx, sy - 1)) p.px(sx, sy, i % 3 === 0 ? TURF_L : TURF_D).px(sx, sy - 1, i % 3 === 0 ? TURF_L : TURF);
+  }
+  for (let i = 0; i < 4; i++) {
+    const hh = hash2(seed + i * 31, seed * 3 + i);
+    const sx = x + 6 + (hh % (w - 12));
+    const sy = y + 2 + (Math.floor(hh / 11) % Math.max(1, h - 6));
+    if (inside(sx, sy)) p.px(sx, sy, ['#f5f0e0', '#f5d94a', '#e87ab8', '#e8502a'][i]!);
+  }
+  // birch bark at the eave and grass hanging over it
+  p.rect(x, y + h, w, 2, '#d8d0c0').rect(x, y + h + 1, w, 1, '#a89e8c');
+  for (let i = x; i < x + w; i += 3) p.rect(i, y + h, 1, 1 + ((i * 7) % 3 === 0 ? 2 : 1), TURF_D).px(i + 1, y + h, TURF);
+};
+
+/** Crossed carved gable boards (with a little dragon head) sticking up at a roof's ridge end. */
+const gableBoards = (p: Px, x: number, y: number, flip: boolean): void => {
+  const d = flip ? -1 : 1;
+  p.line(x, y + 5, x + 4 * d, y + 1, BEAM).line(x + 4 * d, y + 5, x, y + 1, BEAM);
+  p.px(x - d, y, BEAM).px(x - d, y + 1, BEAM_L).px(x + 5 * d, y, BEAM).px(x + 5 * d, y + 1, BEAM_L);
+};
+
+/** Logs laid on their sides, with the round log ends showing at the corners. */
+const logWall = (p: Px, x: number, y: number, w: number, h: number, c: string): void => {
+  p.rect(x, y, w, h, c);
+  for (let yy = y; yy < y + h; yy += 3) {
+    p.rect(x, yy, w, 1, shade(c, 1.15)).rect(x, yy + 2, w, 1, shade(c, 0.72));
+    if (yy + 3 <= y + h) for (const ex of [x, x + w - 3]) p.rect(ex, yy, 3, 3, '#c8955a').px(ex + 1, yy + 1, '#a8743c').rect(ex, yy + 2, 3, 1, shade(c, 0.6));
+  }
+};
+
+/** Vertical planks (a stave wall), tarred dark. */
+const plankWall = (p: Px, x: number, y: number, w: number, h: number, c: string): void => {
+  p.rect(x, y, w, h, c);
+  for (let xx = x; xx < x + w; xx += 3) p.rect(xx, y, 1, h, shade(c, 0.75)).rect(xx + 1, y, 1, h, shade(c, 1.1));
+};
+
+/** Plaster between dark timber: top and bottom beams, posts, and braces in the panels that ask for one. */
+const halfTimber = (p: Px, x: number, y: number, w: number, h: number, plaster: string, posts: number[], braces: [number, number, boolean][]): void => {
+  p.rect(x, y, w, h, plaster).rect(x, y + 2, w, 1, shade(plaster, 1.06));
+  for (const [x0, x1, up] of braces) p.line(x + x0, up ? y + h - 2 : y + 2, x + x1, up ? y + 2 : y + h - 2, BEAM).line(x + x0 + 1, up ? y + h - 2 : y + 2, x + x1 + 1, up ? y + 2 : y + h - 2, BEAM);
+  for (const px of posts) p.rect(x + px, y, 2, h, BEAM).rect(x + px, y, 1, h, BEAM_L);
+  p.rect(x, y, w, 2, BEAM).rect(x, y + h - 2, w, 2, BEAM).rect(x, y, w, 1, BEAM_L);
+};
+
+/** A low stone plinth along the foot of a house. */
+const plinth = (p: Px, x: number, y: number, w: number, h: number): void => {
+  p.rect(x, y, w, h, STONE_D);
+  for (let i = x; i < x + w; i += 5) p.rect(i, y, 4, h - 1, STONE).px(i, y, STONE_L);
+};
+
+const apartment = (v: number): Px => {
+  const p = new Px(48, 56);
+  if (v % 2 === 0) {
+    // a half-timbered town house: shingle roof with a dormer and a chimney, a jettied upper storey
+    const plaster = v === 0 ? '#f0e6cc' : '#ead2a0';
+    const roof = v === 0 ? '#9a4a34' : '#5a5a66';
+    p.rect(33, 0, 6, 10, STONE_D).rect(34, 0, 4, 9, STONE).rect(33, 0, 6, 1, STONE_L);
+    shingleRoof(p, 0, 3, 48, 17, roof, 9);
+    p.rect(33, 3, 6, 4, STONE).rect(34, 3, 1, 4, STONE_L);
+    // dormer
+    p.rect(19, 7, 10, 9, plaster).rect(18, 6, 12, 2, shade(roof, 0.8)).rect(20, 5, 8, 1, shade(roof, 0.8));
+    leaded(p, 21, 9, 6, 5);
+    halfTimber(p, 0, 20, 48, 17, plaster, [0, 15, 31, 46], [[17, 19, true], [29, 31, false]]);
+    p.rect(2, 32, 13, 1, BEAM).rect(33, 32, 13, 1, BEAM); // sill rails
+    leaded(p, 20, 24, 8, 8);
+    flowerBox(p, 19, 33, 10);
+    leaded(p, 5, 25, 6, 6);
+    leaded(p, 37, 25, 6, 6);
+    for (let i = 1; i < 48; i += 4) p.px(i, 37, BEAM); // joist ends under the jetty
+    halfTimber(p, 2, 38, 44, 15, plaster, [0, 14, 28, 42], []);
+    leaded(p, 6, 42, 6, 6, BEAM, v === 0 ? '#3f7a4a' : '#8a3a2a');
+    leaded(p, 34, 42, 6, 6, BEAM, v === 0 ? '#3f7a4a' : '#8a3a2a');
+    plankDoor(p, 19, 41, 8, 12);
+    plinth(p, 1, 53, 46, 3);
+  } else {
+    // a longhouse: a deep turf roof with carved gable boards, log or stave walls, small shuttered windows
+    const stave = v === 3;
+    const wall = stave ? '#7a3a28' : '#8a5a30';
+    turfRoof(p, 0, 3, 48, 22, 10, v * 17);
+    gableBoards(p, 8, 0, false);
+    gableBoards(p, 39, 0, true);
+    p.rect(22, 1, 4, 3, BEAM).rect(23, 2, 2, 2, '#2a1a10'); // smoke hole hood
+    if (stave) plankWall(p, 1, 27, 46, 26, wall);
+    else logWall(p, 1, 27, 46, 26, wall);
+    leaded(p, 9, 35, 5, 5, BEAM, stave ? '#4a6a3a' : '#7a3a28');
+    leaded(p, 34, 35, 5, 5, BEAM, stave ? '#4a6a3a' : '#7a3a28');
+    // carved door frame with a little dragon lintel
+    p.rect(17, 34, 14, 2, BEAM).rect(16, 33, 2, 2, BEAM).rect(30, 33, 2, 2, BEAM).px(15, 33, BEAM_L).px(32, 33, BEAM_L);
+    p.rect(18, 36, 1, 17, BEAM).rect(29, 36, 1, 17, BEAM);
+    plankDoor(p, 20, 37, 8, 16, stave ? '#9a6a3a' : '#b07a44');
+    p.rect(19, 35, 10, 1, '#c8955a');
+    plinth(p, 0, 53, 48, 3);
+    if (!stave) p.rect(40, 47, 6, 6, WOOD_D).rect(40, 47, 6, 1, WOOD_L).rect(41, 49, 4, 1, WOOD).rect(41, 51, 4, 1, WOOD); // woodpile
+    else p.ellipse(38, 47, 7, 7, '#a8743c').rect(38, 49, 7, 1, IRON).rect(38, 52, 7, 1, IRON); // a barrel
+  }
   return p.outline(OUTLINE);
 };
+
+/** The shops' hanging signs: an anvil (smith), a pretzel (baker), a shuttle with yarn (weaver). */
+const SHOP_SIGNS: { rows: string[]; pal: Record<string, string> }[] = [
+  { rows: ['KKKKKKKKK', '.KKKKKKKL', '...KKKK..', '...KKK...', '..KKKKK..', '.KKKKKKK.'], pal: { K: '#3a3a42', L: '#8a8a94' } },
+  { rows: ['.BBB.BBB.', 'B...B...B', 'B..B.B..B', '.BB...BB.', '..B...B..', '...BBB...'], pal: { B: '#b8722a' } },
+  { rows: ['...WWWWW...', '.WWLYYYLWW.', 'WWWLYYYLWWW', '.WWWWWWWWW.', '.....T.....', '.....T.....', '......TT...'], pal: { W: '#8a5a2a', L: '#c58f55', Y: '#d84a4a', T: '#d84a4a' } },
+];
+
 const shop = (v: number): Px => {
-  const awning = ['#d9453b', '#3b6fd9', '#2f7a3a'][v % 3]!;
   const p = new Px(48, 40);
-  p.rect(1, 6, 46, 33, '#e8dcc0').rect(1, 6, 46, 1, '#f5efe0').rect(1, 38, 46, 1, '#c9bb9d');
-  p.rect(0, 4, 48, 3, '#7a5230');
-  // striped awning
-  for (let x = 2; x < 46; x += 4) p.rect(x, 12, 4, 6, (x / 4) % 2 === 0 ? awning : '#f4f2ec');
-  for (let x = 2; x < 46; x += 4) p.px(x + 1, 18, (x / 4) % 2 === 0 ? awning : '#f4f2ec');
-  // big window with goods, and a door
-  p.rect(5, 21, 22, 13, '#bfeaff').box(4, 20, 24, 15, WOOD_D);
-  p.rect(8, 28, 4, 5, '#e8502a').rect(14, 27, 5, 6, '#f5d94a').rect(21, 29, 4, 4, '#4f9a3a');
-  p.rect(32, 24, 10, 15, WOOD_D).rect(33, 25, 8, 14, WOOD).px(39, 32, '#f2d35a');
-  p.rect(30, 8, 14, 4, '#ffffff').box(30, 8, 14, 4, WOOD_D).rect(32, 9, 10, 2, awning);
+  const roof = ['#5a4a3e', '#9a4a34', '#6a4630'][v % 3]!;
+  shingleRoof(p, 0, 0, 48, 13, roof, 6);
+  if (v % 3 === 0) {
+    // the smith: dark logs on a stone footing, a glow from the forge inside
+    logWall(p, 1, 13, 46, 26, '#6a4628');
+    plinth(p, 1, 36, 46, 3);
+    p.rect(1, 13, 46, 1, BEAM);
+  } else if (v % 3 === 1) {
+    halfTimber(p, 1, 13, 46, 26, '#f2e2c2', [0, 15, 44], [[2, 6, true], [9, 13, false]]);
+  } else {
+    plankWall(p, 1, 13, 46, 26, '#5f7f8f');
+    p.rect(1, 13, 46, 2, BEAM).rect(1, 37, 46, 2, BEAM);
+  }
+  // the shop window over a counter of goods
+  leaded(p, 17, 18, 16, 7);
+  p.rect(16, 25, 18, 1, BEAM).rect(16, 26, 18, 7, '#3a2618').rect(16, 33, 18, 2, WOOD).rect(16, 33, 18, 1, WOOD_L);
+  if (v % 3 === 0) {
+    p.rect(17, 27, 6, 5, '#f08a2a').rect(18, 28, 4, 3, FLAME); // forge glow
+    p.rect(24, 29, 3, 3, IRON_L).clear(25, 30, 1, 2).rect(25, 30, 1, 2, '#3a2618'); // a horseshoe
+    p.line(29, 27, 32, 31, '#c9c6bd').px(28, 31, BRASS); // a sword
+  } else if (v % 3 === 1) {
+    for (const [x, c] of [
+      [18, '#c8843a'],
+      [23, '#d89a4a'],
+      [28, '#b8722a'],
+    ] as const)
+      p.ellipse(x, 29, 5, 4, c).rect(x + 1, 29, 3, 1, shade(c, 1.25));
+  } else {
+    for (const [x, c] of [
+      [18, '#c83a3a'],
+      [21, '#3a6ab8'],
+      [24, '#e8c040'],
+      [27, '#4a8a4a'],
+      [30, '#e8e0d0'],
+    ] as const)
+      p.rect(x, 27, 3, 6, c).rect(x, 27, 3, 1, shade(c, 1.25)).rect(x + 2, 28, 1, 5, shade(c, 0.8));
+  }
+  plankDoor(p, 37, 24, 8, 15);
+  // the hanging sign: an iron bracket out from the wall and a board on two chains
+  p.rect(1, 15, 14, 1, IRON).px(14, 14, IRON).rect(3, 16, 1, 2, IRON_L).rect(12, 16, 1, 2, IRON_L);
+  p.rect(1, 18, 14, 11, '#e0c48f').box(1, 18, 14, 11, BEAM).rect(2, 19, 12, 1, '#f0dcb0');
+  const sign = SHOP_SIGNS[v % 3]!;
+  const sw = sign.rows[0]!.length;
+  p.tpl(8 - Math.ceil(sw / 2), 21, sign.rows, sign.pal);
   return p.outline(OUTLINE);
 };
+
+/** A wooden signpost: arms pointing both ways, a little lantern on top. */
 const trafficLight = (): Px => {
   const p = new Px(16, 24);
-  p.rect(7, 10, 2, 14, '#3a3a3a').rect(5, 22, 6, 2, '#3a3a3a');
-  p.rect(4, 0, 8, 11, '#2a2a2a').rect(4, 0, 8, 1, '#4a4a4a');
-  p.circle(8, 2, 1.5, '#e0362a').circle(8, 5, 1.5, '#f0c020').circle(8, 8, 1.5, '#3fc04a');
+  p.rect(7, 6, 2, 18, WOOD_D).rect(7, 6, 1, 18, WOOD).rect(5, 22, 6, 2, STONE_D).rect(5, 22, 6, 1, STONE);
+  p.rect(2, 9, 11, 3, WOOD_L).rect(2, 9, 11, 1, '#e0b47a').px(13, 10, WOOD_L).px(1, 10, WOOD_L).clear(1, 9, 1, 1);
+  p.rect(4, 10, 6, 1, WOOD_D);
+  p.rect(3, 14, 11, 3, WOOD_L).rect(3, 14, 11, 1, '#e0b47a').px(2, 15, WOOD_L);
+  p.rect(5, 15, 5, 1, WOOD_D);
+  // lantern
+  p.rect(7, 0, 2, 1, IRON).rect(5, 1, 6, 1, IRON).rect(5, 2, 6, 4, IRON).rect(6, 2, 4, 3, FLAME).px(6, 2, FLAME_L).rect(7, 2, 1, 3, IRON).rect(5, 6, 6, 1, IRON);
   return p.outline(OUTLINE);
 };
-const streetLamp = (): Px => new Px(16, 24).rect(7, 6, 2, 18, '#3a3a40').rect(4, 22, 8, 2, '#3a3a40').rect(5, 1, 6, 6, '#3a3a40').rect(6, 2, 4, 4, '#fff1a0').rect(7, 0, 2, 1, '#3a3a40').outline(OUTLINE);
+
+/** An iron lantern on a wooden post with a stone foot. */
+const streetLamp = (): Px => {
+  const p = new Px(16, 24);
+  p.rect(7, 8, 2, 14, WOOD_D).rect(7, 8, 1, 14, WOOD).rect(5, 21, 6, 3, STONE_D).rect(5, 21, 6, 1, STONE_L);
+  p.rect(5, 8, 6, 1, IRON).px(5, 9, IRON).px(10, 9, IRON);
+  p.rect(7, 0, 2, 1, IRON).rect(6, 1, 4, 1, IRON).rect(4, 2, 8, 1, IRON);
+  p.rect(5, 3, 6, 5, IRON).rect(6, 3, 4, 4, FLAME).rect(6, 3, 2, 2, FLAME_L).rect(8, 3, 1, 4, shade(IRON, 1.3));
+  p.rect(5, 7, 6, 1, IRON);
+  return p.outline(OUTLINE);
+};
+
+/** A two-wheeled hand cart resting on its shafts (32×18): hay, barrels or pumpkins. */
+const cartBody = (p: Px, x: number, y: number, c: string): void => {
+  p.line(x + 22, y + 6, x + 30, y + 9, WOOD_D).line(x + 22, y + 7, x + 30, y + 10, WOOD_D); // shafts down to the ground
+  p.rect(x + 1, y + 2, 22, 6, c).rect(x + 1, y + 2, 22, 1, shade(c, 1.25)).rect(x + 1, y + 7, 22, 1, shade(c, 0.7));
+  for (let i = x + 5; i < x + 22; i += 6) p.rect(i, y + 3, 1, 4, shade(c, 0.8));
+};
+/** A wooden cart wheel: rim, four spokes (turned a little on odd frames), an iron hub. */
+const spokeWheel = (p: Px, cx: number, cy: number, r: number, f = 0): void => {
+  p.circle(cx, cy, r, BEAM).circle(cx, cy, r - 1, WOOD).circle(cx, cy, r - 2, '#2a1a10');
+  const k = Math.max(1, Math.round(r - 2));
+  const x = Math.round(cx - 0.5);
+  const y = Math.round(cy - 0.5);
+  if (f % 2 === 0) p.rect(x - k, y, k * 2 + 1, 1, WOOD).rect(x, y - k, 1, k * 2 + 1, WOOD);
+  else for (let i = -k + 1; i < k; i++) p.px(x + i, y + i, WOOD).px(x + i, y - i, WOOD);
+  p.px(x, y, IRON_L);
+};
+const barrel = (p: Px, x: number, y: number, w = 6, h = 7): void => {
+  p.ellipse(x, y, w, h, '#9a6a3a').rect(x + 1, y, w - 2, h, '#9a6a3a').rect(x + 1, y + 1, 1, h - 2, '#c58f55');
+  p.rect(x, y + 1, w, 1, IRON).rect(x, y + h - 2, w, 1, IRON).rect(x + w - 2, y + 1, 1, h - 2, '#6f4a26');
+  p.rect(x + 1, y, w - 2, 1, '#c58f55');
+};
+const hay = (p: Px, x: number, y: number, w: number, h: number): void => {
+  p.ellipse(x, y, w, h + 3, '#d8b04a').rect(x, y + Math.floor(h / 2) + 1, w, Math.ceil(h / 2) + 1, '#d8b04a');
+  for (let i = 0; i < w; i += 2) p.rect(x + i, y + 2 + ((i * 3) % 4), 1, 2, i % 4 ? '#f0d070' : '#b8902a');
+  p.px(x + 2, y + 1, '#f0d070').px(x + w - 3, y + 2, '#f0d070');
+};
 const parkedCar = (v: number): Px => {
-  const c = ['#d8363a', '#3b6fd9', '#f2c230'][v % 3]!;
   const p = new Px(32, 18);
-  p.rect(2, 8, 28, 7, c).rect(7, 3, 16, 6, c).rect(9, 4, 5, 4, '#bfeaff').rect(16, 4, 5, 4, '#bfeaff').rect(2, 8, 28, 1, shade(c, 1.25));
-  p.circle(8, 15, 3, '#2a2a2a').circle(24, 15, 3, '#2a2a2a').px(8, 15, '#8a8a90').px(24, 15, '#8a8a90');
-  p.rect(29, 10, 1, 2, '#fff1a0').rect(2, 10, 1, 2, '#e0362a');
+  const c = ['#b5413a', '#3b5fa6', '#c89a30'][v % 3]!;
+  if (v % 3 === 0) hay(p, 2, 1, 20, 7);
+  else if (v % 3 === 1) {
+    barrel(p, 3, 1);
+    barrel(p, 10, 0);
+    barrel(p, 17, 1);
+  } else {
+    pumpkin(p, 3, 4, 7, 6);
+    pumpkin(p, 14, 4, 7, 6);
+    pumpkin(p, 8, 2, 8, 7);
+  }
+  cartBody(p, 0, 7, c);
+  spokeWheel(p, 11, 13, 4.5);
   return p.outline(OUTLINE);
 };
+
+/** The Diligens stop: a wooden post with a horseshoe on its board, and a bench beside it. */
+const busStop = (): Px => {
+  const p = new Px(16, 24);
+  p.rect(7, 8, 2, 12, WOOD_D).rect(7, 8, 1, 12, WOOD);
+  p.rect(1, 0, 14, 10, WOOD_L).rect(1, 0, 14, 1, '#e0b47a').box(1, 0, 14, 10, WOOD_D);
+  // a horseshoe, open end up for luck, with its nail holes
+  p.tpl(5, 2, ['.##.##.', '##...##', '##...##', '##...##', '.#####.', '..###..'], { '#': IRON_L });
+  p.px(5, 4, IRON).px(11, 4, IRON).px(7, 6, IRON).px(9, 6, IRON).px(5, 3, '#a8a8b2');
+  // a low bench in front of the post to wait on
+  p.rect(0, 17, 16, 3, WOOD_L).rect(0, 17, 16, 1, '#e0b47a').rect(0, 19, 16, 1, WOOD_D).rect(1, 20, 2, 4, WOOD_D).rect(13, 20, 2, 4, WOOD_D);
+  return p.outline(OUTLINE);
+};
+
+/** The dwarves' station: a stone hall with a rune band, a brass-bound door and a brass bell on the roof. */
+const trainStation = (): Px => {
+  const p = new Px(48, 40);
+  const S = '#8a8a90';
+  const SD = '#5e5e66';
+  const SL = '#b0b0b6';
+  // the bell in its frame
+  p.rect(18, 1, 2, 7, BEAM).rect(28, 1, 2, 7, BEAM).rect(17, 0, 14, 2, BEAM).rect(17, 0, 14, 1, BEAM_L);
+  p.rect(22, 2, 4, 2, BRASS).rect(21, 4, 6, 2, BRASS).rect(20, 6, 8, 1, BRASS).rect(22, 2, 1, 4, BRASS_L).rect(20, 7, 8, 1, BRASS_D).px(24, 8, BRASS_D);
+  // a heavy slate roof
+  for (let y = 5; y < 13; y++) {
+    const inset = Math.round(((12 - y) / 7) * 8);
+    p.rect(inset, y, 48 - inset * 2, 1, y % 2 ? '#4a4a56' : '#565664');
+  }
+  p.rect(0, 12, 48, 2, '#3a3a44');
+  // stone blocks
+  p.rect(1, 14, 46, 26, SD);
+  for (let y = 14, r = 0; y < 40; y += 4, r++)
+    for (let x = (r % 2) * 3 - 2; x < 47; x += 7) {
+      const x0 = Math.max(1, x);
+      const x1 = Math.min(47, x + 6);
+      if (x1 > x0) p.rect(x0, y, x1 - x0, 3, S).rect(x0, y, x1 - x0, 1, SL);
+    }
+  // pillars at the corners
+  for (const x of [0, 42]) p.rect(x, 14, 6, 26, S).rect(x, 14, 1, 26, SL).rect(x + 5, 14, 1, 26, SD).rect(x, 14, 6, 2, SL).rect(x, 37, 6, 3, SD);
+  // the rune band over the door
+  p.rect(7, 15, 34, 5, '#3a3a44').rect(7, 15, 34, 1, '#2a2a32');
+  p.tpl(9, 16, ['|.\\.|/.|..|\\|.|.\\.|./|.|/.\\|', '|..|..|\\.|.|/..|.|\\.|..|..|', '|.|..|..|/.|.|.\\|..|.|.\\|..'], { '|': RUNE, '/': RUNE, '\\': RUNE });
+  // the great arched door, brass-bound
+  p.rect(16, 23, 16, 17, SD).rect(17, 22, 14, 1, SD).rect(18, 21, 12, 1, SD);
+  p.rect(17, 24, 14, 16, '#5a3a22').rect(18, 23, 12, 1, '#5a3a22').rect(24, 23, 1, 17, '#3a2414');
+  for (const y of [26, 33]) p.rect(17, y, 14, 1, BRASS).px(19, y, BRASS_L).px(29, y, BRASS_L);
+  p.px(22, 30, BRASS_L).px(26, 30, BRASS_L);
+  // slit windows
+  for (const x of [9, 36]) {
+    p.rect(x - 1, 23, 5, 11, SD).rect(x, 24, 3, 9, GLASS).rect(x, 24, 1, 4, GLASS_L).px(x - 1, 23, S).px(x + 3, 23, S);
+    p.rect(x - 1, 34, 5, 1, SL);
+  }
+  // a pick and hammer in brass beside the door
+  p.line(11, 36, 13, 38, BRASS).line(13, 36, 11, 38, BRASS);
+  p.line(35, 36, 37, 38, BRASS).line(37, 36, 35, 38, BRASS);
+  return p.outline(OUTLINE);
+};
+
 const pigsty = (): Px => {
   // a low wooden shed with an open front and a muddy wallow in front of it
   const p = new Px(32, 38);
@@ -629,48 +986,117 @@ const pigsty = (): Px => {
   p.ellipse(3, 27, 26, 10, '#6b4a2a').ellipse(6, 28, 20, 7, '#8a6238').ellipse(10, 30, 6, 3, '#5a3d20').ellipse(19, 29, 5, 3, '#5a3d20');
   return p.outline(OUTLINE);
 };
+
+/** The badstuga: a log sauna house with a stone chimney puffing steam, a wave carved over the door, a bucket. */
 const bathhouse = (): Px => {
-  // pale blue bath house with a turquoise roof, a round window and a wave sign over the door
-  const p = building(48, 44, '#dff2fb', '#3aa7c9', true, { windows: 2, roofH: 16 });
-  p.rect(0, 15, 48, 2, '#2b86a6');
-  // round window in the gable
-  p.circle(24, 8, 4, '#2b86a6').circle(24, 8, 3, '#bfeaff').rect(24, 5, 1, 6, '#2b86a6').rect(21, 8, 6, 1, '#2b86a6');
-  // wave sign
-  p.rect(16, 20, 16, 7, '#ffffff').box(16, 20, 16, 7, '#2b86a6');
-  p.tpl(18, 22, ['#..##..##..#', '.##..##..##.'], { '#': '#3aa7c9' });
-  // blue door with a porthole
-  p.rect(19, 30, 10, 13, '#2b86a6').rect(20, 31, 8, 12, '#4fb8da').circle(24, 35, 2, '#dff6ff');
-  // tiles along the base
-  for (let x = 2; x < 46; x += 4) p.rect(x, 41, 3, 2, '#bfe6f5');
+  const p = new Px(48, 44);
+  // steam rising from the chimney
+  p.ellipse(28, 0, 7, 5, STEAM).ellipse(32, 2, 6, 5, STEAM).ellipse(25, 3, 5, 4, '#dde4ec');
+  p.rect(33, 4, 6, 10, STONE_D).rect(34, 4, 4, 10, STONE).rect(33, 4, 6, 1, STONE_L).rect(34, 7, 4, 1, STONE_D);
+  turfRoof(p, 0, 7, 48, 10, 6, 5);
+  p.rect(33, 7, 6, 3, STONE).rect(34, 7, 1, 3, STONE_L);
+  gableBoards(p, 5, 4, false);
+  gableBoards(p, 42, 4, true);
+  logWall(p, 1, 19, 46, 24, '#9a6a3a');
+  // the wave sign over the door
+  p.rect(16, 21, 16, 6, '#e8e0cc').box(16, 21, 16, 6, BEAM);
+  p.tpl(18, 23, ['#..##..##..#', '.##..##..##.'], { '#': '#2b86a6' });
+  plankDoor(p, 20, 29, 8, 14, '#b07a44');
+  leaded(p, 7, 27, 6, 5);
+  leaded(p, 36, 27, 6, 5);
+  // steam curling out of the vent over the right window
+  p.rect(36, 23, 6, 2, '#3a2414').ellipse(40, 19, 5, 4, STEAM);
+  // a wooden bucket with a ladle and a birch whisk by the door
+  p.rect(9, 37, 6, 6, '#b07a44').rect(9, 37, 6, 1, '#c58f55').rect(9, 39, 6, 1, IRON).rect(9, 41, 6, 1, IRON).line(13, 37, 16, 34, WOOD_D);
+  // a stack of split birch logs for the stove
+  p.rect(37, 36, 9, 6, '#6a4a2a');
+  for (let y = 36; y < 42; y += 2) for (let x = 37 + ((y / 2) % 2); x < 45; x += 2) p.px(x, y, '#e8dcc0').px(x + 1, y, '#c8955a');
+  plinth(p, 0, 42, 48, 2);
   return p.outline(OUTLINE);
 };
-const busStop = (): Px => {
-  // a pole with a blue sign showing a little bus, and a bench foot
-  const p = new Px(16, 24).rect(7, 8, 2, 16, '#6d6d72').rect(7, 8, 1, 16, '#9a9aa0');
-  p.rect(2, 1, 12, 9, '#2f6fd1').rect(2, 1, 12, 1, '#6a9ff0').box(2, 1, 12, 9, '#1c4a9a');
-  p.rect(4, 4, 8, 4, '#ffd84a').rect(5, 5, 2, 2, '#bfeaff').rect(8, 5, 2, 2, '#bfeaff').px(5, 8, OUTLINE).px(10, 8, OUTLINE).rect(4, 3, 8, 1, '#ffe88a');
-  p.rect(4, 21, 8, 2, '#6d6d72');
+
+/** Pino's pizzeria as a timber tavern: his pizza sign still on the roof, a stone oven glowing by the door. */
+const pizzeria = (): Px => {
+  const p = new Px(48, 44);
+  shingleRoof(p, 0, 1, 48, 16, '#8a5a2a', 8);
+  // the pizza sign on the roof, now in a carved frame
+  p.rect(15, 1, 18, 12, BEAM).rect(16, 2, 16, 10, '#ffffff');
+  p.circle(21, 7, 3, '#e0453a').circle(21, 7, 2, '#f5d94a').px(20, 6, '#e0453a').px(22, 8, '#e0453a');
+  p.rect(26, 5, 4, 1, '#d9453b').rect(26, 7, 3, 1, '#2e8a3a').rect(26, 9, 4, 1, '#d9453b');
+  p.px(14, 0, BEAM).px(33, 0, BEAM);
+  halfTimber(p, 1, 17, 46, 26, '#f3e2c0', [0, 13, 33, 44], [[2, 7, true], [36, 41, false]]);
+  // red-white awning over the door
+  for (let x = 14; x < 34; x += 4) p.rect(x, 20, 4, 4, ((x - 14) / 4) % 2 === 0 ? '#d9453b' : '#ffffff').px(x + 1, 24, ((x - 14) / 4) % 2 === 0 ? '#d9453b' : '#ffffff');
+  p.rect(14, 19, 20, 1, '#8f2f2a');
+  leaded(p, 4, 24, 6, 6, BEAM, '#2e7a3a');
+  leaded(p, 37, 22, 6, 6, BEAM, '#2e7a3a');
+  plankDoor(p, 19, 28, 10, 15);
+  // stone oven glow and a barrel
+  p.rect(36, 33, 8, 9, STONE_D).rect(37, 34, 6, 8, STONE).rect(38, 36, 4, 4, '#f08a2a').rect(39, 37, 2, 2, FLAME);
+  barrel(p, 4, 35);
+  p.rect(1, 42, 46, 2, STONE_D);
   return p.outline(OUTLINE);
 };
-const trainStation = (): Px => {
-  // a brick station house with a clock in the gable and a platform roof
-  const p = new Px(48, 40);
-  p.rect(2, 14, 44, 24, '#c0604a').rect(2, 14, 44, 1, '#d98a74');
-  for (let y = 16; y < 38; y += 4) for (let x = 2 + ((y / 4) % 2) * 3; x < 46; x += 6) p.rect(x, y, 5, 2, '#a84c3a');
-  for (let y = 0; y < 14; y++) {
-    const inset = Math.max(0, Math.round(((13 - y) / 13) * 20));
-    p.rect(inset, y, 48 - inset * 2, 1, y % 3 === 0 ? '#4a4f5a' : '#5e6470');
-  }
-  p.rect(0, 13, 48, 2, '#3a3e48');
-  // clock
-  p.circle(24, 7, 4, '#f4f0e6').circle(24, 7, 4.5, '#3a3e48').circle(24, 7, 3.5, '#f4f0e6').rect(24, 4, 1, 3, OUTLINE).rect(24, 7, 2, 1, OUTLINE).px(24, 7, '#d9453b');
-  // door and windows
-  p.rect(20, 24, 8, 14, WOOD_D).rect(21, 25, 6, 13, '#8a5a2a').rect(23, 26, 2, 5, '#bfeaff').px(26, 32, '#f2d35a');
-  for (const wx of [6, 34]) p.rect(wx, 20, 8, 8, '#bfeaff').rect(wx + 3, 20, 2, 8, WOOD_D).rect(wx, 23, 8, 1, WOOD_D).box(wx - 1, 19, 10, 10, WOOD_D);
-  // "STATION" board
-  p.rect(14, 16, 20, 3, '#f4f0e6').rect(16, 17, 3, 1, OUTLINE).rect(21, 17, 6, 1, OUTLINE).rect(29, 17, 3, 1, OUTLINE);
-  // platform edge
-  p.rect(0, 38, 48, 2, '#9d9a92').rect(0, 38, 48, 1, '#c9c6bd');
+
+/** A tall pole with a cloth banner (16×40, standing on its tile): red with a gold knot, blue with a raven, green with a tree. */
+const BANNERS: { c: string; e: string; rows: string[] }[] = [
+  { c: '#b8302a', e: '#f0c040', rows: ['.###.', '#.#.#', '###.#', '#.###', '#.#.#', '.###.'] },
+  { c: '#2f5aa8', e: '#1a1a22', rows: ['..##.', '.####', '####.', '.###.', '..#..', '.#.#.'] },
+  { c: '#2e7a3a', e: '#f0c040', rows: ['.###.', '#####', '.###.', '..#..', '..#..', '.###.'] },
+];
+const bannerPole = (v: number): Px => {
+  const b = BANNERS[v % BANNERS.length]!;
+  const p = new Px(16, 40);
+  p.rect(7, 3, 2, 34, WOOD_D).rect(7, 3, 1, 34, WOOD);
+  p.rect(6, 0, 4, 3, BRASS).rect(7, 0, 1, 2, BRASS_L).px(6, 0, BRASS_D).px(9, 0, BRASS_D);
+  p.rect(2, 5, 12, 2, WOOD_D).rect(2, 5, 12, 1, WOOD_L).px(2, 7, BRASS).px(13, 7, BRASS);
+  // the cloth with a swallowtail hem and a gold border
+  p.rect(3, 7, 10, 18, b.c).rect(3, 7, 10, 1, shade(b.c, 0.7)).rect(3, 8, 1, 17, shade(b.c, 1.2)).rect(12, 8, 1, 17, shade(b.c, 0.75));
+  p.rect(3, 25, 4, 3, b.c).rect(9, 25, 4, 3, b.c).px(3, 28, b.c).px(12, 28, b.c);
+  p.rect(4, 9, 8, 1, BRASS).rect(4, 23, 8, 1, BRASS);
+  p.tpl(6, 13, b.rows, { '#': b.e });
+  p.rect(5, 36, 6, 4, STONE_D).rect(5, 36, 6, 1, STONE_L).rect(6, 37, 4, 2, STONE);
+  return p.outline(OUTLINE);
+};
+
+/** Three barrels stacked on their ends, two below and one on top (16×20). */
+const barrelStack = (): Px => {
+  const p = new Px(16, 20);
+  barrel(p, 4, 0, 8, 9);
+  barrel(p, 0, 9, 8, 10);
+  barrel(p, 8, 9, 8, 10);
+  p.rect(9, 10, 2, 1, '#5a3d20');
+  return p.outline(OUTLINE);
+};
+
+/** A runestone (16×28): grey granite carved with a serpent band, its runes glowing blue, brighter on frame 1. */
+const runestone = (f: number): Px => {
+  const p = new Px(16, 28);
+  const G = '#8a8a8e';
+  p.ellipse(2, 1, 11, 10, G).rect(2, 6, 12, 18, G).ellipse(1, 20, 14, 7, G).px(13, 4, G).px(13, 5, G);
+  p.rect(3, 6, 2, 15, '#a4a4a8').ellipse(4, 2, 5, 4, '#a4a4a8').rect(12, 7, 2, 17, '#6a6a70').px(9, 13, '#76767c').px(6, 19, '#76767c');
+  p.rect(1, 25, 14, 2, '#4f8a35').px(0, 26, '#5a9a40').px(15, 25, '#5a9a40').rect(4, 24, 1, 2, '#6aaa4a').rect(11, 24, 1, 2, '#6aaa4a');
+  // the serpent band, painted red the old way, running round the stone and biting its tail at the foot
+  const band = '#b8483a';
+  p.line(5, 4, 10, 4, band).line(10, 4, 12, 7, band).line(12, 7, 12, 21, band).line(5, 4, 4, 7, band).line(4, 7, 4, 21, band).line(4, 21, 7, 23, band).line(12, 21, 9, 23, band);
+  p.px(7, 3, band).px(8, 3, band).px(8, 23, '#f0e0c0');
+  // the runes inside it glow blue, brighter on frame 1
+  const g = f ? RUNE_L : RUNE;
+  p.tpl(6, 7, ['|`.|', '||/.', '|.`|', '/|.|', '|`|.', '|.|/', '`|.|', '|/.|', '.|`|', '|`.|', '|.|/', '/.||', '|`..'], { '|': g, '/': g, '`': g });
+  if (f) p.px(5, 6, RUNE_L).px(11, 12, RUNE_L).px(5, 18, RUNE_L);
+  return p.outline(OUTLINE);
+};
+
+/** A hay wagon (32×24, on a 2×1 footprint): four wheels, a mound of hay and a pitchfork stuck in it. */
+const hayCart = (): Px => {
+  const p = new Px(32, 24);
+  hay(p, 2, 0, 26, 12);
+  p.line(22, 1, 26, 9, WOOD_L).px(21, 0, IRON_L).px(22, 0, IRON_L).px(20, 1, IRON_L).px(23, 1, IRON_L).px(21, 1, IRON).px(19, 0, IRON_L);
+  p.rect(1, 13, 28, 5, '#9a6a3a').rect(1, 13, 28, 1, '#c58f55').rect(1, 17, 28, 1, WOOD_D);
+  for (let x = 4; x < 28; x += 6) p.rect(x, 14, 1, 3, WOOD_D);
+  p.line(29, 15, 31, 19, WOOD_D).line(29, 16, 31, 20, WOOD_D);
+  spokeWheel(p, 6, 19, 4.5);
+  spokeWheel(p, 23, 19, 4.5, 1);
   return p.outline(OUTLINE);
 };
 const bathExit = (): Px => new Px(16, 16).rect(0, 0, 16, 16, '#b9b6ad').rect(1, 1, 14, 14, '#2b86a6').rect(2, 2, 12, 12, '#4fb8da').rect(3, 3, 10, 10, '#2b86a6').rect(4, 4, 8, 8, '#4fb8da').rect(11, 7, 2, 2, '#f2d35a').rect(5, 12, 6, 1, '#dff6ff');
@@ -871,10 +1297,13 @@ export function drawObjects(): Record<string, ObjectArt> {
   set('street_lamp', [streetLamp()], 0, -8);
   set('parked_car', [0, 1, 2].map(parkedCar), 0, -2);
   set('bus_stop', [busStop()], 0, -8);
-  set('train_station', [trainStation()], 0, -4);
-  set('bath_exit', [bathExit()]);
-  set('bus_stop', [busStop()], 0, -8);
   set('train_station', [trainStation()], 0, -8);
+  set('bath_exit', [bathExit()]);
+  // the market town's dressing
+  set('banner_pole', [0, 1, 2].map(bannerPole), 0, -24);
+  set('barrel_stack', [barrelStack()], 0, -4);
+  set('runestone', [runestone(0), runestone(1)], 0, -12, true);
+  set('hay_cart', [hayCart()], 0, -8);
   set('house', PAINT_COLORS.map((_, i) => house(i)), 0, -20);
   set('mailbox', [mailbox()], 0, -8);
   set('sellbox', [sellbox()]);
@@ -966,19 +1395,6 @@ const stall = (awning: string): Px => {
   for (let x = 0; x < 32; x += 4) p.rect(x, 6, 4, 6, x % 8 === 0 ? awning : '#ffffff');
   p.rect(0, 5, 32, 1, shade(awning, 0.7)).rect(0, 12, 32, 1, shade(awning, 0.7));
   p.rect(6, 16, 5, 5, '#f08a2a').rect(13, 15, 5, 6, '#e03a3a').rect(20, 17, 6, 4, '#f5d94a');
-  return p.outline(OUTLINE);
-};
-const pizzeria = (): Px => {
-  const p = building(48, 44, '#f3e2c0', '#8a5a2a', true, { windows: 2, roofH: 16 });
-  // red-white striped awning over the door and windows
-  for (let x = 2; x < 46; x += 4) p.rect(x, 17, 4, 5, (x / 4) % 2 === 0 ? '#d9453b' : '#ffffff');
-  p.rect(2, 16, 44, 1, '#8f2f2a').rect(2, 22, 44, 1, '#8f2f2a');
-  // pizza sign on the roof
-  p.rect(16, 2, 16, 10, '#ffffff').box(16, 2, 16, 10, '#8f2f2a');
-  p.circle(21, 7, 3, '#e0453a').circle(21, 7, 2, '#f5d94a').px(20, 6, '#e0453a').px(22, 8, '#e0453a');
-  p.rect(26, 5, 4, 1, '#d9453b').rect(26, 7, 3, 1, '#2e8a3a').rect(26, 9, 4, 1, '#d9453b');
-  // stone oven glow by the door
-  p.rect(36, 34, 7, 8, STONE_D).rect(37, 36, 5, 4, '#f08a2a').rect(38, 37, 3, 2, '#ffd45a');
   return p.outline(OUTLINE);
 };
 const lantern = (f: number): Px => new Px(16, 24).rect(7, 8, 2, 16, '#3a3a3a').rect(4, 2, 8, 7, '#3a3a3a').rect(5, 3, 6, 5, f ? '#ffd45a' : '#f5a623').rect(7, 0, 2, 2, '#3a3a3a').rect(3, 22, 10, 2, '#3a3a3a').outline(OUTLINE);

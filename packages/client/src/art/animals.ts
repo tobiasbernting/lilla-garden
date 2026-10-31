@@ -10,8 +10,8 @@ export const ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   cow: { w: 24, h: 18 },
   pig: { w: 18, h: 14 },
   horse: { w: 26, h: 24 },
-  car: { w: 24, h: 14 },
-  motorcycle: { w: 16, h: 12 },
+  car: { w: 32, h: 16 },
+  motorcycle: { w: 24, h: 20 },
   dog: { w: 16, h: 14 },
   cat: { w: 14, h: 12 },
   fox: { w: 18, h: 12 },
@@ -488,54 +488,162 @@ export const ANIMAL_VARIANTS: Record<string, number> = {
   // Loke's illusions on Bifrost: the saga's monsters drawn ghostly (variant 1)
   ...SAGA_VARIANTS,
 };
-const CAR_COLORS = ['#d9453b', '#3b6fd9', '#f0c030'];
-const MOTO_COLORS = ['#d9453b', '#f08a2a', '#2f7a3a'];
-const wheel = (p: Px, cx: number, cy: number, r: number, f: number) => {
-  p.circle(cx, cy, r, '#2a2a2a').circle(cx, cy, Math.max(1, r - 1.5), '#8a8a90');
-  p.px(cx + (f ? 1 : 0), cy - (f ? 0 : 1), '#2a2a2a');
+// The market town's traffic: a horse and cart (car), a saddled riding horse (motorcycle), the Diligens coach with
+// its pair of horses (bus) and the dwarves' mine train (train). The lantern colours stay where the lamps were: warm
+// at the front (#fff1a0), red at the back (#e0362a).
+const CART_COLORS = ['#b5413a', '#3b5fa6', '#c89a30'];
+const RIDING_HORSE = [
+  '..................D.D..',
+  '.................MCCCC.',
+  '................MCCCECC',
+  '...............MCCCCCCC',
+  '..............MCCCC.CCN',
+  '.............MCCCC.....',
+  '...CCCCCCCCCMCCCCC.....',
+  '..CCCCCCCCCCCCCCCC.....',
+  '.CCCCCCCCCCCCCCCCC.....',
+  '.CCCCCCCCCCCCCCCCC.....',
+  '.CCCCCCCCCCCCCCCCC.....',
+  '..CCCCCCCCCCCCCCC......',
+  '...DDDDDDDDDDDDD.......',
+];
+/** Coat and mane of the riding horses: chestnut, dapple grey, palomino. */
+const RIDING_COATS: [string, string][] = [
+  ['#9a5a2c', '#3a2414'],
+  ['#b8b4ac', '#5a5a62'],
+  ['#d8a858', '#f4ead8'],
+];
+const V_IRON = '#3a3a40';
+const V_IRON_L = '#6e6e78';
+const V_BRASS = '#d9a640';
+const V_BRASS_L = '#f2d27a';
+const V_WOOD = '#9a6a3a';
+const V_WOOD_D = '#6f4a26';
+const V_WOOD_L = '#c58f55';
+const LEATHER = '#5a3018';
+const LAMP_FRONT = '#fff1a0';
+const LAMP_BACK = '#e0362a';
+const cartWheel = (p: Px, cx: number, cy: number, r: number, f: number) => {
+  p.circle(cx, cy, r, '#4a3020').circle(cx, cy, r - 1, V_WOOD).circle(cx, cy, r - 2, '#2a1a10');
+  const k = Math.max(1, Math.round(r - 2));
+  const x = Math.round(cx - 0.5);
+  const y = Math.round(cy - 0.5);
+  if (f % 2 === 0) p.rect(x - k, y, k * 2 + 1, 1, V_WOOD).rect(x, y - k, 1, k * 2 + 1, V_WOOD);
+  else for (let i = -k + 1; i < k; i++) p.px(x + i, y + i, V_WOOD).px(x + i, y - i, V_WOOD);
+  p.px(x, y, V_IRON_L);
+};
+/** A draught horse in harness, facing right, in a 15×16 box at (x, y); its legs stride on frame 1. */
+const DRAUGHT_HORSE = [
+  '..........D.D..',
+  '.........MCCCC.',
+  '........MCCCECC',
+  '.......MCCC.CCN',
+  '......MCCC.....',
+  '.CCCCCCCCCC....',
+  'CCCCCCCCCCC....',
+  'CCCCCCCCCCC....',
+  'CCCCCCCCCCC....',
+  '.CCCCCCCCCC....',
+  '..DDDDDDDD.....',
+];
+const draughtHorse = (p: Px, x: number, y: number, f: number, c: string, mane: string) => {
+  const d = shade(c, 0.72);
+  const hoof = '#2a1a10';
+  // far legs first (darker), then the body, then the near legs
+  const legs = (near: boolean) => {
+    const col = near ? c : d;
+    const back = near ? x + 2 : x + 1;
+    const front = near ? x + 8 : x + 7;
+    const swing = f ? (near ? 1 : -1) : 0;
+    p.rect(back, y + 11, 2, 2, col).rect(back - swing, y + 13, 2, 2, col).rect(back - swing, y + 15, 2, 1, hoof);
+    p.rect(front, y + 11, 2, 2, col).rect(front + swing, y + 13, 2, 2, col).rect(front + swing, y + 15, 2, 1, hoof);
+  };
+  legs(false);
+  p.px(x, y + 5, mane).rect(x - 1, y + 6, 1, 6, mane); // tail
+  p.tpl(x, y, DRAUGHT_HORSE, { C: c, D: d, M: mane, E: OUTLINE, N: d });
+  legs(true);
+  // the harness: a collar with a brass boss, a strap round the belly, the bridle
+  p.rect(x + 8, y + 4, 2, 4, LEATHER).px(x + 9, y + 5, V_BRASS).rect(x + 4, y + 5, 1, 6, LEATHER).px(x + 12, y + 2, LEATHER).px(x + 13, y + 3, LEATHER);
 };
 function car(p: Px, f: number, v = 0): void {
-  const c = CAR_COLORS[v % CAR_COLORS.length]!;
-  p.rect(1, 6, 22, 6, c).rect(5, 2, 13, 5, c).rect(1, 6, 22, 1, shade(c, 1.25)).rect(1, 11, 22, 1, shade(c, 0.75));
-  p.rect(7, 3, 4, 3, '#bfeaff').rect(12, 3, 5, 3, '#bfeaff');
-  p.rect(22, 7, 1, 2, '#fff1a0').rect(1, 7, 1, 2, '#e0362a'); // headlight, taillight
-  wheel(p, 6, 11, 2.5, f);
-  wheel(p, 18, 11, 2.5, f);
+  // a two-wheeled cart pulled by a horse (32×16): the driver's bench at the front of the cart sits under the sprite's
+  // middle, where the rider is drawn (lift 4, legs hidden)
+  const c = CART_COLORS[v % CART_COLORS.length]!;
+  draughtHorse(p, 17, 0, f, '#8a5a30', '#3a2414');
+  p.rect(16, 9, 10, 1, V_WOOD_D); // shaft
+  p.rect(12, 3, 6, 2, V_WOOD).rect(12, 3, 6, 1, V_WOOD_L).rect(17, 2, 1, 4, V_WOOD_D); // bench and its front board
+  p.rect(1, 5, 17, 6, c).rect(1, 5, 17, 1, shade(c, 1.25)).rect(1, 10, 17, 1, shade(c, 0.7));
+  for (let x = 5; x < 17; x += 4) p.rect(x, 6, 1, 4, shade(c, 0.8));
+  p.rect(2, 2, 6, 3, '#d8b04a').rect(3, 1, 4, 1, '#d8b04a').px(4, 2, '#f0d070').px(6, 3, '#b8902a'); // a sack of grain
+  p.rect(19, 2, 1, 7, V_IRON).rect(19, 1, 2, 3, V_IRON).px(20, 2, LAMP_FRONT).px(20, 3, LAMP_FRONT); // lantern at the front
+  p.rect(0, 3, 1, 3, V_IRON).px(0, 4, LAMP_BACK).px(0, 5, LAMP_BACK); // red lantern at the back
+  cartWheel(p, 8, 11, 4.5, f);
 }
 function motorcycle(p: Px, f: number, v = 0): void {
-  // small moped facing right (the driver is the player sprite on top): two wheels, a seat, handlebar and a headlamp
-  const c = MOTO_COLORS[v % MOTO_COLORS.length]!;
-  const d = shade(c, 0.7);
-  p.rect(3, 5, 10, 3, c).rect(4, 4, 6, 1, d); // frame + seat
-  p.rect(11, 2, 1, 4, '#3a3a3a').rect(10, 2, 3, 1, '#3a3a3a'); // handlebar
-  p.rect(13, 4, 2, 2, '#fff1a0'); // headlamp
-  p.rect(1, 8, 2, 1, d).rect(13, 7, 1, 1, d);
-  wheel(p, 3, 9, 2.5, f);
-  wheel(p, 13, 9, 2.5, f);
+  // a saddled riding horse (24×20) facing right; the rider is the player drawn on top, the saddle under the middle
+  const [c, mane] = RIDING_COATS[v % RIDING_COATS.length]!;
+  const d = shade(c, 0.72);
+  const hoof = '#2a1a10';
+  const legs = (near: boolean) => {
+    const col = near ? c : d;
+    const back = near ? 6 : 4;
+    const front = near ? 15 : 13;
+    const swing = f ? (near ? 1 : -1) : 0;
+    p.rect(back, 12, 2, 4, col).rect(back - swing, 16, 2, 3, col).rect(back - swing, 19, 2, 1, hoof);
+    p.rect(front, 12, 2, 4, col).rect(front + swing, 16, 2, 3, col).rect(front + swing, 19, 2, 1, hoof);
+  };
+  legs(false);
+  p.rect(1, 6, 2, 2, mane).rect(0, 7, 2, 8, mane).px(2, 14, mane); // tail
+  p.tpl(0, 0, RIDING_HORSE, { C: c, D: d, M: mane, E: OUTLINE, N: d });
+  if (v % RIDING_COATS.length === 1) for (const [x, y] of [[6, 8], [9, 10], [12, 8], [8, 11], [4, 9], [15, 9]] as const) p.px(x, y, shade(c, 1.2)); // dapples
+  if (v % RIDING_COATS.length === 0) p.rect(20, 1, 1, 3, '#f4ead8'); // a white blaze
+  legs(true);
+  // the saddle on a red cloth, a stirrup, the bridle and reins
+  p.rect(8, 6, 8, 4, '#b8302a').rect(8, 9, 8, 1, V_BRASS).rect(9, 5, 6, 2, LEATHER).px(15, 4, LEATHER).px(8, 4, LEATHER).px(9, 5, '#7a4a28');
+  p.rect(11, 10, 1, 3, LEATHER).rect(10, 13, 3, 1, V_IRON_L);
+  p.line(16, 5, 19, 4, LEATHER).px(20, 3, LEATHER).px(21, 4, LEATHER);
+  p.rect(17, 7, 2, 1, V_IRON).rect(17, 8, 2, 2, LAMP_FRONT); // a little lantern hanging at the saddle bow
+  p.px(1, 8, LAMP_BACK);
 }
 function bus(p: Px, f: number): void {
-  const c = '#f2c230';
-  p.rect(1, 1, 38, 12, c).rect(1, 1, 38, 1, shade(c, 1.2)).rect(1, 8, 38, 2, '#3b6fd9').rect(1, 12, 38, 1, shade(c, 0.75));
-  for (let i = 0; i < 6; i++) p.rect(3 + i * 6, 3, 4, 4, '#bfeaff');
-  p.rect(33, 8, 4, 5, '#2a2a2a').rect(34, 9, 2, 4, '#bfeaff'); // door
-  p.rect(38, 9, 1, 2, '#fff1a0').rect(1, 9, 1, 2, '#e0362a');
-  wheel(p, 8, 13, 2.5, f);
-  wheel(p, 30, 13, 2.5, f);
+  // the Diligens (40×16): a dark red covered coach with gold trim, pulled by a pair of horses
+  const c = '#7a2a2a';
+  draughtHorse(p, 22, 0, 1 - f, '#5a3a24', '#2a1a10'); // the far horse, a step out of time
+  draughtHorse(p, 25, 0, f, '#8a5a30', '#3a2414');
+  p.rect(22, 9, 6, 1, '#4a3020'); // shaft
+  p.rect(2, 0, 17, 1, '#2a2228').rect(1, 1, 21, 2, '#3a3038').rect(1, 1, 21, 1, '#5a5058'); // the arched roof
+  p.rect(6, 0, 6, 1, '#6a4a2a'); // a trunk on the roof
+  p.rect(1, 3, 21, 9, c).rect(1, 3, 21, 1, shade(c, 1.25)).rect(1, 11, 21, 1, shade(c, 0.7)).rect(1, 10, 21, 1, V_BRASS);
+  for (const x of [3, 15]) p.rect(x, 4, 4, 4, '#9cc8e0').rect(x, 4, 2, 2, '#c4e4f4').rect(x - 1, 8, 6, 1, V_BRASS);
+  p.rect(9, 4, 5, 7, shade(c, 0.8)).rect(10, 5, 3, 3, '#9cc8e0').px(13, 8, V_BRASS_L); // door
+  p.rect(22, 4, 3, 2, V_WOOD).rect(22, 6, 1, 5, V_WOOD_D); // the coachman's box
+  p.rect(23, 1, 1, 3, V_IRON).rect(23, 2, 2, 2, LAMP_FRONT); // lantern
+  p.rect(0, 8, 1, 2, LAMP_BACK);
+  cartWheel(p, 6, 12, 4, f);
+  cartWheel(p, 18, 13, 3, f);
 }
 function train(p: Px, f: number): void {
-  const c = '#2f5fb8';
-  // engine (right) and one wagon (left)
-  p.rect(0, 3, 22, 10, c).rect(23, 2, 25, 11, c).rect(0, 3, 22, 1, shade(c, 1.25)).rect(23, 2, 25, 1, shade(c, 1.25));
-  p.rect(0, 12, 48, 1, shade(c, 0.7));
-  for (let i = 0; i < 4; i++) p.rect(2 + i * 5, 5, 3, 4, '#bfeaff');
-  for (let i = 0; i < 3; i++) p.rect(25 + i * 5, 4, 3, 4, '#bfeaff');
-  p.rect(43, 4, 4, 6, '#f2c230').rect(46, 6, 2, 2, '#fff1a0'); // yellow nose + headlight
-  p.rect(0, 7, 1, 2, '#e0362a');
-  p.rect(22, 5, 1, 7, '#2a2a2a'); // coupling
-  wheel(p, 5, 13, 2.5, f);
-  wheel(p, 17, 13, 2.5, f);
-  wheel(p, 28, 13, 2.5, f);
-  wheel(p, 42, 13, 2.5, f);
+  // the dwarves' mine train (48×16): a stout iron engine with a brass funnel and a lantern, pulling a cart of ore
+  const iron = '#4a4a54';
+  // the ore cart
+  p.ellipse(2, 1, 16, 8, '#6a6058').ellipse(4, 1, 7, 4, '#7e746a');
+  for (const [x, y, col] of [[5, 3, '#f2d27a'], [12, 2, '#f2d27a'], [9, 4, '#8ac8ff'], [14, 4, '#c0c0c8'], [7, 2, '#e05a5a']] as const) p.px(x, y, col);
+  p.rect(1, 5, 18, 7, iron).rect(1, 5, 18, 1, '#6a6a76').rect(2, 11, 16, 1, '#2e2e36');
+  for (const x of [3, 9, 16]) p.rect(x, 6, 1, 5, '#2e2e36').px(x, 7, V_IRON_L);
+  p.rect(0, 6, 1, 3, V_IRON).px(0, 7, LAMP_BACK).px(0, 8, LAMP_BACK);
+  p.rect(19, 10, 4, 1, V_IRON); // coupling
+  // the engine: cab, boiler with brass bands, dome and funnel, the lantern on its nose, a cowcatcher
+  p.rect(22, 1, 10, 2, '#2a2a30').rect(23, 3, 8, 9, iron).rect(23, 3, 8, 1, '#6a6a76');
+  p.rect(25, 5, 4, 3, '#9cc8e0').rect(25, 5, 2, 1, '#c4e4f4').rect(24, 9, 6, 1, V_BRASS);
+  p.rect(31, 5, 13, 7, '#3e3e46').rect(31, 5, 13, 1, '#6a6a76').rect(31, 11, 13, 1, '#2a2a30');
+  for (const x of [34, 39]) p.rect(x, 5, 1, 6, V_BRASS).px(x, 5, V_BRASS_L);
+  p.ellipse(32, 2, 4, 4, V_BRASS).px(33, 3, V_BRASS_L);
+  p.rect(37, 0, 5, 1, V_BRASS).rect(38, 1, 3, 4, V_BRASS).px(38, 1, V_BRASS_L).rect(38, 0, 1, 1, V_BRASS_L);
+  p.rect(44, 4, 3, 8, '#2e2e36').rect(45, 6, 2, 2, LAMP_FRONT).px(44, 5, V_BRASS);
+  p.line(44, 12, 47, 14, V_IRON).line(44, 13, 46, 14, V_IRON);
+  const wheel = (cx: number) => p.circle(cx, 13, 2.5, '#2a2a2a').circle(cx, 13, 1.2, V_IRON_L);
+  for (const cx of [5, 15, 27, 34, 41]) wheel(cx);
+  p.rect(27, 13 - (f ? 1 : 0), 15, 1, V_BRASS); // the coupling rod
 }
 
 const DRAW: Record<string, (p: Px, f: number, v?: number) => void> = {
