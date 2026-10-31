@@ -25,13 +25,13 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
   snön gör marken vit och efter regn kan det bli regnbåge. Föräldrasidan kan välja väder.
 - Utforska en oändlig värld med 15 sorters platser: skog, äng, berg med klippor, isvidder, strand, öken, träsk med
   spänger och irrbloss, djungel med tempel, vulkaner med lava, svampskog med älvringar, Dinodalen med fossil,
-  städer, Rymdbasen – och långt borta Godislandet. Varje ny sorts plats ger en stjärna.
+  Köpingar (marknadsstäder med kullersten, timmerhus och Diligensen), Rymdbasen – och långt borta Godislandet. Varje ny sorts plats ger en stjärna.
 - Grottor överallt (kristallgrottor, isgrottor, sjörövargrottor, pyramider, tempel, lavagrottor…) med en skattkista
   för varje spelare varje vecka, ett hemligt rum bakom rasade stenar och kristaller och guld som växer tillbaka.
 - Gräv upp skatter där det är ett kryss, dansa i älvringar, fånga dinosaurier och gelébjörnar med lasso, kläck ett
   drakägg – och åk raket till månen (månost, stjärnkristaller, rymdvarelser och ett kraschat ufo).
 - Gör souvenirer av fynden: kristallampa, svamplampa och ett dinosaurieskelett. Nya kläder finns i skattkistorna.
-- Minispel på TV:n i stugan och i Spelhallen i varje stad: Rallyt (3D-racing), Snöbollskriget (3D-skjutspel med
+- Minispel på TV:n i stugan och i Spelhallen i varje köping: Rallyt (3D-racing), Snöbollskriget (3D-skjutspel med
   snöbollar), Minigolfen (3D), Hönan Hilda (plattformsspel i gammal grön handkonsol-stil), Dansbanan (rytmspel i
   neondisco) och Stjärnstorm (rymdskjutspel i glödande vektorgrafik). Familjens topplista per spel; i Spelhallen
   vinner man biljetter att byta mot gosedjur, lampor, pokaler och nya TV-spel. Fler spelkassetter finns i grottornas
@@ -52,8 +52,18 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
   öppnar dörrar och skattkistor med egen skatt åt var och en. Bytet mellan bonde och hjälte (🧑‍🌾 → din klass) tar
   hjälten ut i världen: besvärjelser mot Lokes tjänare som vandrar i varje sorts plats, två jättemonster och
   uppgifter i varje kapitel. Skatterna har färger efter hur sällsynta de är, passar i tre platser (vapen, sköld,
-  amulett) och ger kraft, hälsa och skydd; hjälten stiger i nivå 1–10. Husdjur, riddjur, dräkter och pynt till
+  amulett) och ger kraft, hälsa och skydd; hjälten stiger i nivå 1–20. Husdjur, riddjur, dräkter och pynt till
   gården kan hittas. Ingen förlorar något när man faller.
+- Köpingen öster om gården är en nordisk marknadsstad: kullerstensgator, timmerhus och långhus, lyktor, banérstänger,
+  tunnor och en runsten på torget. Där åker du med hästkärror och ridhästar (köps under Kärror & hästar i
+  gårdsbutiken – de följer med över kartkanten), Diligensen (5 kr, till ställen du redan besökt) och dvärgarnas
+  Gruvtåg (15 kr, även till en okänd köping långt borta). Spelhallen och Rallyvärldens garage är kvar som förut.
+- Hjältenivåer 1–20 för alla, med eller utan klass: varje monster du besegrar ute i världen ger erfarenhet (svärd,
+  båge, bazooka eller besvärjelser; vänner några rutor bort får lika mycket). Lätta vilda monster bor i varje
+  sorts plats (Ängsvätte, Trollunge, Snötroll, Sandande, Djungelimp, Benödla, Sockerspöke och Rymdkryp). Varje nivå
+  ger bara 1,5 % mer kraft och hälsa (med tak, så en vuxen aldrig blir mycket starkare än barnen), men belöningen
+  är det man ser: glödande kappor och kronor som lyser i mörkret, Lyktfén, Ljushjorten, titlar, och sken omkring
+  dig från nivå 10 och regnbågsskimmer på nivå 20.
 
 ## Develop
 
@@ -161,7 +171,7 @@ There is still no text chat: players can only use emotes.
 
 ## Controls
 
-- Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Enter`/`T` chatt, `X` husdjuren stannar, `V` vissla, `Esc` stänger.
+- Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes (🐴 Gnägg! är hästens läte), `H` hjälp, `Enter`/`T` chatt, `X` husdjuren stannar, `V` vissla, `Esc` stänger.
 - Surfplatta: styrspak till vänster, stor handknapp till höger, tryck på en ruta bredvid dig.
 - Fängelsehålorna (Sagan om Världsträdet): klicka eller tryck på ett monster för att sikta och slå på det; `E`/mellanslag
   och ✋ slår på det närmaste monstret inom räckhåll; `1`–`4` är klassens besvärjelser, `5` läkedryck, Tab (🎯 på
@@ -197,7 +207,7 @@ can lean and squash smoothly. There is one art style, the shaded pixel art. It n
 
 - Ljus: the light map follows the day (golden morning, white noon, orange sunset, blue night, purple at Halloween),
   greyer under clouds and darker in storms. At night lamps, torches, stoves and lit windows shine, every player
-  carries a lantern, cars have headlights, and lightning flashes the whole map.
+  carries a lantern, carts and coaches carry lanterns, and lightning flashes the whole map.
 - Skuggor: trees, houses, people and animals cast sun shadows that lean long to the west in the morning, sit behind
   things at noon and lean east in the evening.
 - Rörelse: trees, grass, flowers and crops sway with the wind and rustle when walked through; people bob as they
