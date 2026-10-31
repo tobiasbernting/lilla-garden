@@ -512,7 +512,7 @@
 }
 .rl-courses {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: calc(1.5 * var(--u));
 }
 .rl-panel button.rl-course {

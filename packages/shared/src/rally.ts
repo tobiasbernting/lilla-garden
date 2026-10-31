@@ -252,7 +252,7 @@ export function carStars(car: GarageCar): { speed: number; grip: number; handlin
 // Courses and rules
 // ---------------------------------------------------------------------------
 
-export const RALLY_COURSES = ['farm', 'forest', 'ice', 'beach', 'city'] as const;
+export const RALLY_COURSES = ['farm', 'forest', 'ice', 'beach', 'city', 'meadow', 'mountain'] as const;
 export type RallyCourse = (typeof RALLY_COURSES)[number];
 export const isRallyCourse = (s: unknown): s is RallyCourse => typeof s === 'string' && (RALLY_COURSES as readonly string[]).includes(s);
 
@@ -270,10 +270,12 @@ export interface RallyCourseDef {
 
 export const RALLY_COURSE_DEFS: Record<RallyCourse, RallyCourseDef> = {
   farm: { id: 'farm', prize: 1.0, surface: 'asphalt', gold: 62, emoji: '🚜', color: '#e8412c' },
-  forest: { id: 'forest', prize: 1.15, surface: 'gravel', gold: 70, emoji: '🌲', color: '#2fa84f' },
-  ice: { id: 'ice', prize: 1.25, surface: 'snow', gold: 71, emoji: '❄️', color: '#5fb7ff' },
-  beach: { id: 'beach', prize: 1.1, surface: 'sand', gold: 64, emoji: '🏖️', color: '#f4c20d' },
+  forest: { id: 'forest', prize: 1.15, surface: 'gravel', gold: 54, emoji: '🌲', color: '#2fa84f' },
+  ice: { id: 'ice', prize: 1.25, surface: 'snow', gold: 57, emoji: '❄️', color: '#5fb7ff' },
+  beach: { id: 'beach', prize: 1.1, surface: 'sand', gold: 60, emoji: '🏖️', color: '#f4c20d' },
   city: { id: 'city', prize: 1.3, surface: 'asphalt', gold: 55, emoji: '🌃', color: '#8a4fd8' },
+  meadow: { id: 'meadow', prize: 1.05, surface: 'gravel', gold: 48, emoji: '🌼', color: '#9bc53d' },
+  mountain: { id: 'mountain', prize: 1.25, surface: 'snow', gold: 59, emoji: '🏔️', color: '#4a6fa5' },
 };
 
 export const RALLY_TIMES = ['day', 'sunset', 'night'] as const;

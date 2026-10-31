@@ -99,8 +99,8 @@ export const Surf = { Asphalt: 0, Gravel: 1, Snow: 2, Sand: 3, Ice: 4 } as const
 export type Surf = (typeof Surf)[keyof typeof Surf];
 const SURF_OF: Record<SurfaceName, Surf> = { asphalt: Surf.Asphalt, gravel: Surf.Gravel, snow: Surf.Snow, sand: Surf.Sand, ice: Surf.Ice };
 /** Grip the racing line plans with, and how hard one can brake, per surface (the car's own grip is in car.ts). */
-const LINE_MU = [1.2, 0.9, 0.53, 0.78, 0.4];
-const LINE_DEC = [8, 5.5, 3.6, 5.0, 2.8];
+const LINE_MU = [1.2, 0.9, 0.69, 0.78, 0.5];
+const LINE_DEC = [8, 5.5, 4.6, 5.0, 3.5];
 
 export interface Proj {
   /** The sample before the point and how far towards the next one (0..1). */
