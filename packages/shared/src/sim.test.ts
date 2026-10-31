@@ -824,6 +824,19 @@ describe('house, villagers, fishing', () => {
     applyMove(world, p.id, p.x - 5, p.y, 'left', true);
     expect(p.fishing).toBeUndefined();
   });
+  it('holding the rod still opens the sell box, shop and chests', () => {
+    const { world, p } = setup();
+    addItem(p.inventory, 'rod', 1);
+    select(p, 'rod');
+    const spots = [[30, 20, 'sellbox', 'sell'], [30, 24, 'mailbox', 'catalogue'], [30, 28, 'chest', 'chest']] as const;
+    for (const [x, y, kind, ui] of spots) {
+      clearTile(world, x, y);
+      addObject(world, kind, x, y);
+      standAt(world, p, x - 1, y);
+      const ch = performAction(world, p.id, x, y, ctx());
+      expect(ch.some((c) => c.t === 'open' && c.ui === ui)).toBe(true);
+    }
+  });
 });
 
 describe('tavlor (rita på papper)', () => {

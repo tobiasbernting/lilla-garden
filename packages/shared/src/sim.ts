@@ -578,7 +578,12 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     out.push(toast(p.id, T.fishingStart));
     return out;
   }
-  if (tool === 'rod') return out;
+  if (tool === 'rod') {
+    // the rod only fishes, but it must not stop you opening the sell box, shop, chests, workbench…
+    const target = objectAt(world, tx, ty);
+    if (target && objectDef(target.kind).interact) interactObject(world, p, target, held, ctx, out);
+    return out;
+  }
 
   // 0c. Paper: open the drawing screen (unless pointing at something you can open)
   if (held?.item === 'paper') {
