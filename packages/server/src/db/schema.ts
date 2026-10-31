@@ -10,6 +10,8 @@ export const world = pgTable('world', {
   seasonOverride: text('season_override'),
   terrain: jsonb('terrain').$type<Terrain[]>().notNull(),
   drops: jsonb('drops').$type<Record<number, DropState>>().notNull(),
+  /** The family's best dungeon times (WorldState.sagaBest). */
+  sagaBest: jsonb('saga_best').$type<NonNullable<WorldState['sagaBest']>>(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

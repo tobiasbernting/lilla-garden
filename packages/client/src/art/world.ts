@@ -5,6 +5,7 @@ import { drawBiomeObjects } from './objects2.ts';
 import { caveWallThemed, drawLandmarks } from './landmarks.ts';
 import { drawArcade } from './arcade.ts';
 import { drawSaga } from './saga.ts';
+import { drawSagaPlaces } from './sagaplaces.ts';
 import { addBiomeTerrain, edgeGroup } from './terrain2.ts';
 
 export const OUTLINE = '#2b2419';
@@ -1357,6 +1358,7 @@ export function drawObjects(): Record<string, ObjectArt> {
   drawLandmarks(set);
   drawArcade(set);
   drawSaga(set);
+  drawSagaPlaces(set);
   return art;
 }
 

@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureLevelRewards, ensureRoaming, ensureTownDress, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureLevelRewards, ensureRoaming, ensureTownDress, ensureSagaPlaces, ensureCave, ensureCity, ensureLandmarks, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, archFront, rebuildOccupancy, type Change, type DungeonId, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 import { PgAccessStore } from './accessStore.ts';
 
@@ -90,7 +90,11 @@ export class PgStore implements Store {
       animals: {},
       players: {},
     };
+    // the family's best dungeon times (missing in saves from before them)
+    if (row.sagaBest) world.sagaBest = row.sagaBest;
     const loadedObjectIds: number[] = [];
+    /** Players who were inside a dungeon: they go in front of its arch, wherever it stands in its map. */
+    const outOfDungeon: [string, DungeonId][] = [];
     for (const o of await this.db.select().from(s.objects)) {
       world.objects[o.id] = o.data;
       loadedObjectIds.push(o.id);
@@ -105,13 +109,14 @@ export class PgStore implements Store {
         world.players[p.id]!.x = CAVE_EXIT_TILE.x * TILE + TILE / 2;
         world.players[p.id]!.y = CAVE_EXIT_TILE.y * TILE + TILE / 2;
       }
-      // inside a dungeon when the server stopped: wait in front of its arch
+      // inside a dungeon when the server stopped: wait in front of its arch (placed once the maps are loaded)
       const sagaId = dungeonOfKey(p.data.area ?? '');
       if (sagaId) {
         const front = portalFront(DUNGEONS[sagaId].portal);
         world.players[p.id]!.area = DUNGEONS[sagaId].portal.area;
         world.players[p.id]!.x = front.x * TILE + TILE / 2;
         world.players[p.id]!.y = front.y * TILE + TILE / 2;
+        outOfDungeon.push([p.id, sagaId]);
       }
       delete world.players[p.id]!.emote;
       delete world.players[p.id]!.fishing;
@@ -185,6 +190,17 @@ export class PgStore implements Store {
         this.dirtyAreas.add(k);
         console.log(`Loke's servants now roam ${k}`);
       }
+      if (ensureLandmarks(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`put Upptäcktsboken's landmarks on ${k}`);
+        // anyone who logged out where one now stands steps out in front of it
+        for (const p of Object.values(world.players)) if (p.area === k) settlePlayer(a, p);
+      }
+    }
+    for (const [id, sagaId] of outOfDungeon) {
+      const front = archFront(world, sagaId);
+      world.players[id]!.x = front.x * TILE + TILE / 2;
+      world.players[id]!.y = front.y * TILE + TILE / 2;
     }
     // Worlds saved by older versions: add the farmhouse interior and room for the villagers
     const before = Object.keys(world.objects).length;
@@ -220,6 +236,7 @@ export class PgStore implements Store {
       switch (c.t) {
         case 'terrain':
         case 'day':
+        case 'sagaBest':
           this.worldDirty = true;
           break;
         case 'crop':
@@ -302,6 +319,7 @@ export class PgStore implements Store {
           seasonOverride: world.seasonOverride,
           terrain: world.terrain,
           drops: world.drops,
+          sagaBest: world.sagaBest ?? null,
           updatedAt: new Date(),
         };
         await tx

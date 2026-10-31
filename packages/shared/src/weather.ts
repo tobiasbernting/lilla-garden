@@ -1,7 +1,8 @@
 // 2D game: weather. One sky for the whole world that drifts from one kind of weather to the next
 // in a random pattern (more snow in winter, hardly any in summer). Rain waters the fields.
 import { CROPS } from './data.ts';
-import { MAP_H, MAP_W, key, type WeatherKind, type WorldState } from './types.ts';
+import { mapW } from './map.ts';
+import { key, type WeatherKind, type WorldState } from './types.ts';
 import type { Change } from './protocol.ts';
 import { T, WEATHER_NEWS } from './sv.ts';
 import type { SimCtx } from './sim.ts';
@@ -113,10 +114,11 @@ export function tickWeather(world: WorldState, ctx: SimCtx, out: Change[]): void
 /** Wets every dry field on a map and waters what grows there. */
 export function rainOn(m: WorldState): Change[] {
   const local: Change[] = [];
-  for (let i = 0; i < MAP_W * MAP_H; i++) {
+  const W = mapW(m);
+  for (let i = 0; i < m.terrain.length; i++) {
     if (m.terrain[i] !== 'soil') continue;
-    const x = i % MAP_W;
-    const y = Math.floor(i / MAP_W);
+    const x = i % W;
+    const y = Math.floor(i / W);
     m.terrain[i] = 'soil_wet';
     local.push({ t: 'terrain', x, y, terrain: 'soil_wet' });
     const k = key(x, y);

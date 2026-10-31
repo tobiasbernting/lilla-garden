@@ -1,4 +1,5 @@
 // All player-facing Swedish strings.
+import { LANDMARKS, landmarkKind } from './landmarks.ts';
 import { SAGA_BOSSES, SAGA_ITEMS, SAGA_MOBS } from './saga.ts';
 
 export const ITEM_NAMES: Record<string, string> = {
@@ -732,6 +733,24 @@ export const T = {
   sagaNoStrength: 'Du har ingen styrkedryck.',
   sagaStrengthKey: 'Styrkedryck',
   lassoMonster: 'Lokes monster går inte att fånga med lasso! Besegra dem i stället.',
+  // Round 4: Upptäcktsboken, Smedjan and the dungeons' replays
+  landmarkFound: 'Du hittade {name}!',
+  landmarkCache: '🧭 I gömman: {items}',
+  landmarkAgain: '🧭 {name}: {lore}',
+  forgeNotNear: 'Gå till Smed-Stina i Köpingen, så smider hon åt dig.',
+  forgeNotOwned: 'Du har inte {item}. Bär den, eller ha den i väskan.',
+  forgeNotGear: '{item} går inte att smida.',
+  forgeAtMax: '{item} är redan smidd så bra det går (+5)!',
+  forgeNeedKr: 'Det kostar {kr} kr, och du har {have} kr.',
+  forgeNeedItems: 'Du behöver mer: {items}.',
+  forgeNeedAnyOf: '{n} av {items}',
+  forged: '🔨 Stina smider {item} till +{n}!',
+  forgeCrafted: '🔨 Stina har smitt {item} åt dig!',
+  forgeCraftedAlready: 'Du har redan {item}. Stina smider bara en åt varje hjälte.',
+  sagaReplayChest: 'Återbesökets kista',
+  sagaReplaySub: 'Dagens stora skatt är redan tagen. I morgon är den tillbaka!',
+  sagaEssens: '🟣 Monstret lämnade en Monsteressens!',
+  sagaBestBeaten: '⏱️ Nytt rekord! {names} klarade {dungeon} på {time}!',
   // the saga's windows and the dungeon HUD
   sagaStoneTitle: 'Kämpastenen',
   sagaStoneIntro: 'Välj din väg! Du får klassens kläder, och kan byta när du vill (fast inte inne i en fängelsehåla).',
@@ -895,6 +914,35 @@ export const T = {
   sagaRewardTitle: 'Titeln {title}',
   sagaRewardAura1: 'Hjälteglöd: ett varmt sken runt dig',
   sagaRewardAura2: 'Regnbågsglöd: du skimrar i alla färger',
+  // Round 4 (client)
+  sagaFindsTab: '🧭 Upptäckter',
+  sagaFindsIntro: 'Ute i de vilda världarna finns märkliga platser. Gå fram till en och rör vid den, så skrivs den in här!',
+  sagaFindsAll: 'Upptäckta platser: {n} av {total}',
+  sagaFindsCount: '{n} / {total}',
+  sagaFindsUnknown: 'Någonstans i {biome} …',
+  mapLandmarkSeen: 'Du har sett en märklig plats här. Gå och rör vid den!',
+  mapLandmarkFound: 'Du har upptäckt platserna här',
+  forgeBtn: '🔨 Smedjan',
+  forgeTitle: 'Smedjan',
+  forgeTabUpgrade: 'Förbättra',
+  forgeTabCraft: 'Smid',
+  forgeIntro: 'Jag kan göra dina vapen, sköldar och smycken starkare! Varje nivå kostar material och kronor. Fem stjärnor är det bästa som finns.',
+  forgeCraftIntro: 'Har du ingen utrustning? Jag smider en enkel sak av varje sort åt dig.',
+  forgeUpgrade: 'Förbättra',
+  forgeCraft: 'Smid',
+  forgeMax: 'Högsta nivån!',
+  forgeOwned: 'Du har den',
+  forgeWorn: 'på dig',
+  forgeLevel: 'Smidd nivå {n} av 5',
+  forgeAnyOf: 'Valfria av: {items}',
+  forgeNone: 'Du har ingen utrustning än. Smid något under Smid, eller hitta det i fängelsehålornas kistor!',
+  sagaChestToday: 'Dagens skatt:',
+  sagaChestLeft: 'kvar',
+  sagaChestTaken: 'tagen',
+  sagaChestLeftTip: 'Bossens stora skatt väntar på dig i dag',
+  sagaChestTakenTip: 'Du har tagit dagens stora skatt. Resten av dagen ger kistan en mindre extrakista.',
+  sagaBestTime: 'Bästa tid: {time} · {names}',
+  sagaNoBestTime: 'Ingen tid än. Klara den hela vägen!',
 };
 
 /** Names animals get until a player renames them. */
@@ -983,6 +1031,9 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   saga_level_5: { title: 'Erfaren hjälte', text: 'Nå hjältenivå 5' },
   saga_level_10: { title: 'Sagans hjälte', text: 'Nå hjältenivå 10' },
   saga_gear_legendary: { title: 'Legendarisk', text: 'Bär något legendariskt' },
+  landmarks_5: { title: 'Upptäcktsresande', text: 'Hitta 5 märkliga platser ute i världen' },
+  landmarks_15: { title: 'Kartritare', text: 'Hitta 15 märkliga platser ute i världen' },
+  landmarks_26: { title: 'Världens kännare', text: 'Hitta alla 26 märkliga platser' },
   rally_1: { title: 'Första racet', text: 'Kör ett race i Rallyvärlden' },
   rally_wins_10: { title: 'Rallymästare', text: 'Vinn 10 race' },
   rally_style: { title: 'Snyggaste bilen', text: 'Ge en bil ny stil i garaget' },
@@ -1078,6 +1129,17 @@ Object.assign(OBJECT_NAMES, {
   saga_starlamp: 'Stjärnlykta',
   saga_runepillar: 'Runpelare',
 });
+
+for (const d of Object.values(LANDMARKS)) OBJECT_NAMES[landmarkKind(d.id)] = d.name;
+
+/** A clear time as minutes and seconds ("12:05"), or hours too when it is long ("1:02:05"). */
+export const fmtDuration = (ms: number): string => {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
 
 export const itemName = (id: string): string => ITEM_NAMES[id] ?? id;
 export const objectName = (kind: string): string => OBJECT_NAMES[kind] ?? ITEM_NAMES[kind] ?? kind;
@@ -1389,6 +1451,7 @@ export const HELP: HelpTopic[] = [
       { icon: 'emoji:🏔️', text: 'Ute i världen finns också två jättestora monster: Bergatrollet i bergen och Kustjätten på stranden. Tar ni dem tillsammans lämnar de en skattkista åt alla som var med.' },
       { icon: 'emoji:💤', text: 'Inget går förlorat om du faller. Du vaknar vid vilostenen i fängelsehålan, eller hemma ute i världen, och allt du har fått behåller du.' },
       { icon: 'emoji:🐾', text: 'Bland skatterna finns husdjur och riddjur: Garmvalpen, Guldbaggen, Lysmaneten, Alvljuset, Ulvvalpen, och riktigt sällsynta, havshästen, jätteälgen, Fenrisulven och Lokes åttabenta häst.' },
+      { icon: 'monsteressens', text: 'Går det att spela en fängelsehåla igen? Ja! Bossens stora skattkista är full en gång per speldygn för var och en. Tar du kistan igen samma dag får du en mindre kista med material, och drakfjäll från de sista bossarna. Monstren i fängelsehålorna kan ibland tappa monsteressens. Familjens bästa tid genom varje fängelsehåla står i dagboken, så ni kan försöka slå den!' },
     ],
   },
   {
@@ -1407,6 +1470,36 @@ export const HELP: HelpTopic[] = [
       { icon: 'hat_glodkrans', text: 'Kläder som glöder lyser mest när det är mörkt. Ta på dem i garderoben (nya hjältekläder hamnar där) och gå ut en kväll!' },
       { icon: 'emoji:👾', text: 'Lätta monster finns överallt: Ängsvätten på ängen, Trollungar i skogen och bergen, Snötroll på isen, Sandande i öknen, Djungelimpar i djungeln, Benödlor i Dinodalen, Sockerspöken i Godislandet och Rymdkryp på månen. De går ner med några svärdsslag och släpper ibland något bra.' },
       { icon: 'emoji:👻', text: 'Lokes tjänare från Sagan II, och björnar, vargar och lodjur, ger också erfarenhet, och mest av allt de stora jättemonstren. Och ingen förlorar något när man faller!' },
+    ],
+  },
+  {
+    id: 'explore',
+    emoji: '🧭',
+    title: 'Upptäckter och landmärken',
+    intro: 'Kartorna ute i världen är större nu, och på varje karta gömmer sig två märkliga platser. Kan ni hitta dem alla?',
+    steps: [
+      { icon: 'emoji:🗺️', text: 'Kartorna i vildmarken är mycket större än förut. Det finns mer att gå på upptäcktsfärd i, och mer att hitta. Gården, Köpingen, rymdbasen, grottorna och fängelsehålorna är precis som förut.' },
+      { icon: 'emoji:🧭', text: 'På varje karta ute i världen finns två landmärken, märkliga platser som ser annorlunda ut än allt annat. Det finns 26 olika: Stencirkeln och Jätteeken i skogen, Vårdkasen och Blomsterlabyrinten på ängen, Det frusna skeppet på isen, Dvärgporten i bergen, Valskelettet på stranden, Oasen i öknen, Apkungens tron i djungeln, Eldbrunnen vid vulkanen och Glasstornet i Godislandet. Och en på rymdbasen och en på månen.' },
+      { icon: 'emoji:👆', text: 'Gå fram till ett landmärke och tryck på det. Första gången hittar du det: du får en stjärna, lite kr och material till Smedjan som ligger gömt där. En banner berättar vad platsen är. Tryck på det igen så får du läsa om det.' },
+      { icon: 'emoji:📖', text: 'Dagboken (J) har fliken 🧭 Upptäckter. Där står alla landmärken per sorts plats. De du har hittat lyser med namn och berättelse, och de du inte har hittat är ett frågetecken med platsen de finns på.' },
+      { icon: 'emoji:🗺️', text: 'Världskartan visar ett litet frågetecken på en karta där du har sett ett landmärke men inte rört vid det. Har du hittat det visas 🧭. Så vet du vart du ska gå tillbaka!' },
+      { icon: 'emoji:🏅', text: 'Hittar du 5 landmärken blir du Upptäcktsresande, vid 15 blir du Kartritare, och hittar du alla 26 är du Världens kännare. Varje märke ger en stjärna.' },
+    ],
+  },
+  {
+    id: 'forge',
+    emoji: '🔨',
+    title: 'Smedjan hos Smed-Stina',
+    intro: 'Smed-Stina i Köpingen kan göra dina vapen, sköldar och amuletter bättre. Det kallas att smida, och varje sak kan bli upp till +5.',
+    steps: [
+      { icon: 'jarnsvard', text: 'Gå fram till Smed-Stina i Köpingen och tryck på 🔨 Smedjan. Där ser du dina vapen, din sköld och din amulett, och vad nästa steg kostar. Det du saknar är rött och det du har är grönt.' },
+      { icon: 'emoji:🪨', text: 'Första steget, +1, kostar sten och guld. Andra steget, +2, kostar kristaller och guld. Båda går att hitta nära gården, och i landmärkenas gömmor.' },
+      { icon: 'emoji:💎', text: 'Tredje steget, +3, kostar två sällsynta fynd från långt bort: eldkristaller, älvdamm, frostrosor, alvdagg, obsidian eller stjärnkristaller. Du får blanda hur du vill.' },
+      { icon: 'monsteressens', text: 'Fjärde steget, +4, kostar monsteressens. Det lämnar monstren i fängelsehålorna efter sig ibland, och i bossarnas extra kistor när ni spelar en fängelsehåla igen.' },
+      { icon: 'drakfjall', text: 'Femte steget, +5, kostar drakfjäll och monsteressens. Drakfjäll får du bara från de sista bossarna. Varje steg kostar också lite kr.' },
+      { icon: 'emoji:💪', text: 'Ett vapen får mer kraft för varje steg. En sköld ger mer skydd, och mer kraft om den har det. En amulett ger mer hälsa. Smedjan visar hur det blir innan du smider.' },
+      { icon: 'traskold', text: 'Har du inga bra saker än? Stina gör en startuppsättning åt dig för 60 kr och lite material: Järnsvärd, Järnyxa, Ekstav, Jaktbåge, Träsköld och Stenamulett. Du kan göra var och en av dem en gång.' },
+      { icon: 'stenamulett', text: 'Det finns ett tak för hur stark man kan bli, även med smidda saker och hög nivå. Det är för att alla ska kunna spela tillsammans, både stora och små.' },
     ],
   },
   {

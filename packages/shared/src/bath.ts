@@ -37,11 +37,11 @@ export function ensureBathhouse(world: WorldState): boolean {
     for (let dx = -1; dx <= 3; dx++) {
       const tx = s.x + dx;
       const ty = s.y + dy;
-      if (!inBounds(tx, ty)) continue;
+      if (!inBounds(world, tx, ty)) continue;
       const o = objectAt(world, tx, ty);
       if (o) removeObject(world, o.id);
       delete world.occupancy[key(tx, ty)];
-      if (dy >= 2 && world.terrain[tileIndex(tx, ty)] !== 'path_stone') world.terrain[tileIndex(tx, ty)] = 'path_dirt';
+      if (dy >= 2 && world.terrain[tileIndex(world, tx, ty)] !== 'path_stone') world.terrain[tileIndex(world, tx, ty)] = 'path_dirt';
     }
   addObject(world, 'bathhouse', s.x, s.y);
   return true;
@@ -61,7 +61,7 @@ export function generateBath(villageKey: string): WorldState {
       if (edge && !(x === BATH_EXIT.x && y === BATH_EXIT.y)) addObject(world, 'wall_stone', x, y);
     }
   const P = BATH_POOL;
-  for (let y = P.y; y < P.y + P.h; y++) for (let x = P.x; x < P.x + P.w; x++) T[tileIndex(x, y)] = 'pool';
+  for (let y = P.y; y < P.y + P.h; y++) for (let x = P.x; x < P.x + P.w; x++) T[tileIndex(world, x, y)] = 'pool';
   addObject(world, 'bath_exit', BATH_EXIT.x, BATH_EXIT.y);
   // benches along the top wall, a plant in each lower corner, lamps by the door
   for (const x of [R.x + 3, R.x + 9, R.x + 15]) addObject(world, 'bench', x, R.y + 1);

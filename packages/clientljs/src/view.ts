@@ -33,6 +33,9 @@ import {
   localWeather,
   MAP_H,
   MAP_W,
+  mapH,
+  mapW,
+  tileIndex,
   NPC_LINES,
   NPCS,
   objectDef,
@@ -118,8 +121,10 @@ const SWAY: Record<string, number> = {
 };
 /** Small things that cast no sun shadow. */
 const FLAT_LOOKING = new Set(['grass_tuft', 'flower', 'wild_flower_mid', 'rock_small', 'mushroom', 'shell', 'rug', 'painting', 'clock', 'stump', 'ore', 'egg_basket', 'wild_pumpkin', 'iceberry', 'cloudberry', 'moon_rock', 'moon_cheese', 'gold_vein', 'gem_vein', 'fossil_rock', 'obsidian_rock', 'dragon_egg', 'wisp', 'loot_chest']);
+/** How far right of the middle of its footprint a thing's light sits (pixels): the crashed satellite's beacon. */
+const LAMP_SHIFT: Record<string, number> = { lm_satellit: 17 };
 /** How far above the middle of its footprint a thing's light sits (pixels): the glowing part is up high. */
-const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, rally_garage: 12, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8, saga_torch: 22, saga_rest: 6, saga_portal: 6, saga_stone: 12, saga_candles: 4, saga_icecrystal: 6, saga_brazier: 12, solruna: 6, yggdrasil: 14, saga_ghostlight: 10, saga_goldpile: 4, saga_minelamp: 12, saga_pearl: 5, saga_glowshroom: 9, saga_fairylight: 12, saga_rainbowshard: 9, saga_starlamp: 14, hels_lykta: 8, dvargstaty: 8, ormtand: 8, alvlykta: 8, fenrislanka: 6, bifrostbit: 8 };
+const LAMP_LIFT: Record<string, number> = { giant_glowshroom: 14, crystal: 4, fire_crystal: 4, star_crystal: 4, wisp: 6, wisp_jar: 4, volcano: 34, rocket: 18, crystal_lamp: 8, mushroom_lamp: 8, tv: 10, arcade_hall: 26, rally_garage: 12, arcade_machine: 13, score_board: 13, prize_counter: 4, disco_ball: 11, neon_sign: 8, saga_torch: 22, saga_rest: 6, saga_portal: 6, saga_stone: 12, saga_candles: 4, saga_icecrystal: 6, saga_brazier: 12, solruna: 6, yggdrasil: 14, saga_ghostlight: 10, saga_goldpile: 4, saga_minelamp: 12, saga_pearl: 5, saga_glowshroom: 9, saga_fairylight: 12, saga_rainbowshard: 9, saga_starlamp: 14, lm_jatteek: 6, lm_lykttrad: 12, lm_dvargport: 5, lm_svampring: -6, lm_eldbrunn: 15, lm_vardkase: 32, lm_manporten: 4, lm_satellit: 20, lm_mossaltare: 19, hels_lykta: 8, dvargstaty: 8, ormtand: 8, alvlykta: 8, fenrislanka: 6, bifrostbit: 8 };
 /** Things hung on the wall above their tile: they sort with the wall, behind whoever stands in front of them. */
 const ON_WALL = new Set(['saga_torch']);
 /** The dungeon looks whose torches burn with a real flame (the crypt, the forge, the mines, Fenrir's cold fire). */
@@ -196,7 +201,7 @@ interface Actor {
   whistled?: number;
   /** A lantern carried at night. */
   lamp?: Lamp;
-  /** A hero's glowing weapon at night, and the colour it was made for. */
+  /** A hero's glowing weapon at night, and the colour and forge level it was made for ("#ffb347|2"). */
   weaponLamp?: Lamp;
   weaponGlow?: string;
   /** The hero level's aura (0 none, 1 a warm glow, 2 a rainbow shimmer) and its light. */
@@ -518,7 +523,7 @@ export class View implements HudTarget {
       lamp = undefined;
     }
     // lamps and torches shine from their flame, a little above the middle of their tile
-    const lx = o.x * TILE + (def.w * TILE) / 2;
+    const lx = o.x * TILE + (def.w * TILE) / 2 + (LAMP_SHIFT[o.kind] ?? 0);
     const ly = o.y * TILE + (def.h * TILE) / 2 - (LAMP_LIFT[o.kind] ?? (o.kind.includes('lamp') || o.kind.includes('torch') ? 6 : 0));
     if (spec && !lamp) lamp = new Lamp(lx, ly, spec);
     else lamp?.moveTo(lx, ly);
@@ -898,12 +903,13 @@ export class View implements HudTarget {
     this.wasMoving = me.moving;
 
     // --- walking off the edge of the map into the next area ---
-    if (!this.cave && performance.now() - this.travelSentAt > 1500 && inEdgeGap(tileOf(me.x), tileOf(me.y))) {
+    // (each map has its own size: 64 for the farm and the cities, 96 out in the wild)
+    if (!this.cave && performance.now() - this.travelSentAt > 1500 && inEdgeGap(world, tileOf(me.x), tileOf(me.y))) {
       let dir: 'n' | 's' | 'e' | 'w' | null = null;
       if (dy < 0 && me.y <= PLAYER_HALF_H + 1) dir = 'n';
-      else if (dy > 0 && me.y >= MAP_H * TILE - PLAYER_HALF_H - 1) dir = 's';
+      else if (dy > 0 && me.y >= mapH(world) * TILE - PLAYER_HALF_H - 1) dir = 's';
       else if (dx < 0 && me.x <= PLAYER_HALF_W + 1) dir = 'w';
-      else if (dx > 0 && me.x >= MAP_W * TILE - PLAYER_HALF_W - 1) dir = 'e';
+      else if (dx > 0 && me.x >= mapW(world) * TILE - PLAYER_HALF_W - 1) dir = 'e';
       if (dir) {
         this.travelSentAt = performance.now();
         this.sendMove(true);
@@ -990,7 +996,7 @@ export class View implements HudTarget {
     }
 
     // --- roofs: the one over the room I'm in fades away ---
-    const myTile = tileOf(me.y) * MAP_W + tileOf(me.x);
+    const myTile = tileIndex(world, tileOf(me.x), tileOf(me.y));
     if (this.roofsDirty) {
       this.roofsDirty = false;
       releaseRoofs(this.roofs);
@@ -1119,8 +1125,8 @@ export class View implements HudTarget {
     // what the camera may show: the map, the cave, or the bath house and a little around it
     let bx = 0;
     let by = 0;
-    let bw = MAP_W * TILE;
-    let bh = MAP_H * TILE;
+    let bw = (this.world ? mapW(this.world) : MAP_W) * TILE;
+    let bh = (this.world ? mapH(this.world) : MAP_H) * TILE;
     if (this.cave && !this.saga) {
       bw = (this.world?.cave?.w ?? DUNGEON_W) * TILE;
       bh = (this.world?.cave?.h ?? DUNGEON_H) * TILE;
@@ -1703,14 +1709,18 @@ export class View implements HudTarget {
   /** A hero's weapon glows in its own colour at night (a rainbow one shifts through them all). */
   private updateWeaponLamp(a: Actor, p: PlayerState, lit: number): void {
     const id = this.weaponOf(p);
-    const glow = id && !p.sleeping ? (sagaItem(id)?.glow ?? null) : null;
-    if (glow !== (a.weaponGlow ?? null)) {
+    // a weapon Smed-Stina has forged shines brighter with every level (a plain one gets a warm smithy shine)
+    const forged = id ? (p.saga?.forge?.[id] ?? 0) : 0;
+    const glow = id && !p.sleeping ? (sagaItem(id)?.glow ?? (forged > 0 ? '#ffd9a0' : null)) : null;
+    const want = glow ? `${glow}|${forged}` : null;
+    if (want !== (a.weaponGlow ?? null)) {
       a.weaponLamp?.destroy();
       a.weaponLamp = undefined;
-      a.weaponGlow = glow ?? undefined;
+      a.weaponGlow = want ?? undefined;
       if (glow) {
         const rainbow = glow === 'rainbow';
-        a.weaponLamp = new Lamp(a.x, a.y, { color: rainbow ? [1, 1, 1] : glowRgb(glow), radius: 1.8, strength: 0.55, flicker: 0.2, glow: 0.6, twinkle: rainbow });
+        const k = 1 + 0.15 * forged;
+        a.weaponLamp = new Lamp(a.x, a.y, { color: rainbow ? [1, 1, 1] : glowRgb(glow), radius: 1.8 * (1 + 0.08 * forged), strength: 0.55 * k, flicker: 0.2, glow: 0.6 * k, twinkle: rainbow });
       }
     }
     if (!a.weaponLamp) return;

@@ -1,5 +1,5 @@
 // Gabled roofs over the rooms players close with wall pieces (the 2D game's look), each painted once into a texture.
-import { findRooms, MAP_W, TILE, type WorldState } from '@lilla-garden/shared';
+import { findRooms, mapW, TILE, type WorldState } from '@lilla-garden/shared';
 import { release, standalone, type Sprite } from './atlas.ts';
 
 export interface Roof {
@@ -21,13 +21,15 @@ const shadeInt = (c: number, f: number): number => {
 
 export function buildRoofs(world: WorldState, underTile: number): Roof[] {
   const out: Roof[] = [];
+  // room tiles are indices into this map's rows
+  const W = mapW(world);
   for (const room of findRooms(world)) {
     const tiles = new Set([...room.tiles, ...room.walls]);
     const base = room.stone ? 0x646b74 : 0xb5413a;
     const lit = hex(shadeInt(base, 1.12));
     const dark = hex(shadeInt(base, 0.82));
     const line = hex(shadeInt(base, 0.62));
-    const has = (x: number, y: number) => tiles.has(y * MAP_W + x);
+    const has = (x: number, y: number) => tiles.has(y * W + x);
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -35,8 +37,8 @@ export function buildRoofs(world: WorldState, underTile: number): Roof[] {
     // each column's ridge sits halfway between its top and bottom tile
     const span = new Map<number, [number, number]>();
     for (const i of tiles) {
-      const x = i % MAP_W;
-      const y = (i - x) / MAP_W;
+      const x = i % W;
+      const y = (i - x) / W;
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
       minY = Math.min(minY, y);
@@ -56,8 +58,8 @@ export function buildRoofs(world: WorldState, underTile: number): Roof[] {
       g.fillRect(x - ox, y - oy, w, h);
     };
     for (const i of tiles) {
-      const x = i % MAP_W;
-      const y = (i - x) / MAP_W;
+      const x = i % W;
+      const y = (i - x) / W;
       const [top, bot] = span.get(x)!;
       const ridge = ((top + bot + 1) / 2) * TILE;
       const px = x * TILE;

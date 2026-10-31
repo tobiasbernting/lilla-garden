@@ -6,7 +6,7 @@ import { BATH_EXIT, BATH_ROOM } from './bath.ts';
 import { ARCADE_HALL } from './city.ts';
 import { objectDef } from './data.ts';
 import { INTERIOR, addObject, emptyWorld, inBounds, objectAt, removeObject, tileIndex } from './map.ts';
-import { MAP_W, key, type WorldState } from './types.ts';
+import { key, type WorldState } from './types.ts';
 
 export const hallKey = (villageKey: string): string => `arcade:${villageKey}`;
 export const isHallKey = (k: string | undefined): boolean => !!k && k.startsWith('arcade:');
@@ -46,11 +46,11 @@ export function ensureArcadeHall(world: WorldState): boolean {
     for (let dx = -1; dx <= 3; dx++) {
       const tx = s.x + dx;
       const ty = s.y + dy;
-      if (!inBounds(tx, ty)) continue;
+      if (!inBounds(world, tx, ty)) continue;
       const o = objectAt(world, tx, ty);
       if (o) removeObject(world, o.id);
       delete world.occupancy[key(tx, ty)];
-      if (dy >= 2 && dx >= 0 && dx <= 2) world.terrain[tileIndex(tx, ty)] = 'path_stone';
+      if (dy >= 2 && dx >= 0 && dx <= 2) world.terrain[tileIndex(world, tx, ty)] = 'path_stone';
     }
   addObject(world, 'arcade_hall', s.x, s.y);
   return true;
@@ -69,7 +69,7 @@ export function generateHall(villageKey: string): WorldState {
       const edge = x === R.x || y === R.y || x === R.x + R.w - 1 || y === R.y + R.h - 1;
       if (edge) {
         if (!(x === INDOOR_EXIT.x && y === INDOOR_EXIT.y)) addObject(world, 'hall_wall', x, y);
-      } else T[tileIndex(x, y)] = 'carpet';
+      } else T[tileIndex(world, x, y)] = 'carpet';
     }
   addObject(world, 'hall_exit', INDOOR_EXIT.x, INDOOR_EXIT.y);
   ARCADE_GAMES.forEach((_, i) => addObject(world, 'arcade_machine', HALL_MACHINES[i]!.x, HALL_MACHINES[i]!.y, { variant: i }));
@@ -103,7 +103,7 @@ export function ensureTv(farm: WorldState): boolean {
   if (Object.values(farm.objects).some((o) => o.kind === 'tv')) return false;
   const w = objectDef('tv').w;
   const free = (x: number, y: number): boolean => {
-    for (let dx = 0; dx < w; dx++) if (objectAt(farm, x + dx, y) || farm.terrain[y * MAP_W + x + dx] !== 'floor_wood') return false;
+    for (let dx = 0; dx < w; dx++) if (objectAt(farm, x + dx, y) || farm.terrain[tileIndex(farm, x + dx, y)] !== 'floor_wood') return false;
     return true;
   };
   const spots = [TV_SPOT];

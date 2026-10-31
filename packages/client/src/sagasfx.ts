@@ -257,6 +257,17 @@ export const SAGA_SFX = {
   rise: () => notes([330, 440, 554, 660], 90, 0.2, 'triangle', 0.05),
   /** Picked a target. */
   target: () => tone(900, 0.035, 'triangle', 0.03),
+  /** Smed-Stina's hammer on the anvil: a ring for each blow, one more for every forge level, then a bright chime. */
+  anvil: (level: number) => {
+    const blows = Math.max(1, Math.min(5, level));
+    for (let i = 0; i < blows; i++)
+      later(i * 170, () => {
+        tone(1760 + i * 40, 0.25, 'triangle', 0.04, -200);
+        tone(2637, 0.12, 'sine', 0.02);
+        noise(0.04, 0.05);
+      });
+    later(blows * 170 + 80, () => notes([784, 1047, 1319], 70, 0.35, 'sine', 0.04));
+  },
   /** The loot window: a chest of treasure, longer and shinier for something legendary. */
   loot: (best: number) => {
     notes([523, 659, 784, 1047], 80, 0.25, 'triangle', 0.05);

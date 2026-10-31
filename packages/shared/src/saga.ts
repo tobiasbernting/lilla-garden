@@ -1100,7 +1100,7 @@ export interface SagaItemDef {
   id: string;
   name: string;
   rarity: Rarity;
-  kind: 'weapon' | 'offhand' | 'amulet' | 'hat' | 'shirt' | 'pet' | 'mount' | 'potion' | 'decor' | 'quest';
+  kind: 'weapon' | 'offhand' | 'amulet' | 'hat' | 'shirt' | 'pet' | 'mount' | 'potion' | 'decor' | 'quest' | 'material';
   /** Weapons: the farm tool it works as, and its glow (a colour, or 'rainbow' for one that shifts through them all). */
   tool?: 'sword' | 'axe' | 'hammer' | 'bow';
   glow?: string;
@@ -1245,6 +1245,15 @@ export const SAGA_ITEMS: SagaItemDef[] = [
   { id: 'hat_solkrona', name: 'Solkronan', rarity: 'legendary', kind: 'hat', style: 'crown', color: '#ffe27a', glow: '#ffe27a', levelReward: 18, text: 'En krona av guld som lyser som solen själv.' },
   { id: 'amulet_yggdrasil', name: 'Yggdrasils löv', rarity: 'legendary', kind: 'amulet', stats: { hp: 20 }, levelReward: 19, text: 'Ett löv från Världsträdet. Det är grönt året runt.' },
   { id: 'shirt_bifrostmantel', name: 'Bifrostmanteln', rarity: 'legendary', kind: 'shirt', style: 'cloak', color: '#f0f0ff', glow: 'rainbow', levelReward: 20, text: 'En mantel vävd av regnbågsbron. Den skimrar i alla färger.' },
+  // Round 4, Smedjan: what Smed-Stina forges with, and the starter set she makes (once each per hero, FORGE_CRAFTS)
+  { id: 'monsteressens', name: 'Monsteressens', rarity: 'uncommon', kind: 'material', glow: '#b06cff', text: 'En virvlande lila droppe som monstren i fängelsehålorna lämnar efter sig. Smed-Stina smider med den.' },
+  { id: 'drakfjall', name: 'Drakfjäll', rarity: 'rare', kind: 'material', glow: '#ff8a3a', text: 'Ett rödgyllene fjäll från en mäktig boss. Det hårdaste Smed-Stina vet.' },
+  { id: 'jarnsvard', name: 'Järnsvärd', rarity: 'uncommon', kind: 'weapon', tool: 'sword', glow: '#d8dee6', text: 'Ett stadigt svärd av järn, smitt av Smed-Stina.' },
+  { id: 'jarnyxa', name: 'Järnyxa', rarity: 'uncommon', kind: 'weapon', tool: 'axe', glow: '#d8dee6', text: 'En yxa av järn som biter lika bra i ved som i monster.' },
+  { id: 'ekstav', name: 'Ekstav', rarity: 'uncommon', kind: 'weapon', tool: 'hammer', glow: '#b9e08a', text: 'En stav av ek med guldbeslag. Den känns varm i handen.' },
+  { id: 'jaktbage', name: 'Jaktbåge', rarity: 'uncommon', kind: 'weapon', tool: 'bow', glow: '#e8c890', text: 'En enkel båge av trä och snöre, men den skjuter rakt.' },
+  { id: 'traskold', name: 'Träsköld', rarity: 'uncommon', kind: 'offhand', stats: { armor: 0.04 }, text: 'En rund sköld av trä med en kant av guld.' },
+  { id: 'stenamulett', name: 'Stenamulett', rarity: 'uncommon', kind: 'amulet', stats: { hp: 8 }, text: 'En slät sten med en kristall i, på ett läderband.' },
 ];
 export const sagaItem = (id: string): SagaItemDef | undefined => SAGA_ITEMS.find((i) => i.id === id);
 
@@ -1447,7 +1456,7 @@ export const gearSlotOf = (itemId: string): GearSlot | null => {
 /** Every hero level above the first gives this much more power and health (+28.5 % at level 20). */
 export const LEVEL_BONUS = 0.015;
 /** The most gear, class fit and levels together may multiply damage and healing by (the family plays together). */
-export const POWER_CAP = 1.8;
+export const POWER_CAP = 2.0;
 /** All the gear's armor together takes away at most this much of a hit. */
 export const ARMOR_CAP = 0.4;
 /** A piece that suits your class gives this much more power. */
@@ -1525,7 +1534,7 @@ export function gearOf(p: PlayerState): Partial<Record<GearSlot, string>> {
   return best ? { weapon: best.id } : {};
 }
 
-/** What a player's gear and level give them in a fight. */
+/** What a player's gear and level give them in a fight (forged pieces count with their forge level). */
 export function gearStats(p: PlayerState): GearStats {
   const gear = gearOf(p);
   const cls = p.saga?.cls;
@@ -1537,14 +1546,74 @@ export function gearStats(p: PlayerState): GearStats {
   for (const slot of GEAR_SLOTS) {
     const d = gear[slot] ? sagaItem(gear[slot]!) : undefined;
     if (!d) continue;
-    power += d.stats?.power ?? 0;
-    hp += d.stats?.hp ?? 0;
-    armor += d.stats?.armor ?? 0;
+    const st = forgeStats(d.id, forgeLevel(p.saga, d.id));
+    power += st.power;
+    hp += st.hp;
+    armor += st.armor;
     if (cls && d.classes?.includes(cls)) fits = true;
   }
   const lvl = 1 + LEVEL_BONUS * (heroLevel(p.saga) - 1);
   // capped, so a parent at level 20 in a legendary set is never much more than one and a half kids
   return { power: Math.min(POWER_CAP, (weapon ? RARITY_POWER[weapon.rarity] : 1) * (1 + power) * (fits ? CLASS_FIT : 1) * lvl), hp, armor: Math.min(ARMOR_CAP, armor) };
+}
+
+// ---------------------------------------------------------------------------
+// Round 4: Smedjan. Smed-Stina in Köpingen forges a piece of gear up to +5 (per player and piece) and makes a
+// starter set once for each hero. Materials come from the world, the landmarks and the dungeons' replays.
+// ---------------------------------------------------------------------------
+
+/** The highest forge level. */
+export const FORGE_MAX = 5;
+/** What forging one level up costs: materials, a choice of rare things (any mix of `anyOf.items`), and coins. */
+export interface ForgeCost {
+  items: [item: string, count: number][];
+  anyOf?: { items: string[]; count: number };
+  kr: number;
+}
+/** The cost of reaching each forge level (index = the level reached, 1..FORGE_MAX). */
+export const FORGE_COSTS: Record<number, ForgeCost> = {
+  1: { items: [['stone', 6], ['gold', 3]], kr: 40 },
+  2: { items: [['crystal', 4], ['gold', 2]], kr: 80 },
+  3: { items: [], anyOf: { items: ['fire_crystal', 'fairy_dust', 'frostros', 'alvdagg', 'obsidian', 'star_crystal'], count: 2 }, kr: 150 },
+  4: { items: [['monsteressens', 4]], kr: 250 },
+  5: { items: [['drakfjall', 2], ['monsteressens', 4]], kr: 400 },
+};
+/** The starter set Stina makes (each once per hero): coins and materials. */
+export const FORGE_CRAFTS: Record<string, { items: [item: string, count: number][]; kr: number }> = {
+  jarnsvard: { items: [['stone', 8], ['gold', 4]], kr: 60 },
+  jarnyxa: { items: [['stone', 8], ['gold', 4]], kr: 60 },
+  ekstav: { items: [['wood', 6], ['gold', 4]], kr: 60 },
+  jaktbage: { items: [['wood', 6], ['fiber', 4], ['gold', 2]], kr: 60 },
+  traskold: { items: [['wood', 8], ['gold', 2]], kr: 60 },
+  stenamulett: { items: [['stone', 6], ['crystal', 1]], kr: 60 },
+};
+/** The smith who forges. */
+export const SMITH_ID = 'stina';
+/** Dungeon monsters (not a boss's helpers) leave a Monsteressens with this chance, in the bag of whoever beat them. */
+export const ESSENS_CHANCE = 0.15;
+/** A player's forge level of a piece (0: not forged). */
+export const forgeLevel = (prog: SagaProgress | undefined, itemId: string): number => Math.max(0, Math.min(FORGE_MAX, prog?.forge?.[itemId] ?? 0));
+
+/**
+ * What a piece of gear adds at a forge level (its own stats, plus per level: a weapon +0.06 power; an offhand +0.02
+ * armor if it has armor and +0.03 power if it has power; an amulet +8 health, and +0.02 power if it has power).
+ * Pure: the forge window shows the before and after with it.
+ */
+export function forgeStats(itemId: string, level: number): GearStats {
+  const d = sagaItem(itemId);
+  const base = d?.stats ?? {};
+  const st: GearStats = { power: base.power ?? 0, hp: base.hp ?? 0, armor: base.armor ?? 0 };
+  const n = Math.max(0, Math.min(FORGE_MAX, Math.floor(level)));
+  if (!d || !n) return st;
+  if (d.kind === 'weapon') st.power += 0.06 * n;
+  else if (d.kind === 'offhand') {
+    if (base.armor) st.armor += 0.02 * n;
+    if (base.power) st.power += 0.03 * n;
+  } else if (d.kind === 'amulet') {
+    st.hp += 8 * n;
+    if (base.power) st.power += 0.02 * n;
+  }
+  return st;
 }
 
 /** A fighter's full health: the class's, the gear's on top, and a little more for every level. */
@@ -1854,6 +1923,20 @@ export interface SagaProgress {
   /** Hero experience, and the level it gives (Hjältenivå 1–20, see XP_LEVELS). Anyone can have it, class or not. */
   xp?: number;
   level?: number;
+  /** Upptäcktsboken: the landmarks found (ids), and the ones seen on a map (`<area>:<id>`, see seenKey). */
+  discovered?: string[];
+  seen?: string[];
+  /** Smedjan: each piece's forge level (item id -> 1..FORGE_MAX). */
+  forge?: Record<string, number>;
+  /** The game day each boss's (or mid-boss's) full chest was last taken (species -> day); later the same day: the replay chest. */
+  chestDay?: Record<string, number>;
+}
+
+/** The family's best time through a dungeon: from the first one in to the boss's fall, who was there, and when. */
+export interface SagaBest {
+  ms: number;
+  names: string[];
+  day: number;
 }
 
 export const newSagaProgress = (): SagaProgress => ({ chapter: 0, heard: false, cleared: [], titles: [], quests: {}, done: [], found: [] });
@@ -1972,6 +2055,8 @@ export interface SagaInstance {
   wipeAt?: number;
   /** When the last player left (the dungeon starts over after SAGA_RESET_MS). */
   emptySince?: number;
+  /** When the first fighter came into this (fresh) instance: the clock of the family's best time. */
+  startedAt?: number;
   seq: number;
 }
 

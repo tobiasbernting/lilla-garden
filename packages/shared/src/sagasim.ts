@@ -8,7 +8,7 @@ import { ANIMALS, ITEMS, NPCS, VILLAGE_KEY, objectDef } from './data.ts';
 import { MAX_HEARTS } from './dungeon.ts';
 import { isIndoorKey } from './hall.ts';
 import { addItem, countItem, removeItem } from './inventory.ts';
-import { addObject, inBounds, inInterior, objectAt, removeObject, tileIndex } from './map.ts';
+import { addObject, inBounds, inInterior, mapH, mapW, objectAt, removeObject, tileIndex } from './map.ts';
 import type { Change } from './protocol.ts';
 import { randInt } from './rng.ts';
 import {
@@ -66,6 +66,14 @@ import {
   type SagaBossDef,
   type BossAbility,
   type LevelReward,
+  type SagaBest,
+  ESSENS_CHANCE,
+  FORGE_COSTS,
+  FORGE_CRAFTS,
+  FORGE_MAX,
+  SMITH_ID,
+  forgeLevel,
+  type ForgeCost,
 } from './saga.ts';
 import { sagaCheckpoint, spawnSagaMob } from './sagamap.ts';
 import {
@@ -93,7 +101,7 @@ import {
   type SimCtx,
 } from './sim.ts';
 import { isUnderground } from './caves.ts';
-import { T, fmt, itemName } from './sv.ts';
+import { T, fmt, fmtDuration, itemName } from './sv.ts';
 import { MAP_H, MAP_W, TILE, type AnimalState, type PlayerState, type WorldObject, type WorldState } from './types.ts';
 
 const px = (t: number): number => t * TILE + TILE / 2;
@@ -211,12 +219,21 @@ export function leaveSaga(world: WorldState, p: PlayerState): Change[] {
   return out;
 }
 
-/** The tile in front of a dungeon's arch out in the world. */
-function archFront(farm: WorldState, id: DungeonId): { x: number; y: number } {
+/** The tile in front of a dungeon's arch out in the world (wherever it ended up). */
+export function archFront(farm: WorldState, id: DungeonId): { x: number; y: number } {
   const plan = DUNGEONS[id].portal;
   const a = getArea(farm, plan.area);
   const arch = a ? Object.values(a.objects).find((o) => o.kind === 'saga_portal' && (o.variant ?? 0) === DUNGEON_IDS.indexOf(id)) : undefined;
-  return portalFront(arch ?? plan);
+  return portalFront(arch ?? (a ? archPlan(a, plan) : plan));
+}
+
+/**
+ * Where an arch is planned in its map. The plans are drawn for 64×64 maps; on a bigger map the spot moves out
+ * with the map, so the arch keeps its place relative to the middle.
+ */
+function archPlan(a: WorldState, plan: { x: number; y: number }): { x: number; y: number } {
+  if (mapW(a) === MAP_W && mapH(a) === MAP_H) return plan;
+  return { x: Math.round((plan.x * mapW(a)) / MAP_W), y: Math.round((plan.y * mapH(a)) / MAP_H) };
 }
 
 /** A player is no longer in the fight: monsters stop chasing them. */
@@ -294,7 +311,7 @@ export function ensureSagaPlaces(keyStr: string, a: WorldState): boolean {
   DUNGEON_IDS.forEach((id, variant) => {
     const plan = DUNGEONS[id].portal;
     if (plan.area !== keyStr || Object.values(a.objects).some((o) => o.kind === 'saga_portal' && (o.variant ?? 0) === variant)) return;
-    const spot = archSpot(a, plan);
+    const spot = archSpot(a, archPlan(a, plan));
     if (!spot) return;
     const front = portalFront(spot);
     // clear the footprint, a tile around it and the path in front: only trees and stones go from the top row
@@ -302,13 +319,13 @@ export function ensureSagaPlaces(keyStr: string, a: WorldState): boolean {
       for (let dx = -1; dx <= SAGA_PORTAL.w; dx++) {
         const tx = spot.x + dx;
         const ty = spot.y + dy;
-        if (!inBounds(tx, ty)) continue;
+        if (!inBounds(a, tx, ty)) continue;
         const o = objectAt(a, tx, ty);
         if (o && (dy >= 0 || ARCH_CLEAR.has(o.kind))) removeObject(a, o.id);
-        const t = a.terrain[tileIndex(tx, ty)];
+        const t = a.terrain[tileIndex(a, tx, ty)];
         const solid = t === 'water' || t === 'lava' || t === 'bog' || t === 'basalt' || t === 'rock' || t === 'sandstone' || t === 'choco';
-        if (dy >= 0 && dy < SAGA_PORTAL.h && solid) a.terrain[tileIndex(tx, ty)] = 'stone';
-        if (dy >= SAGA_PORTAL.h && (solid || (tx === front.x && dy === SAGA_PORTAL.h))) a.terrain[tileIndex(tx, ty)] = 'path_stone';
+        if (dy >= 0 && dy < SAGA_PORTAL.h && solid) a.terrain[tileIndex(a, tx, ty)] = 'stone';
+        if (dy >= SAGA_PORTAL.h && (solid || (tx === front.x && dy === SAGA_PORTAL.h))) a.terrain[tileIndex(a, tx, ty)] = 'path_stone';
       }
     if (addObject(a, 'saga_portal', spot.x, spot.y, { variant })) changed = true;
   });
@@ -327,7 +344,7 @@ function archSpot(a: WorldState, plan: { x: number; y: number }): { x: number; y
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const s = { x: plan.x + dx, y: plan.y + dy };
-        if (s.x < 2 || s.y < 2 || s.x + SAGA_PORTAL.w > MAP_W - 2 || s.y + SAGA_PORTAL.h + 2 > MAP_H - 2) continue;
+        if (s.x < 2 || s.y < 2 || s.x + SAGA_PORTAL.w > mapW(a) - 2 || s.y + SAGA_PORTAL.h + 2 > mapH(a) - 2) continue;
         let ok = true;
         for (let ty = s.y - 1; ty <= s.y + SAGA_PORTAL.h + 1 && ok; ty++)
           for (let tx = s.x - 1; tx <= s.x + SAGA_PORTAL.w && ok; tx++) {
@@ -534,12 +551,41 @@ function openChest(h: Here, p: PlayerState, chest: WorldObject, ctx: SimCtx): Ch
     const guard = Object.values(h.inst.mobs).some((m) => m.kind === 'mob' && h.area.animals[m.id] && dist(h.area.animals[m.id]!, { x: px(chest.x), y: px(chest.y) }) < 7);
     if (guard) return [toast(p.id, T.sagaChestGuarded)];
   }
-  const table = kind === 0 ? SAGA_TREASURE[h.inst.id] : SAGA_LOOT[kind === 1 ? d.mini : d.boss];
+  const species = kind === 1 ? d.mini : d.boss;
+  const table = kind === 0 ? SAGA_TREASURE[h.inst.id] : SAGA_LOOT[species];
   if (!table) return [];
   looted.push(p.id);
   const out: Change[] = [];
-  rollLoot(h, p, table, kind === 0 ? T.sagaTreasureName : SAGA_BOSSES[kind === 1 ? d.mini : d.boss]!.name, ctx, out);
+  if (kind === 0) {
+    rollLoot(h, p, table, T.sagaTreasureName, ctx, out);
+    return out;
+  }
+  // a boss's chest gives its full loot once a game day per player; after that the same day, the replay chest
+  const prog = progressOf(p);
+  const days = (prog.chestDay ??= {});
+  const today = h.farm.day;
+  if (days[species] === today) replayChest(h, p, table, SAGA_BOSSES[species]!.name, kind === 2, ctx, out);
+  else {
+    days[species] = today;
+    rollLoot(h, p, table, SAGA_BOSSES[species]!.name, ctx, out, kind === 2 ? [{ item: DRAKFJALL, count: 1 }] : []);
+  }
   return out;
+}
+
+/** Smedjan's dungeon materials. */
+const ESSENS = 'monsteressens';
+const DRAKFJALL = 'drakfjall';
+
+/** The smaller chest of a boss already looted today: a third of the coins, 2–4 Monsteressens (and a Drakfjäll from a final boss), no stars. */
+function replayChest(h: Here, p: PlayerState, table: SagaLoot, from: string, final: boolean, ctx: SimCtx, out: Change[]): void {
+  const coins = Math.floor(randInt(ctx.rnd, table.coins[0], table.coins[1]) / 3);
+  const items = [{ item: ESSENS, count: randInt(ctx.rnd, 2, 4) }];
+  if (final) items.push({ item: DRAKFJALL, count: 1 });
+  p.coins += coins;
+  bump(p, 'earned', coins, out);
+  for (const it of items) giveItems(h.area, p, it.item, it.count, out);
+  bump(p, 'loot', 1, out);
+  out.push({ t: 'loot', to: p.id, from, items, coins, stars: 0, replay: true }, playerChange(p));
 }
 
 /** Things that come once each (clothes, weapons, offhands, amulets, pets, mounts), so the same one does not come twice while there are new ones. */
@@ -548,7 +594,7 @@ const unique = (id: string): boolean => {
   return k === 'weapon' || k === 'offhand' || k === 'amulet' || k === 'hat' || k === 'shirt' || k === 'pet' || k === 'mount';
 };
 
-function rollLoot(h: Here, p: PlayerState, table: SagaLoot, from: string, ctx: SimCtx, out: Change[]): void {
+function rollLoot(h: Here, p: PlayerState, table: SagaLoot, from: string, ctx: SimCtx, out: Change[], extra: { item: string; count: number }[] = []): void {
   const prog = progressOf(p);
   const items: { item: string; count: number }[] = [];
   const coins = randInt(ctx.rnd, table.coins[0], table.coins[1]);
@@ -566,6 +612,7 @@ function rollLoot(h: Here, p: PlayerState, table: SagaLoot, from: string, ctx: S
   }
   items.push({ item: pick.item, count: pick.item === 'healing_potion' ? 2 : 1 });
   for (const rare of table.rare ?? []) if (!prog.found.includes(rare.item) && ctx.rnd() < rare.chance) items.push({ item: rare.item, count: 1 });
+  items.push(...extra);
   p.coins += coins;
   p.stars += table.stars;
   bump(p, 'earned', coins, out);
@@ -911,7 +958,7 @@ function hurtMob(h: Here, m: SagaMob, by: string, amount: number, threatMul: num
   if (f) f.fightAt = ctx.now;
   out.push(hit(h, m.id, n, crit ? 'crit' : 'dmg'));
   if (m.hp <= 0) {
-    mobDown(h, m, ctx, out);
+    mobDown(h, m, by, ctx, out);
     return;
   }
   // a boss gets a new phase at each health mark: a shout and helpers
@@ -942,8 +989,11 @@ function hurtMob(h: Here, m: SagaMob, by: string, amount: number, threatMul: num
   }
 }
 
-/** A monster is beaten: quest credit for everyone there, the gate opens after the mid-boss, a chest after a boss. */
-function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
+/**
+ * A monster is beaten (by `by`): quest credit for everyone there, now and then a Monsteressens for whoever beat a
+ * dungeon monster, the gate opens after the mid-boss, a chest after a boss, and the family's best time after the last.
+ */
+function mobDown(h: Here, m: SagaMob, by: string, ctx: SimCtx, out: Change[]): void {
   const a = h.area.animals[m.id];
   delete h.inst.mobs[m.id];
   delete h.area.animals[m.id];
@@ -960,6 +1010,13 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
     questCredit(h.area, p, m.species, ctx, out, true);
     bump(p, 'sagaMobs', 1, out);
     giveXp(p, xp, out, h);
+  }
+  if (m.kind === 'mob') {
+    const killer = h.farm.players[by];
+    if (killer && ctx.rnd() < ESSENS_CHANCE) {
+      giveItems(h.area, killer, ESSENS, 1, out);
+      out.push(toast(killer.id, T.sagaEssens));
+    }
   }
   if (m.pack >= 0) {
     const pack = h.inst.packs[m.pack]!;
@@ -1016,8 +1073,22 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
       out.push({ t: 'banner', to: p.id, area: h.key, text: fmt(T.sagaBossDown, { boss: boss.name }), sub: fmt(T.sagaCleared, { dungeon: d.name }), kind: 'cleared' });
     }
     out.push(toast(null, fmt(T.sagaFamilyWin, { names: names.join(' och '), boss: boss.name })));
+    bestTime(h, names, ctx.now, out);
   }
   for (const p of party) out.push(playerChange(p));
+}
+
+/** The family's best time through a dungeon: from the first one in to the boss's fall. A new best is told to everyone. */
+function bestTime(h: Here, names: string[], now: number, out: Change[]): void {
+  if (h.inst.startedAt === undefined || !names.length) return;
+  const ms = Math.max(0, now - h.inst.startedAt);
+  const all = (h.farm.sagaBest ??= {});
+  const old = all[h.inst.id];
+  if (old && old.ms <= ms) return;
+  const best: SagaBest = { ms, names: [...names], day: h.farm.day };
+  all[h.inst.id] = best;
+  out.push({ t: 'sagaBest', dungeon: h.inst.id, best });
+  if (old) out.push(toast(null, fmt(T.sagaBestBeaten, { names: names.join(' och '), dungeon: DUNGEONS[h.inst.id].name, time: fmtDuration(ms) })));
 }
 
 /** The achievement stat for clearing each dungeon. */
@@ -1115,7 +1186,7 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
     // follow the distance field: the neighbouring tile closest to the target
     const cx = tileOf(a.x);
     const cy = tileOf(a.y);
-    let best = field[tileIndex(cx, cy)] ?? -1;
+    let best = field[tileIndex(h.area, cx, cy)] ?? -1;
     for (const [dx, dy] of [
       [1, 0],
       [-1, 0],
@@ -1124,8 +1195,8 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
     ]) {
       const nx = cx + dx!;
       const ny = cy + dy!;
-      if (!inBounds(nx, ny)) continue;
-      const v = field[tileIndex(nx, ny)]!;
+      if (!inBounds(h.area, nx, ny)) continue;
+      const v = field[tileIndex(h.area, nx, ny)]!;
       if (v >= 0 && (best < 0 || v < best)) {
         best = v;
         tx = px(nx);
@@ -1141,7 +1212,7 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
     return;
   }
   const s = Math.min(step, d);
-  const r = resolveMove((x, y) => isSolidForAnimal(h.area, x, y), a.x, a.y, a.x + (dx / d) * s, a.y + (dy / d) * s, MOB_HALF, MOB_HALF);
+  const r = resolveMove((x, y) => isSolidForAnimal(h.area, x, y), a.x, a.y, a.x + (dx / d) * s, a.y + (dy / d) * s, MOB_HALF, MOB_HALF, h.area);
   a.moving = r.x !== a.x || r.y !== a.y;
   a.x = r.x;
   a.y = r.y;
@@ -1151,14 +1222,16 @@ function stepTowards(h: Here, m: SagaMob, a: { x: number; y: number; facing: str
 
 /** How many steps every floor tile is from a player (to find the way around walls). */
 function distanceField(h: Here, from: { x: number; y: number }): Int16Array {
-  const field = new Int16Array(MAP_W * MAP_H).fill(-1);
-  const start = tileIndex(tileOf(from.x), tileOf(from.y));
+  const W = mapW(h.area);
+  const H = mapH(h.area);
+  const field = new Int16Array(W * H).fill(-1);
+  const start = tileIndex(h.area, tileOf(from.x), tileOf(from.y));
   field[start] = 0;
   const q = [start];
   for (let i = 0; i < q.length; i++) {
     const k = q[i]!;
-    const x = k % MAP_W;
-    const y = Math.floor(k / MAP_W);
+    const x = k % W;
+    const y = Math.floor(k / W);
     for (const [dx, dy] of [
       [1, 0],
       [-1, 0],
@@ -1167,8 +1240,8 @@ function distanceField(h: Here, from: { x: number; y: number }): Int16Array {
     ]) {
       const nx = x + dx!;
       const ny = y + dy!;
-      if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) continue;
-      const j = tileIndex(nx, ny);
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = tileIndex(h.area, nx, ny);
       if (field[j] !== -1 || isSolidForAnimal(h.area, nx, ny)) continue;
       field[j] = field[k]! + 1;
       if (field[j]! < 60) q.push(j);
@@ -1516,6 +1589,8 @@ export function tickSaga(area: WorldState, key: string, dtMs: number, ctx: SimCt
     }
   }
   for (const p of Object.values(area.players)) if (p.online && p.area === key && !inst.fighters[p.id] && p.saga?.cls) makeFighter(h, p);
+  // the clock of the family's best time starts when the first fighter is in a fresh dungeon
+  if (inst.startedAt === undefined && Object.keys(inst.fighters).length) inst.startedAt = now;
   const fighting = inFight(h);
   const sec = dtMs / 1000;
   for (const p of party) {
@@ -2012,7 +2087,7 @@ export function castFieldSpell(world: WorldState, playerId: string, spellId: str
       for (let s = 0.5; s <= sp.range; s += 0.5) {
         const nx = p.x + dir[0]! * s * TILE;
         const ny = p.y + dir[1]! * s * TILE;
-        if (!inBounds(tileOf(nx), tileOf(ny)) || isSolidForPlayer(area, tileOf(nx), tileOf(ny))) break;
+        if (!inBounds(area, tileOf(nx), tileOf(ny)) || isSolidForPlayer(area, tileOf(nx), tileOf(ny))) break;
         to = { x: nx, y: ny };
       }
       out.push(spellFx(key, p.id, sp.id, p, to));
@@ -2104,3 +2179,95 @@ export function roamingDown(area: WorldState, by: PlayerState, mob: AnimalState,
 }
 /** The loot table of a world boss's chest (LOOT in data.ts). */
 const WORLD_BOSS_LOOT = 'worldboss';
+
+// ---------------------------------------------------------------------------
+// Round 4: Smedjan at Smed-Stina in Köpingen
+// ---------------------------------------------------------------------------
+
+/** Does the player wear this piece or have it in the bag? */
+const ownsGear = (p: PlayerState, itemId: string): boolean => Object.values(p.saga?.gear ?? {}).includes(itemId) || countItem(p.inventory, itemId) > 0;
+
+/** What is missing to pay for a forge step or a craft (item names with how many more), empty when it can be paid. */
+function missingFor(p: PlayerState, cost: { items: [string, number][]; anyOf?: ForgeCost['anyOf'] }): string[] {
+  const lack: string[] = [];
+  for (const [item, n] of cost.items) {
+    const have = countItem(p.inventory, item);
+    if (have < n) lack.push(`${n - have} ${itemName(item)}`);
+  }
+  if (cost.anyOf) {
+    const have = cost.anyOf.items.reduce((sum, item) => sum + countItem(p.inventory, item), 0);
+    if (have < cost.anyOf.count) lack.push(fmt(T.forgeNeedAnyOf, { n: cost.anyOf.count - have, items: cost.anyOf.items.map(itemName).join(', ') }));
+  }
+  return lack;
+}
+
+/** Takes a cost's materials and coins (it must be payable): the "any of" part from the first kinds in its list the player has. */
+function pay(p: PlayerState, cost: { items: [string, number][]; anyOf?: ForgeCost['anyOf']; kr: number }): void {
+  for (const [item, n] of cost.items) removeItem(p.inventory, item, n);
+  if (cost.anyOf) {
+    let left = cost.anyOf.count;
+    for (const item of cost.anyOf.items) {
+      const take = Math.min(left, countItem(p.inventory, item));
+      if (take > 0) removeItem(p.inventory, item, take);
+      left -= take;
+      if (!left) break;
+    }
+  }
+  p.coins -= cost.kr;
+}
+
+/** Why a player cannot pay (a toast), or null when they can. */
+function cannotPay(p: PlayerState, cost: { items: [string, number][]; anyOf?: ForgeCost['anyOf']; kr: number }): Change | null {
+  const lack = missingFor(p, cost);
+  if (lack.length) return toast(p.id, fmt(T.forgeNeedItems, { items: lack.join(', ') }));
+  if (p.coins < cost.kr) return toast(p.id, fmt(T.forgeNeedKr, { kr: cost.kr, have: p.coins }));
+  return null;
+}
+
+/**
+ * Smed-Stina forges a weapon, an offhand or an amulet one level up (to at most +FORGE_MAX), for the materials and coins
+ * of FORGE_COSTS. The player stands by Stina and wears the piece or has it in the bag. A toast for every refusal.
+ */
+export function forgeGear(world: WorldState, playerId: string, itemId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  if (!p) return [];
+  if (!nearNpc(farm, p, SMITH_ID)) return [toast(p.id, T.forgeNotNear)];
+  if (!gearSlotOf(itemId)) return [toast(p.id, fmt(T.forgeNotGear, { item: itemName(itemId) }))];
+  if (!ownsGear(p, itemId)) return [toast(p.id, fmt(T.forgeNotOwned, { item: itemName(itemId) }))];
+  const prog = progressOf(p);
+  const level = forgeLevel(prog, itemId);
+  if (level >= FORGE_MAX) return [toast(p.id, fmt(T.forgeAtMax, { item: itemName(itemId) }))];
+  const cost = FORGE_COSTS[level + 1]!;
+  const no = cannotPay(p, cost);
+  if (no) return [no];
+  pay(p, cost);
+  (prog.forge ??= {})[itemId] = level + 1;
+  const out: Change[] = [];
+  bump(p, 'forged', 1, out);
+  out.push(toast(p.id, fmt(T.forged, { item: itemName(itemId), n: level + 1 })), fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p));
+  return out;
+}
+
+/** Smed-Stina makes a piece of the starter set (FORGE_CRAFTS): once for each hero, for materials and coins. */
+export function craftGear(world: WorldState, playerId: string, itemId: string): Change[] {
+  const farm = farmOf(world);
+  const p = farm.players[playerId];
+  const recipe = FORGE_CRAFTS[itemId];
+  if (!p || !recipe) return [];
+  if (!nearNpc(farm, p, SMITH_ID)) return [toast(p.id, T.forgeNotNear)];
+  const prog = progressOf(p);
+  prog.found ??= [];
+  if (prog.found.includes(itemId) || ownsGear(p, itemId)) return [toast(p.id, fmt(T.forgeCraftedAlready, { item: itemName(itemId) }))];
+  const no = cannotPay(p, recipe);
+  if (no) return [no];
+  pay(p, recipe);
+  if (addItem(p.inventory, itemId, 1) > 0) {
+    // no room: everything back
+    for (const [item, n] of recipe.items) addItem(p.inventory, item, n);
+    p.coins += recipe.kr;
+    return [toast(p.id, T.sagaEquipBagFull)];
+  }
+  prog.found.push(itemId);
+  return [toast(p.id, fmt(T.forgeCrafted, { item: itemName(itemId) })), fxOn(p.area, tileOf(p.x), tileOf(p.y), 'sparkle'), playerChange(p)];
+}

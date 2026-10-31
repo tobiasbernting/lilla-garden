@@ -8,7 +8,7 @@
 
 import { cleanChat } from './chat.ts';
 import { ITEMS, objectDef } from './data.ts';
-import { SPAWN, addObject, inBounds, inInterior, objectAt, removeObject, tileIndex } from './map.ts';
+import { SPAWN, addObject, inBounds, inInterior, mapH, mapW, objectAt, removeObject, tileIndex } from './map.ts';
 import type { Change, ClientMsg } from './protocol.ts';
 import {
   CAR_BODY_DEFS,
@@ -503,7 +503,7 @@ export function ensureGarage(farm: WorldState): boolean {
     return d.flat === true && d.solid === false && d.regrowDays !== undefined;
   };
   const freeTile = (x: number, y: number): boolean =>
-    inBounds(x, y) && !inInterior(x, y) && !inEdgeGap(x, y) && x >= 2 && y >= 2 && BUILD_GROUND.has(farm.terrain[tileIndex(x, y)]!) && !farm.crops[key(x, y)] && clearable(x, y);
+    inBounds(farm, x, y) && !inInterior(x, y) && !inEdgeGap(farm, x, y) && x >= 2 && y >= 2 && BUILD_GROUND.has(farm.terrain[tileIndex(farm, x, y)]!) && !farm.crops[key(x, y)] && clearable(x, y);
   const fits = (x: number, y: number): boolean => {
     // the footprint, a free tile in front of the door and a free ring around it so nothing gets wedged in
     for (let dy = -1; dy <= def.h; dy++)
@@ -513,7 +513,7 @@ export function ensureGarage(farm: WorldState): boolean {
         const inside = dx >= 0 && dx < def.w && dy >= 0 && dy < def.h;
         if (inside || (dy === def.h && dx === Math.floor((def.w - 1) / 2))) {
           if (!freeTile(tx, ty)) return false;
-        } else if (!inBounds(tx, ty) || WALL_TERRAIN.has(farm.terrain[tileIndex(tx, ty)]!)) return false;
+        } else if (!inBounds(farm, tx, ty) || WALL_TERRAIN.has(farm.terrain[tileIndex(farm, tx, ty)]!)) return false;
       }
     return true;
   };
@@ -526,7 +526,7 @@ export function ensureGarage(farm: WorldState): boolean {
     }
   candidates.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
   for (const c of candidates) {
-    const front = tileIndex(c.x + Math.floor((def.w - 1) / 2), c.y + def.h);
+    const front = tileIndex(farm, c.x + Math.floor((def.w - 1) / 2), c.y + def.h);
     if (!before[front] || !fits(c.x, c.y)) continue;
     // with the footprint blocked, everything reachable before must stay reachable
     const inFoot = (x: number, y: number): boolean => x >= c.x && x < c.x + def.w && y >= c.y && y < c.y + def.h;
@@ -547,19 +547,20 @@ export function ensureGarage(farm: WorldState): boolean {
 
 /** Like reachableFrom, with some tiles counted as blocked (a building being tried out). */
 function reachWithout(world: WorldState, start: { x: number; y: number }, blocked: (x: number, y: number) => boolean): Uint8Array {
-  const seen = new Uint8Array(MAP_W * MAP_H);
+  const W = mapW(world);
+  const seen = new Uint8Array(W * mapH(world));
   if (!walkableTile(world, start.x, start.y) || blocked(start.x, start.y)) return seen;
-  const queue = [tileIndex(start.x, start.y)];
+  const queue = [tileIndex(world, start.x, start.y)];
   seen[queue[0]!] = 1;
   while (queue.length) {
     const i = queue.pop()!;
-    const x = i % MAP_W;
-    const y = (i - x) / MAP_W;
+    const x = i % W;
+    const y = (i - x) / W;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = x + dx;
       const ny = y + dy;
-      if (!inBounds(nx, ny)) continue;
-      const n = tileIndex(nx, ny);
+      if (!inBounds(world, nx, ny)) continue;
+      const n = tileIndex(world, nx, ny);
       if (seen[n] || blocked(nx, ny) || !walkableTile(world, nx, ny)) continue;
       seen[n] = 1;
       queue.push(n);
