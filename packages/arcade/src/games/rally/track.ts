@@ -403,10 +403,39 @@ export class Track {
       const mu = LINE_MU[this.surf[i]!]! * grip;
       this.vmax[i] = Math.min(TOP, Math.sqrt((mu * G) / Math.max(1e-4, lks[i]!)));
     }
+    // jumps: a car flying off a crest can neither brake nor steer until it lands (and settles), so the
+    // bend after the landing has to be planned for at the take-off. Fly a ball off each crest at the
+    // speed the line would carry there and mark the samples it passes over.
+    const air = new Uint8Array(n);
+    for (let k = 0; k < m; k++) {
+      const c = CTRL[k]!;
+      if (!c.bump || c.bump <= 0) continue;
+      const bw = c.bw ?? 25;
+      // the top of the crest (the road's own rise and fall shifts it a little off the control point)
+      let ic = this.index(this.ctrlS[k]!);
+      for (let j = -Math.ceil(bw / this.ds); j <= Math.ceil(bw / this.ds); j++) {
+        const i = (this.index(this.ctrlS[k]!) + j + n) % n;
+        if (this.py[i]! > this.py[ic]!) ic = i;
+      }
+      const v = this.vmax[ic]!;
+      const y0 = this.py[ic]!;
+      const slope = (this.py[(ic + 1) % n]! - this.py[(ic - 1 + n) % n]!) / (2 * this.ds);
+      let j = 1;
+      for (; j < n / 4; j++) {
+        const d = j * this.ds;
+        const h = y0 + slope * d - (G * d * d) / (2 * v * v);
+        // a few centimetres of daylight is still the wheels on the road
+        if (h < this.py[(ic + j) % n]! + 0.05) break;
+      }
+      if (j < 3) continue;
+      // and a moment after touching down before the tyres bite again
+      const settle = Math.ceil((v * 0.5) / this.ds);
+      for (let q = 0; q < j + settle; q++) air[(ic + q) % n] = 1;
+    }
     for (let pass = 0; pass < 3; pass++)
       for (let i = n - 1; i >= 0; i--) {
         const nx = (i + 1) % n;
-        const dec = LINE_DEC[this.surf[i]!]! * grip;
+        const dec = air[i] ? 0 : LINE_DEC[this.surf[i]!]! * grip;
         this.vmax[i] = Math.min(this.vmax[i]!, Math.sqrt(this.vmax[nx]! ** 2 + 2 * dec * this.ds));
       }
     // a lap at those speeds, accelerating as a real car would
