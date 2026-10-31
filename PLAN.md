@@ -19,7 +19,7 @@ From the owner (2026-10-31):
 | --- | --- |
 | Co-op | **Co-op first, invite only, over the internet.** Adults and kids, 2–4 per run, roles matter. Solo still works through party scaling and a hired companion. |
 | The farm | **Both things are true.** The farm is the home base between runs, and farming and animals stay a fun activity in their own right for the kids. What the farm produces feeds the next run. |
-| Art | **Buy at a reasonable price, otherwise AI.** AI only where the style stays consistent. Shopping list and AI stack in section 5. |
+| Art | **At most 50 EUR for all art, one time.** Free CC0 packs as the base, one Synty pack, AI only for a few images and only where the style stays consistent. Section 5. |
 | Hardware | **Integrated graphics is the baseline**, with a higher quality tier for dedicated GPUs. The owner's own machine is a MacBook Air M4. |
 | Server | **Reuse the running Hetzner + Cloudflare setup** from the homelab repo (`cloud/`): Cloudflare tunnel, join codes, parent page over Tailscale, nightly dumps. |
 
@@ -105,44 +105,48 @@ keyboard and mouse from day one.
   Spelhallen and Rallyvärlden in `city.ts` and `data.ts`. Saved data: drop the garage and prize columns with a
   migration that keeps everything else.
 
-## 5. Art: what to buy, what to generate (prices as of 2026-10-31)
+## 5. Art: 50 EUR all in (prices as of 2026-10-31)
 
-Rule: one style sheet first (palette, line weight, proportions), then every bought pack is recoloured to it and every
-generated image is made from it. Mixing sources without a style sheet is what makes a game look like a flea market.
+Hard cap from the owner: **50 EUR for all art, one time**, bought packs and AI together. So the base is free CC0
+packs, one Synty purchase of at most 30 USD, and AI used for a handful of images rather than as a subscription.
 
-**Buy (about 250 USD total, one time):**
+Rule: one style sheet first (palette, line weight, proportions), then every pack is recoloured to it and every
+generated image is made from it. The free packs below share a flat, low-poly look that already sits close together.
 
-| Need | Pack | Price | Notes |
+**Free, CC0, glTF, no credit needed (the base of the world):**
+
+| Need | Pack | Notes |
+| --- | --- | --- |
+| Trees, plants, rocks, water | Kenney Nature Kit (330 models); Quaternius Stylized Nature MegaKit (40 trees, 35 plants, 27 rocks) | Enough for forest, swamp edge, mountains and beach with recolours. Ice is a recolour plus the free Binbun Ice VFX. |
+| Farm, village, buildings | Kenney Castle Kit; KayKit Medieval Builder | Walls, roofs, fences, props. Norse flavour comes from the style sheet, carved rune decals and the bought Vikings pack. |
+| Crypt, mine, temple, cave | KayKit Dungeon Remastered (name your price, 0 is allowed); Kenney Graveyard Kit; Kenney Mini Dungeon | Godot listed as supported by KayKit; also on the Godot Asset Library. |
+| Draugar, skeletons | KayKit Skeletons, free tier | glTF, animated. |
+| Weather | inkharbor Weather FX Lite (free); Godot's own particles and sky | The 10 USD Storm & Wind bundle is a nice-to-have, not needed. |
+
+**Spend (about 40 USD, about 37 EUR):**
+
+| Need | Pack | Price | When |
 | --- | --- | --- | --- |
-| Norse village, farm buildings, props | Synty POLYGON Vikings | 30 USD | FBX, 221 assets, 5 characters. Imports into Godot (official support is Unity/Unreal; FBX via Godot's importer or Blender to glTF). |
-| Trees, rocks, grass, water | Synty POLYGON Nature | 50 USD | Biome packs (Swamp, Alpine with ice, Enchanted Forest) are 55 USD each if the base pack runs out. |
-| Crypt, mine, temple, cave | Synty POLYGON Dungeon | 150 USD | 770 assets, ships a Godot 4.5 project and Godot particle effects. |
-| Monsters as sprites | Minifantasy Creatures | 3 USD | 28 creatures, 4 directions, matches the spooky-cute look. |
-| Skeleton pack (draugar) | KayKit Skeletons Extra | 8 USD | glTF, Godot listed as supported. |
-| Weather effects | Storm & Wind 3D bundle | 10 USD | Godot 4 shaders. |
+| Norse village, longhouse, props, five Viking characters | Synty POLYGON Vikings | 30 USD | At the start of M3, not before. First check whether a Synty Humble Bundle is live: Synty runs a 30 USD bundle of 9–12 packs about four times a year, and a fantasy one would give Dungeon and Nature as well for the same money. If a bundle is live, buy that instead of Vikings alone. |
+| Monsters as sprites | Minifantasy Creatures | 3 USD | M3. 28 creatures, 4 directions, spooky-cute. |
+| Weather shaders | Storm & Wind 3D bundle | 10 USD | Only in M7, and only if the free weather is not enough. |
 
-Free and CC0 to fill gaps: Kenney Nature Kit, Castle Kit, Graveyard Kit and Mini Dungeon; Quaternius Stylized Nature
-MegaKit; KayKit Dungeon Remastered and Medieval Builder. All glTF, all usable without credit.
+**AI (about 5–10 EUR total, no subscription):**
 
-Cheaper route: Synty sells a 30 USD Humble Bundle of 9–12 packs about four times a year (the last fantasy one closed in
-mid-October 2026). Buy Vikings now, start with the free packs, and take the Dungeon and Nature packs from the next
-bundle if one lands before milestone 4. Budget version without Synty Dungeon: about 100 USD.
-
-**AI (about 25–40 USD a month, only while making art):**
-
-- Concept art, character sheets, portraits for the dialogue window: **Google Nano Banana Pro** through the API, about
-  0.13 USD an image. The strongest multi-image reference consistency in 2026 comparisons; outputs are yours.
-- Shipped sprites and icons in the house style: **FLUX.2 with one style LoRA** trained on the style sheet on fal.ai,
-  about 2 USD to train and 0.03 USD an image. A LoRA is the only real style lock; prompts alone drift. Backgrounds are
-  removed with rembg.
-- Props as 3D meshes when a pack lacks something (a runestone, a specific Norse item): **Meshy** free tier with credit,
-  or Pro at 20 USD a month, exports glTF. Generated meshes need a cleanup pass to match the low-poly look; use them for
-  props, never for characters or bosses.
-- Midjourney (30 USD a month) is the fallback if the FLUX workflow is too fiddly; its style references work but there is
-  no LoRA and no transparent output.
+- Concept art and the style sheet itself: **Google Nano Banana Pro** through the API at about 0.13 USD an image;
+  50 images is about 7 USD. Outputs are yours.
+- Sprites and icons in the house style: **FLUX.2 klein** (Apache-2.0, free to run locally or about 0.014 USD an
+  image on fal.ai) with one style LoRA trained from the style sheet, about 2 USD once. A LoRA is the only real style
+  lock; prompts alone drift. Backgrounds removed with rembg, which is free.
+- Props as meshes: **Meshy** free tier (100 credits, CC-BY so a line in `LICENSES.md`). Cleanup pass to match the
+  low-poly look; props only, never characters or bosses.
+- No Midjourney and no Meshy Pro: both are monthly and would blow the cap in two months.
 
 Characters, bosses and the family's own animals are not bought and not generated: they are the existing pixel art,
 rendered to sprite sheets and given extra directions by hand where HD-2D needs them.
+
+Total: 30 USD Synty plus 3 USD sprites plus about 10 USD of AI is about 40 EUR, with 10 EUR left for the weather
+bundle or a second KayKit tier if M7 needs it.
 
 ## 6. Milestones
 
@@ -185,7 +189,7 @@ toggle in the presets. 6–10 evenings.
 **M8. Polish and cutover.** Settings, accessibility (bigger text, colour-blind telegraph colours), the download page,
 a release tag, the homelab role updated for the new build, `DESIGN.md` rewritten. 4–6 evenings.
 
-Total: roughly 60–90 evenings. M1 and M2 can start now and do not depend on art.
+Total: roughly 60–90 evenings. M1 and M2 can start now and do not depend on art; the first money is spent at the start of M3.
 
 ## 7. Open points and risks
 
@@ -210,4 +214,4 @@ Total: roughly 60–90 evenings. M1 and M2 can start now and do not depend on ar
 
 Start M1 (remove the minigames) on this branch. It is pure deletion with tests, needs no art, no Godot and no design
 decision, and it makes every later diff smaller. M2 follows directly after and is also independent of the art
-purchases, so the first money is spent only when M3 begins.
+purchases, so nothing is bought before M3.
