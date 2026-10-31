@@ -22,9 +22,9 @@ export interface Ground {
 export const Ground_ = { Asphalt: 0, Gravel: 1, Kerb: 2, Grass: 3, Snow: 4, Sand: 5, Ice: 6, DeepSnow: 7, SoftSand: 8 } as const;
 
 /** Grip and rolling resistance per ground (index = Ground_ value). Rolling resistance grows with speed off the road. */
-const MU = [1.2, 0.95, 1.08, 0.74, 0.55, 0.8, 0.4, 0.5, 0.7];
-const ROLL = [0.15, 0.55, 0.3, 2.6, 0.5, 1.4, 0.1, 1.9, 2.2];
-const ROLL_V = [0, 0, 0, 0.05, 0, 0.012, 0, 0.04, 0.05];
+const MU = [1.2, 0.95, 1.08, 0.74, 0.72, 0.8, 0.52, 0.62, 0.7];
+const ROLL = [0.15, 0.55, 0.3, 2.6, 0.35, 1.4, 0.1, 1.2, 2.2];
+const ROLL_V = [0, 0, 0, 0.05, 0, 0.012, 0, 0.025, 0.05];
 const ROAD_GROUND = [Ground_.Asphalt, Ground_.Gravel, Ground_.Snow, Ground_.Sand, Ground_.Ice];
 
 const MASS = 1200;
@@ -274,7 +274,15 @@ export class Car {
       const tcCap = Math.sqrt(rearMax * rearMax - latUse * latUse) * this.traction;
       this.wheelspin = drive > tcCap ? clamp((drive - tcCap) / (rearMax * 0.4), 0, 1) : 0;
       if (Math.abs(fxR) > tcCap && !c.handbrake) fxR = Math.sign(fxR) * tcCap;
-      fxF = clamp(fxF, -frontMax * 0.95, frontMax * 0.95);
+      // ABS: while the wheel is turned, the front brakes leave the tyres grip to steer with
+      const steerUse = 0.8 * Math.abs(c.steer);
+      const frontBrake = frontMax * 0.95 * Math.sqrt(1 - steerUse * steerUse);
+      fxF = clamp(fxF, -frontBrake, frontBrake);
+      // and the rear ones don't lock the back end into a spin
+      if (!c.handbrake && brake > 0 && Math.sign(fxR) === -dirSign) {
+        const rearBrake = rearMax * (1 - 0.7 * Math.abs(c.steer));
+        fxR = clamp(fxR, -rearBrake, rearBrake);
+      }
       fxR = clamp(fxR, -rearMax, rearMax);
 
       // lateral: slip angles (front in the wheel's own frame, so reversing works too)

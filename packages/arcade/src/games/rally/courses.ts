@@ -245,21 +245,21 @@ const FOREST_CTRL: Ctrl[] = [
   P(165, -95, 9.5, { hw: 7 }),
   P(140, -135, 8, { hw: 6.5 }),
   // the tight esses through the pines
-  P(95, -150, 8, { hw: 6 }),
-  P(62, -125, 8.5, { hw: 6 }),
-  P(25, -150, 8, { hw: 6 }),
-  P(-15, -125, 7.5, { hw: 6 }),
-  P(-60, -140, 7, { hw: 6.5 }),
+  P(95, -148, 8, { hw: 6.5 }),
+  P(58, -136, 8.5, { hw: 6.5 }),
+  P(20, -148, 8, { hw: 6.5 }),
+  P(-20, -136, 7.5, { hw: 6.5 }),
+  P(-60, -142, 7, { hw: 6.5 }),
   P(-110, -125, 6.5, { hw: 6.5, bump: -1.2, bw: 25 }),
   // the hairpin round the old charcoal stack
   P(-150, -95, 6, { hw: 7, runR: 6, fenceR: FenceX.Logs }),
   P(-165, -60, 6, { hw: 7.5, runR: 6, fenceR: FenceX.Logs }),
   P(-150, -30, 6.2, { hw: 7.5, runR: 6, fenceR: FenceX.Logs }),
-  P(-120, -35, 6.5, { hw: 7 }),
-  P(-95, -10, 6, { hw: 6.5 }),
-  P(-110, 30, 5, { hw: 6.5, bump: 1.4, bw: 20 }),
-  P(-150, 60, 4.5, { hw: 7 }),
-  P(-145, 100, 4.2, { hw: 7.5 }),
+  P(-130, -12, 6.5, { hw: 7 }),
+  P(-116, 12, 6, { hw: 7 }),
+  P(-124, 38, 5, { hw: 7, bump: 1.4, bw: 20 }),
+  P(-144, 64, 4.5, { hw: 7 }),
+  P(-136, 106, 4.2, { hw: 7.5 }),
   P(-105, 120, 4, { hw: 8, surface: 'asphalt' }),
   P(-55, 120, 4, { hw: 8, surface: 'asphalt', runL: 6, runR: 6, fenceL: FenceX.Logs, fenceR: FenceX.Logs }),
 ];
@@ -331,8 +331,8 @@ const ICE_CTRL: Ctrl[] = [
   P(-185, -60, 4.5, { hw: 9, runR: 6, fenceR: FenceX.Snow }),
   P(-190, -5, 4.2, { hw: 9, runR: 6, fenceR: FenceX.Snow }),
   P(-165, 35, 3.5, { hw: 9 }),
-  P(-130, 62, 3, { hw: 9 }),
-  P(-140, 100, 2.5, { hw: 9, runL: 6, fenceL: FenceX.Snow }),
+  P(-146, 66, 3, { hw: 9 }),
+  P(-140, 102, 2.5, { hw: 9, runL: 6, fenceL: FenceX.Snow }),
   P(-110, 136, 2.2, { hw: 9 }),
   P(-60, 142, 2, { hw: 9, runL: 7, runR: 7 }),
 ];
@@ -400,7 +400,7 @@ const BEACH_CTRL: Ctrl[] = [
   P(136, -106, 5, { hw: 8, runR: 5, fenceR: FenceX.Rope }),
   P(112, -110, 4.6, { hw: 8.5, runR: 5, fenceR: FenceX.Rope }),
   P(98, -90, 4.2, { hw: 8 }),
-  P(74, -80, 4, { hw: 8 }),
+  P(72, -88, 4, { hw: 8 }),
   P(48, -100, 3.2, { hw: 8 }),
   P(30, -140, 2.2, { hw: 7.5 }),
   // the boardwalk along the water's edge
@@ -409,9 +409,9 @@ const BEACH_CTRL: Ctrl[] = [
   P(-120, -158, 1.8, { hw: 7.5, surface: 'asphalt', fenceL: FenceX.Rope, fenceR: FenceX.Rope, runL: 3, runR: 3 }),
   // back up through the dunes: esses
   P(-162, -130, 3, { hw: 8 }),
-  P(-180, -94, 4.5, { hw: 8, bump: 1.8, bw: 18 }),
-  P(-160, -66, 4.2, { hw: 8 }),
-  P(-170, -38, 4, { hw: 8, runL: 6, fenceL: FenceX.Rope }),
+  P(-175, -95, 4.5, { hw: 8, bump: 1.8, bw: 18 }),
+  P(-168, -66, 4.2, { hw: 8 }),
+  P(-164, -38, 4, { hw: 8, runL: 6, fenceL: FenceX.Rope }),
   P(-140, -12, 3.6, { hw: 8, runL: 6, fenceL: FenceX.Rope }),
   P(-100, 0, 3.0, { hw: 8.5, surface: 'asphalt' }),
   P(-50, 0, 2.7, { hw: 8.5, surface: 'asphalt' }),
@@ -542,12 +542,139 @@ const CITY_COURSE: CourseDef = {
   }),
 };
 
+// ---------------------------------------------------------------------------
+// Ängen: fast flowing gravel past rapeseed and wheat, over two crests, on a bright summer day
+// ---------------------------------------------------------------------------
+
+const KM = 1.2;
+
+const MEADOW_CTRL: Ctrl[] = [
+  P(0, 130, 3, { hw: 8.5, surface: 'asphalt', runL: 6, runR: 6 }),
+  P(80, 132, 3.2, { hw: 8.5, surface: 'asphalt' }),
+  P(150, 118, 4, { hw: 8 }),
+  P(200, 80, 6, { hw: 8 }),
+  // Backkrönet: a crest at the top of the first climb
+  P(222, 25, 8.5, { hw: 8, bump: 1.6, bw: 24 }),
+  P(212, -35, 10, { hw: 8 }),
+  P(175, -85, 11, { hw: 8 }),
+  P(115, -110, 10, { hw: 8 }),
+  P(50, -100, 8.5, { hw: 8, bump: 1.8, bw: 22 }),
+  // the S by the pond
+  P(5, -88, 7.5, { hw: 8 }),
+  P(-35, -110, 7, { hw: 8 }),
+  P(-80, -128, 6, { hw: 8 }),
+  P(-140, -105, 5.5, { hw: 8, runR: 6, fenceR: Fence.Bales }),
+  P(-180, -55, 5, { hw: 8, runR: 6, fenceR: Fence.Bales }),
+  P(-185, 5, 4.8, { hw: 8 }),
+  P(-160, 60, 4.2, { hw: 8 }),
+  P(-115, 105, 3.6, { hw: 8.5 }),
+  P(-60, 128, 3.2, { hw: 8.5, surface: 'asphalt', runL: 6, runR: 6 }),
+];
+
+const MEADOW_COURSE: CourseDef = {
+  id: 'meadow',
+  name: 'Ängen',
+  ctrl: grow(MEADOW_CTRL, KM),
+  surface: 'gravel',
+  fence: Fence.Pole,
+  hw: 8,
+  run: 11,
+  theme: {
+    sky: {
+      day: sky(DAY, { elev: 50, cover: 0.5, sunI: 3.0, fog: 0.0004 }),
+      sunset: GOLDEN,
+      night: NIGHT,
+    },
+    ground: FARM_THEME.ground,
+    scenery: 'farm',
+    snow: false,
+    lit: false,
+    alwaysNight: false,
+    verge: '#8f7f58',
+    vergeGrass: '#6fa04a',
+  },
+  layout: layout({
+    fields: [
+      { x: 60 * KM, z: 25 * KM, w: 110, d: 80, rot: 0.1, kind: 'raps' },
+      { x: -75 * KM, z: 10 * KM, w: 90, d: 70, rot: -0.12, kind: 'vete' },
+    ],
+    forests: [
+      { x: 60 * KM, z: -230 * KM, rx: 320, rz: 90, birch: 0.7 },
+      { x: -320 * KM, z: 0, rx: 90, rz: 260, birch: 0.6 },
+      { x: 330 * KM, z: 40 * KM, rx: 80, rz: 200, birch: 0.5 },
+    ],
+    farBirch: 0.55,
+    lake: { cx: 0, cz: -45 * KM, rx: 40, rz: 22, rot: 0.1 },
+    shoreTrees: true,
+    natural: land(3, 2.6, [[200 * KM, -30 * KM, 7, 110, 120], [60 * KM, -100 * KM, 5, 90, 60]], 30, 70),
+  }),
+};
+
+// ---------------------------------------------------------------------------
+// Fjället: a snowy mountain pass, a long climb to a jump at the top, a hairpin and the run down
+// ---------------------------------------------------------------------------
+
+const KN = 1.2;
+
+const MOUNTAIN_CTRL: Ctrl[] = [
+  P(0, 140, 2, { hw: 9, runL: 7, runR: 7 }),
+  P(80, 140, 2.5, { hw: 9 }),
+  P(150, 120, 4, { hw: 9 }),
+  P(190, 75, 7, { hw: 9 }),
+  P(200, 15, 11, { hw: 8.5 }),
+  P(175, -40, 15, { hw: 8.5, runR: 6, fenceR: FenceX.Snow }),
+  P(130, -70, 18, { hw: 8.5 }),
+  P(70, -80, 21, { hw: 8.5 }),
+  // Toppen: the jump over the top of the pass
+  P(10, -72, 22, { hw: 9, bump: 2.4, bw: 22, runL: 8, runR: 8 }),
+  P(-50, -90, 19, { hw: 9 }),
+  P(-110, -115, 15, { hw: 9 }),
+  // Hårnålen under the peak
+  P(-165, -100, 12, { hw: 9.5, runR: 6, fenceR: FenceX.Snow }),
+  P(-185, -60, 10, { hw: 9.5, runR: 6, fenceR: FenceX.Snow }),
+  P(-150, -25, 8.5, { hw: 9 }),
+  P(-115, 10, 7, { hw: 9 }),
+  P(-115, 60, 4.8, { hw: 9 }),
+  P(-100, 110, 3.2, { hw: 9 }),
+  P(-55, 140, 2.2, { hw: 9, runL: 7, runR: 7 }),
+];
+
+const MOUNTAIN_COURSE: CourseDef = {
+  id: 'mountain',
+  name: 'Fjället',
+  ctrl: grow(MOUNTAIN_CTRL, KN),
+  surface: 'snow',
+  fence: FenceX.Snow,
+  hw: 9,
+  run: 10,
+  theme: {
+    ...ICE_COURSE.theme,
+    sky: {
+      day: sky(DAY, { elev: 30, zenith: '#3f78d0', horizon: '#dce8f6', haze: '#f2f4f8', cloud: '#f4f7fb', cover: 0.45, sunI: 2.6, hemiSky: '#d6e2fa', hemiGround: '#c0c8d8', hemiI: 1.5, fog: 0.0007, exposure: 0.95 }),
+      sunset: ICE_COURSE.theme.sky.sunset,
+      night: ICE_COURSE.theme.sky.night,
+    },
+  },
+  layout: layout({
+    forests: [
+      { x: 0, z: 60 * KN, rx: 150, rz: 60, birch: 0 },
+      { x: 320 * KN, z: 40 * KN, rx: 100, rz: 220, birch: 0.05 },
+      { x: -320 * KN, z: 40 * KN, rx: 100, rz: 220, birch: 0.05 },
+    ],
+    farForest: 0.5,
+    farBirch: 0,
+    natural: land(3, 2.5, [[20 * KN, -110 * KN, 20, 170, 80], [-200 * KN, -150 * KN, 14, 120, 90]], 80, 180),
+  }),
+};
+
 export const COURSES: Record<RallyCourse, CourseDef> = {
   farm: FARM_COURSE,
   forest: FOREST_COURSE,
   ice: ICE_COURSE,
   beach: BEACH_COURSE,
   city: CITY_COURSE,
+  meadow: MEADOW_COURSE,
+  mountain: MOUNTAIN_COURSE,
 };
 
 export type { SurfaceName };

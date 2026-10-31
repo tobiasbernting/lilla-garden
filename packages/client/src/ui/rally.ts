@@ -225,6 +225,8 @@ const COURSE: Record<RallyCourse, { name: string }> = {
   ice: { name: 'Isbanan' },
   beach: { name: 'Strandbanan' },
   city: { name: 'Stadsbanan' },
+  meadow: { name: 'Ängsbanan' },
+  mountain: { name: 'Fjällbanan' },
 };
 const SURFACE: Record<string, string> = { asphalt: 'Asfalt', gravel: 'Grus', snow: 'Snö och is', sand: 'Sand' };
 const DIFF: Record<string, string> = { easy: '🐢 Lätt', normal: '🐇 Lagom', hard: '🐆 Svår' };
