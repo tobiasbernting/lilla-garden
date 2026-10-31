@@ -1,7 +1,13 @@
 # Plan: Lilla Gården becomes a native Norse roguelite
 
-Written 2026-10-31 from the handoff (`HANDOFF.md` on branch `claude/quirky-pasteur-12etxm`) and the owner's answers
-to its five open questions. This is the plan of record; `DESIGN.md` stays the record of the game as it is today.
+Written 2026-10-31 from the handoff (`HANDOFF.md`) and the owner's answers to its five open questions. This is the
+plan of record for this repository. `DESIGN.md` is the record of Lilla Gården as it was when this repository was
+seeded from it.
+
+**This repository.** `varldstradet` was seeded on 2026-10-31 from `tobiasbernting/lilla-garden` main (full history,
+merge of PR 45) because the kids keep playing the browser game there. The two repositories diverge from here: the
+browser game and its deploy stay untouched in lilla-garden; everything in this plan happens here. Fixes to shared
+rules are ported by hand in either direction when worth it.
 
 ## 1. Decisions
 
@@ -212,6 +218,6 @@ Total: roughly 60–90 evenings. M1 and M2 can start now and do not depend on ar
 
 ## 8. Next step
 
-Start M1 (remove the minigames) on this branch. It is pure deletion with tests, needs no art, no Godot and no design
+Start M1 (remove the minigames) in this repository. It is pure deletion with tests, needs no art, no Godot and no design
 decision, and it makes every later diff smaller. M2 follows directly after and is also independent of the art
 purchases, so nothing is bought before M3.
