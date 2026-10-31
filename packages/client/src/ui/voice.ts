@@ -69,7 +69,11 @@ export class VoiceUi {
     bus.on('voice', (m) => this.onMsg(m));
     bus.on('welcome', () => this.onReconnect());
     bus.on('connection', (c) => {
-      if (c === 'closed') this.closePeers();
+      if (c !== 'closed') return;
+      this.closePeers();
+      // the server starts over (its first state comes with the next connection), so should the ringing
+      this.state = null;
+      this.render();
     });
   }
 
@@ -137,8 +141,9 @@ export class VoiceUi {
   }
 
   private onReconnect(): void {
+    // not `this.state = null` here: the server may already have sent this connection's state (an older server sent it
+    // before the welcome), and without one the 📞 window closed as soon as it opened
     this.closePeers();
-    this.state = null; // the server starts over, so should the ringing and the picked-up flag
     this.iceReady = false;
     if (this.roomMode.mode !== 'auto') net.send({ t: 'voice', a: 'room', ...this.roomMode });
     if (this.wanted) net.send({ t: 'voice', a: 'join' });
@@ -211,11 +216,40 @@ export class VoiceUi {
           bus.emit('toast', T.voiceListenOnly);
           return null;
         }
-        bus.emit('toast', name === 'NotReadableError' || name === 'AbortError' ? T.voiceMicBusy : name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError' ? T.voiceNoMic : `${T.voiceNoMic} (${name})`);
+        console.warn('voice: no microphone', name, e instanceof Error ? e.message : '');
         this.hangUp();
+        if (name === 'NotReadableError' || name === 'AbortError') bus.emit('toast', T.voiceMicBusy);
+        else if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') void this.whyRefused(e).then((msg) => bus.emit('toast', msg));
+        else bus.emit('toast', `${T.voiceNoMic} (${name})`);
         return null;
       });
     return this.micPending;
+  }
+
+  /**
+   * Which of the three doors was shut: the page's own Permissions-Policy (an old server), the operating system (a Mac
+   * where the browser was never let at the microphone: Chrome says "Permission denied by system"), or the browser's
+   * setting for this site (blocked once, it stays blocked without a new question).
+   */
+  private async whyRefused(e: unknown): Promise<string> {
+    const doc = document as unknown as { permissionsPolicy?: { allowsFeature(f: string): boolean }; featurePolicy?: { allowsFeature(f: string): boolean } };
+    const policy = doc.permissionsPolicy ?? doc.featurePolicy;
+    try {
+      if (policy && !policy.allowsFeature('microphone')) return T.voiceNoMicPolicy;
+    } catch {
+      /* not this browser */
+    }
+    const msg = e instanceof Error ? e.message : '';
+    if (/system/i.test(msg)) return T.voiceNoMicSystem;
+    try {
+      const p = await navigator.permissions?.query({ name: 'microphone' as PermissionName });
+      if (p?.state === 'denied') return T.voiceNoMicBlocked;
+      // allowed for the site, refused all the same: the operating system (Safari and Firefox don't say so)
+      if (p?.state === 'granted') return T.voiceNoMicSystem;
+    } catch {
+      /* Firefox before 2024 and some Safaris can't be asked about the microphone */
+    }
+    return T.voiceNoMic;
   }
 
   private stopMic(): void {
@@ -420,7 +454,12 @@ export class VoiceUi {
     this.btn.textContent = speaking && this.muted ? '📵' : '📞';
     if (!this.isOpen()) return;
     clear(this.body);
-    if (!st || !st.allowed) {
+    if (!st) {
+      // between a connection and the server's first word about voice: say so rather than shut the window on the tap
+      this.body.append(h('p', { class: 'voice-hint' }, T.voiceConnecting));
+      return;
+    }
+    if (!st.allowed) {
       this.close();
       return;
     }

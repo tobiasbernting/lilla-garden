@@ -32,6 +32,10 @@ describe('Game', () => {
     const welcome = la.msgs.find((m) => m.t === 'welcome');
     expect(welcome && welcome.t === 'welcome' && welcome.you).toBe(a.id);
     expect(game.onlinePlayers()).toEqual(['Astrid']);
+    // the voice state comes after the welcome (the client starts its 📞 window over on a welcome)
+    const iWelcome = la.msgs.findIndex((m) => m.t === 'welcome');
+    const iVoice = la.msgs.findIndex((m) => m.t === 'voice' && m.ev === 'state');
+    expect(iVoice).toBeGreaterThan(iWelcome);
 
     const lb = fakeLink();
     const hb = game.connect(lb);

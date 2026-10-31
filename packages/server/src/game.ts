@@ -373,13 +373,14 @@ export class Game {
         }
       }
       client.playerId = msg.playerId;
-      this.voice.online(msg.playerId, client.ip ?? 'local', !!client.guest);
       // back in time: still in the race room or out driving
       clearTimeout(this.raceDrops.get(msg.playerId));
       this.raceDrops.delete(msg.playerId);
       const biomes: Record<string, string> = {};
       for (const [k, a] of Object.entries(this.world.areas ?? {})) if (k.startsWith('a:') && a.biome) biomes[k] = a.biome;
       client.link.send({ t: 'welcome', you: p.id, world: { ...this.world, areas: undefined, dungeon: undefined }, season: this.season(), now: Date.now(), tick: this.tickCount, biomes });
+      // voice after the welcome: the client starts its voice window over on a welcome, so a state sent before it was lost
+      this.voice.online(msg.playerId, client.ip ?? 'local', !!client.guest);
       if (p.area === 'dungeon') {
         // back in the cave after a dropped connection (the cave may have been cleared meanwhile)
         const d = this.world.dungeon;
