@@ -140,7 +140,9 @@ device's own output), and the kids would hear each other live and again through 
   tablet is hard for a seven-year-old); echo cancellation, noise suppression and gain control on. The speaker device
   measures its own level and reports `talking` on/off, shown as 🔊 by that player's name for everyone (the game cannot
   know which of the three people around a speakerphone is talking). A new speaker in another room rings: a toast and
-  the chat sound. Microphones need a secure context, so LAN dev over plain HTTP has no voice.
+  the chat sound. Microphones need a secure context, so LAN dev is tried with `VITE_HTTPS=1` (self-signed). A device
+  without a microphone (a desktop, often) stays in the call as a listener (a `recvonly` line); a refused microphone
+  says why (not allowed, in use, plain http) and hangs up once.
 
 ## Rallyvärlden (2026-10-30)
 The rally minigame grows into a part of the game: a garage on the farm, cars to buy, tune and style, races with the family on five courses, damage mended for kr, and a 3D free roam. What other racers do well and fits a family game went in: steering assist for the little ones, drift boost (a held slide charges a mini-turbo), instant respawn, a gentle rubber band, medals and a ghost (Trackmania), boost pads and mud as the only pickups (Mario Kart), underglow and liveries (Need for Speed), an animal in the driver's seat, damage as spectacle with a small bill (Burnout), one currency, never a zero payout, no fail states.

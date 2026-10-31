@@ -195,7 +195,9 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
       res.setHeader('referrer-policy', 'same-origin');
       res.setHeader('x-frame-options', 'DENY');
       res.setHeader('cross-origin-opener-policy', 'same-origin');
-      res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+      // the microphone is for röstprat on our own pages only; a `microphone=()` here made browsers refuse it however
+      // the player had answered the permission prompt
+      res.setHeader('permissions-policy', 'camera=(), microphone=(self), geolocation=(), payment=(), usb=()');
       res.setHeader('x-robots-tag', 'noindex, nofollow');
       res.setHeader('content-security-policy', pageCsp(nonce));
       if (secure(req, surface)) res.setHeader('strict-transport-security', 'max-age=31536000');
