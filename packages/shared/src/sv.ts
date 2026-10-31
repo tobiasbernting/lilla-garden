@@ -263,6 +263,7 @@ export const OBJECT_NAMES: Record<string, string> = {
   train_station: 'Tågstation',
   bath_exit: 'Ut ur badhuset',
   arcade_hall: 'Spelhallen',
+  rally_garage: 'Rallygaraget',
   arcade_machine: 'Spelautomat',
   prize_counter: 'Prisdisken',
   score_board: 'Topplistan',
@@ -524,6 +525,37 @@ export const T = {
   bathhouseName: 'Badhuset',
   enteredHall: 'Välkommen till Spelhallen! Spela, vinn biljetter och byt dem mot priser i prisdisken.',
   hallName: 'Spelhallen',
+  // Rallyvärlden
+  garageName: 'Rallygaraget',
+  rallyName: 'Rallyvärlden',
+  rallyStarterName: 'Rallypyret',
+  rallyCarBought: '🚗 Du köpte {name}! Den står i garaget nu.',
+  rallyGarageFull: 'Garaget är fullt! Sälj en bil först.',
+  rallyCarSelected: '🏁 Nu kör du {name}.',
+  rallyPartBought: '🔧 {part} nivå {level} på {name}!',
+  rallyPartMax: 'Den delen är redan på högsta nivån!',
+  rallyStyled: '🎨 {name} har fått ny stil!',
+  rallyStyledPaid: '🎨 {name} har fått ny stil! Det kostade {kr} kr.',
+  rallyTooPoor: 'Det kostar {kr} kr, och så mycket har du inte. Kör ett race och vinn mer!',
+  rallyRepaired: '🧰 {name} är lagad och som ny! Det kostade {kr} kr.',
+  rallyNotDamaged: 'Bilen är redan hel och fin!',
+  rallyRenamed: '✏️ Bilen heter nu {name}.',
+  rallySold: '💰 Du sålde {name} för {kr} kr.',
+  rallyLastCar: 'Du kan inte sälja din sista bil!',
+  rallyPlace: '🏁 Plats {place} av {n}! Du vann {kr} kr.',
+  rallyDnf: '🏁 Du kom inte i mål den här gången, men du får {kr} kr för att du var med!',
+  rallyMedalGold: '🥇 Guldmedalj!',
+  rallyMedalSilver: '🥈 Silvermedalj!',
+  rallyMedalBronze: '🥉 Bronsmedalj!',
+  rallyNewBest: '⏱️ Nytt rekord: {time}!',
+  rallyWinner: '🏆 {name} vann racet på {course}!',
+  rallyRoomGone: 'Det racet finns inte längre.',
+  rallyRoomFull: 'Det racet är fullt eller har redan börjat.',
+  rallyRoamCoins: '🪙 Du hittade {n} mynt och fick {kr} kr!',
+  rallyRoamCapped: '🪙 Du har hittat alla dagens mynt. Nya mynt kommer i morgon!',
+  rallyRoamNone: 'Välkommen tillbaka från turen!',
+  rallyTooSoon: '⏱️ Det loppet räknades inte – det gick för kort tid sedan förra loppet.',
+  rallyAiName: 'Datorbil',
   // Sagan om Världsträdet
   sagaNeedClass: 'Du behöver välja en väg först. Prata med Völvan Sigrun på torget i staden!',
   sagaLocked: '{name} är förseglad. Besegra först {boss} i {prev}.',
@@ -771,6 +803,46 @@ export const ACHIEVEMENT_TEXT: Record<string, { title: string; text: string }> =
   saga_surt: { title: 'Världsträdets väktare', text: 'Besegra Surt' },
   saga_mobs_50: { title: 'Monsterjägare', text: 'Besegra 50 monster i fängelsehålorna' },
   saga_quests_6: { title: 'Byns hjälte', text: 'Gör alla sex uppdrag åt byborna' },
+  rally_1: { title: 'Första racet', text: 'Kör ett race i Rallyvärlden' },
+  rally_wins_10: { title: 'Rallymästare', text: 'Vinn 10 race' },
+  rally_style: { title: 'Snyggaste bilen', text: 'Ge en bil ny stil i garaget' },
+  rally_coins_100: { title: 'Myntjägare', text: 'Hitta 100 mynt när du kör fritt' },
+};
+
+// ---- Rallyvärlden ----
+
+export const CAR_BODY_NAMES: Record<string, string> = {
+  hatch: 'Rallybil',
+  buggy: 'Sandbuggy',
+  pickup: 'Pickup',
+  coupe: 'Sportbil',
+  monster: 'Monstertruck',
+};
+
+/** What a newly bought car is called until it is renamed. */
+export const CAR_DEFAULT_NAMES: Record<string, string> = {
+  hatch: 'Rallypyret',
+  buggy: 'Sandloppan',
+  pickup: 'Höskrindan',
+  coupe: 'Blixten',
+  monster: 'Bamse',
+};
+
+export const CAR_PART_NAMES: Record<string, string> = {
+  engine: 'Motor',
+  tyres: 'Däck',
+  suspension: 'Fjädring',
+  brakes: 'Bromsar',
+  turbo: 'Turbo',
+  armour: 'Pansar',
+};
+
+export const RALLY_COURSE_NAMES: Record<string, string> = {
+  farm: 'Gården',
+  forest: 'Skogen',
+  ice: 'Isbanan',
+  beach: 'Stranden',
+  city: 'Staden',
 };
 
 /** Daily quest text templates. {n} and {item} are filled in. */

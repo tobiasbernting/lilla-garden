@@ -13,6 +13,7 @@ import { INDOOR_EXIT, familyBest, familyGames, generateHall, hallDoorTile, hallK
 import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { DUNGEONS, VOLVA_ID, dungeonOfKey, isSagaKey, sagaItem } from './saga.ts';
 import { generateSaga } from './sagamap.ts';
+import { garageOf, healCars } from './rallysim.ts';
 import { enterSaga, ensureSagaPlaces, idleSaga, isSagaMob, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, removeItem, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
@@ -923,6 +924,14 @@ function interactObject(world: WorldState, p: PlayerState, obj: WorldObject, hel
     case 'scores':
       out.push({ t: 'open', to: p.id, ui: def.interact });
       return;
+    case 'garage': {
+      // Rallyvärlden: the starter car is waiting in the garage the first time
+      const fresh = !p.garage;
+      garageOf(p);
+      if (fresh) out.push(playerChange(p));
+      out.push({ t: 'open', to: p.id, ui: 'rally', id: obj.id });
+      return;
+    }
     case 'sleep':
       goToSleep(world, p, out);
       return;
@@ -3178,6 +3187,7 @@ export function newDay(world: WorldState, ctx: SimCtx, out: Change[] = []): Chan
   }
   regrowAreas(world, ctx, out);
   hatchEggs(world, ctx, out);
+  healCars(world, out);
 
   // Ordered animals arrive
   for (const p of Object.values(world.players)) {

@@ -1,6 +1,8 @@
 // Golden hour: a gradient sky with a low warm sun and soft clouds, the sun and sky lights, haze, and a
-// reflection map of the sky for the car paint and the water.
+// reflection map of the sky for the car paint and the water. The other courses and times of day pass
+// their own SkyPreset (courses.ts): dusk, a bright beach day, an overcast winter, night with stars.
 import * as THREE from 'three';
+import type { SkyPreset } from './courses.ts';
 
 const SKY_VERT = /* glsl */ `
 varying vec3 vDir;
@@ -18,6 +20,8 @@ uniform vec3 uHaze;
 uniform vec3 uSunCol;
 uniform vec3 uCloud;
 uniform float uTime;
+uniform float uCover;
+uniform float uNight;
 varying vec3 vDir;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -42,12 +46,22 @@ void main() {
   if (h > 0.0) {
     vec2 uv = d.xz / (h + 0.18) * 1.2 + vec2(uTime * 0.004, uTime * 0.0015);
     float c = fbm(uv * 1.7);
-    float cov = smoothstep(0.5, 0.78, c) * smoothstep(0.0, 0.2, h);
+    float cov = smoothstep(uCover, uCover + 0.28, c) * smoothstep(0.0, 0.2, h);
     vec3 cc = mix(uCloud, uSunCol * 1.15, pow(sd, 2.5) * 0.7);
     col = mix(col, cc, cov * 0.7);
   }
   col += uSunCol * pow(sd, 350.0) * 1.6;
-  col += vec3(1.0, 0.86, 0.62) * smoothstep(0.99925, 0.99965, sd) * 4.0;
+  col += vec3(1.0, 0.86, 0.62) * smoothstep(0.99925, 0.99965, sd) * 4.0 * (1.0 - uNight);
+  if (uNight > 0.0) {
+    // the moon and the stars (hidden by the clouds)
+    col += vec3(0.9, 0.93, 1.0) * smoothstep(0.9993, 0.99955, sd) * 2.2 * uNight;
+    vec2 g = vec2(atan(d.x, d.z) * 160.0, d.y * 260.0);
+    vec2 cell = floor(g);
+    float st = hash(cell);
+    float tw = 0.6 + 0.4 * sin(uTime * 2.0 + st * 40.0);
+    float star = step(0.985, st) * smoothstep(0.5, 0.1, length(fract(g) - 0.5)) * smoothstep(0.02, 0.25, h);
+    col += vec3(0.85, 0.9, 1.0) * star * tw * uNight * 1.4;
+  }
   col = mix(col, uHorizon, smoothstep(0.0, -0.1, h));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -66,19 +80,57 @@ export interface Sky {
   dispose(): void;
 }
 
-export function buildSky(renderer: THREE.WebGLRenderer, quality: 'high' | 'low'): Sky {
-  const elev = THREE.MathUtils.degToRad(13);
-  const az = Math.atan2(-0.62, 0.78);
+/** Rain: a grey, overcast version of a sky. */
+export function rainy(p: SkyPreset): SkyPreset {
+  const grey = (c: string, k: number): string => '#' + new THREE.Color(c).lerp(new THREE.Color('#7d8590'), k).getHexString();
+  return {
+    ...p,
+    zenith: grey(p.zenith, 0.6),
+    horizon: grey(p.horizon, 0.55),
+    haze: grey(p.haze, 0.7),
+    sunCol: grey(p.sunCol, 0.6),
+    cloud: grey(p.cloud, 0.5),
+    cover: 0.26,
+    sunI: p.sunI * 0.45,
+    hemiI: p.hemiI * 0.9,
+    fog: p.fog * 1.9,
+  };
+}
+
+const GOLDEN_DEFAULT: SkyPreset = {
+  elev: 13,
+  az: Math.atan2(-0.62, 0.78),
+  zenith: '#4382d6',
+  horizon: '#f4c99c',
+  haze: '#ffa05a',
+  sunCol: '#ffc274',
+  cloud: '#f3dccb',
+  cover: 0.5,
+  sunLight: '#ffd09a',
+  sunI: 2.7,
+  hemiSky: '#b3cdf5',
+  hemiGround: '#7a6b48',
+  hemiI: 1.35,
+  fog: 0.00062,
+  night: 0,
+  exposure: 1.02,
+};
+
+export function buildSky(renderer: THREE.WebGLRenderer, quality: 'high' | 'low', p: SkyPreset = GOLDEN_DEFAULT): Sky {
+  const elev = THREE.MathUtils.degToRad(p.elev);
+  const az = p.az;
   const sunDir = new THREE.Vector3(Math.sin(az) * Math.cos(elev), Math.sin(elev), Math.cos(az) * Math.cos(elev)).normalize();
-  const horizon = new THREE.Color('#f4c99c');
+  const horizon = new THREE.Color(p.horizon);
   const uniforms = {
     uSun: { value: sunDir.clone() },
-    uZenith: { value: new THREE.Color('#4382d6') },
+    uZenith: { value: new THREE.Color(p.zenith) },
     uHorizon: { value: horizon.clone() },
-    uHaze: { value: new THREE.Color('#ffa05a') },
-    uSunCol: { value: new THREE.Color('#ffc274') },
-    uCloud: { value: new THREE.Color('#f3dccb') },
+    uHaze: { value: new THREE.Color(p.haze) },
+    uSunCol: { value: new THREE.Color(p.sunCol) },
+    uCloud: { value: new THREE.Color(p.cloud) },
     uTime: { value: 0 },
+    uCover: { value: p.cover },
+    uNight: { value: p.night },
   };
   const geo = new THREE.SphereGeometry(100, 40, 20);
   const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false });
@@ -95,8 +147,8 @@ export function buildSky(renderer: THREE.WebGLRenderer, quality: 'high' | 'low')
   const envRT = pmrem.fromScene(envScene, 0.02, 0.1, 1000);
   pmrem.dispose();
 
-  const sun = new THREE.DirectionalLight('#ffd09a', 2.7);
-  const hemi = new THREE.HemisphereLight('#b3cdf5', '#7a6b48', 1.35);
+  const sun = new THREE.DirectionalLight(p.sunLight, p.sunI);
+  const hemi = new THREE.HemisphereLight(p.hemiSky, p.hemiGround, p.hemiI);
   const S = 75;
   if (quality === 'high') {
     sun.castShadow = true;
@@ -112,7 +164,7 @@ export function buildSky(renderer: THREE.WebGLRenderer, quality: 'high' | 'low')
     sun.shadow.normalBias = 0.05;
     sun.shadow.radius = 2.5;
   }
-  const fog = new THREE.FogExp2(horizon.getHex(), 0.00062);
+  const fog = new THREE.FogExp2(horizon.getHex(), p.fog);
   // a basis across the sun's rays, to snap the shadow box to whole texels (no shimmering)
   const right = new THREE.Vector3().crossVectors(sunDir, new THREE.Vector3(0, 1, 0)).normalize();
   const up = new THREE.Vector3().crossVectors(right, sunDir).normalize();

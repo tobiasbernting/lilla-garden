@@ -32,6 +32,14 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
   neondisco) och Stjärnstorm (rymdskjutspel i glödande vektorgrafik). Familjens topplista per spel; i Spelhallen
   vinner man biljetter att byta mot gosedjur, lampor, pokaler och nya TV-spel. Fler spelkassetter finns i grottornas
   skattkistor och i ufot på månen.
+- Rallyvärlden: i garaget öster om gården köper du bilar (rallybil, buggy, pickup, sportbil, monstertruck), trimmar
+  delar (motor, däck, fjädring, bromsar, turbo, pansar) och stylar bilen med lack, mönster, klistermärken, fälgar,
+  spoiler, prylar, underglow, förare och skylt – med bilen på en snurrande piedestal i 3D. Tävla mot datorn eller med
+  familjen (skapa ett lopp med egna regler: bana, varv, bucklor på/av, datorbilar, svårighet, tid på dygnet, väder,
+  nitro, lika bilar, turboplattor) på fem banor: Gårdsbanan, Skogsbanan (grus), Isbanan, Strandbanan och Stadsbanan
+  (natt). Alla som kör i mål får kr, snabba tider ger medaljer och tidskörning har ett spöke av ditt rekord. Bucklor
+  gör bilen långsammare men aldrig obrukbar; laga dem i garaget för kr (lite läker av sig självt varje morgon).
+  Åk fritt i 3D över gårdslandskapet med andra som kör samtidigt: mynt att hitta, hopp, sladdzoner och halmbalar.
 
 ## Develop
 
@@ -125,7 +133,10 @@ There is still no text chat: players can only use emotes.
   (once the Phaser client; that view is gone, the shared parts stay here)
 - `packages/arcade` – the minigames and the overlay they run in (title card, pause, results, one controller for
   keyboard, gamepad and touch). Each game is loaded only when played. `pnpm --filter @lilla-garden/arcade lab`
-  opens a lab page that plays any game without the server (`?play=rally`, `?game=golf`, `?tv`, `&touch=1`).
+  opens a lab page that plays any game without the server (`?play=rally`, `?game=golf`, `?tv`, `&touch=1`;
+  for Rallyvärlden `&rallycourse=ice`, `&rallymode=roam|timetrial`, `&rallyrules=laps:1,ai:3,damage:1,time:night,weather:rain`,
+  `&rallybody=monster&rallyparts=3`, `&rallynet=echo` for a pretend family member). `preview.html` shows the garage's
+  car preview with any style in the address (`?body=buggy&livery=flames&extras=flag,lightbar&night=1&damage=80`).
 
 ## Controls
 
@@ -137,6 +148,10 @@ There is still no text chat: players can only use emotes.
   Select ryggsäck. I menyerna flyttar spaken/styrkorset markeringen, `A` trycker och `B` stänger. Minispelen läser
   kontrollen själva.
   Hur du kopplar ihop en Xbox-, PS5- eller Switch-kontroll med en Android-surfplatta, Mac eller PC står i hjälpen under 🕹️ Handkontroll.
+- Rallyt: `↑`/`W` gasar, `↓`/`S` bromsar och backar, `←`/`→` styr, mellanslag handbroms (sladda länge för turbo), `L` nitro,
+  `C`/Enter byter kamera, `R` tillbaka på vägen. Handkontroll: RT gas, LT broms, A handbroms, X nitro, B tillbaka på vägen.
+  Surfplatta: bilen gasar själv, `◀ ▶` styr, `▼` bromsar, 🌀 handbroms, 🔥 nitro (🎥 kamera när bilen inte har någon nitro).
+  I Åk fritt: Enter/🏠 hem till garaget.
 - `?` i hörnet öppnar hjälpen (visas automatiskt första gången på en enhet).
 
 ## Art

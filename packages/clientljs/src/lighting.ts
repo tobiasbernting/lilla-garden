@@ -253,6 +253,9 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       return { color: [0.55, 0.75, 1], radius: 3, strength: 0.7, flicker: 0.9, glow: 1.2 };
     case 'arcade_hall':
       return { color: NEON_PINK, radius: 4.5, strength: 0.85, flicker: 0.1, glow: 4, cycle: [NEON_PINK, NEON_CYAN], cycleSec: 3 };
+    // Rallyvärlden's garage: warm workshop light from the windows and the half-open door, tinted by the beacons
+    case 'rally_garage':
+      return { color: WARM, radius: 4.5, strength: 0.75, flicker: 0.05, glow: 2, cycle: [WARM, [1, 0.62, 0.2]], cycleSec: 1.6 };
     case 'arcade_machine':
       return { color: gameLight(variant ?? 0), radius: 2.2, strength: 0.6, flicker: 0.25, glow: 1, always: true };
     case 'prize_counter':

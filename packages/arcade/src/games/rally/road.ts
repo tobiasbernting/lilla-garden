@@ -1,10 +1,13 @@
-// The road itself: asphalt and gravel strips, kerbs, verges, the start line and grid, the bridge,
-// the fences along the run-off, the start gantry with its lights, and chevron boards in the bends.
+// The road itself: asphalt, gravel, snow, sand and ice strips, boardwalk planks, kerbs, verges, the
+// start line and grid, the bridge, the tunnel, the fences along the run-off, the start gantry with its
+// lights, and chevron boards in the bends.
 import * as THREE from 'three';
+import type { CourseDef } from './courses.ts';
 import { Geo, blobTex, canvasTex, mat } from './geo.ts';
 import { fencePiece, gantry, WHITE } from './models.ts';
+import { themeFencePiece, tunnelGeo } from './props.ts';
 import type { Terrain } from './terrain.ts';
-import { Fence, Surf, type Track } from './track.ts';
+import { Fence, FenceX, Surf, type Track } from './track.ts';
 import { rng } from './util.ts';
 
 function asphaltTex(): THREE.CanvasTexture {
@@ -72,6 +75,135 @@ function gravelTex(): THREE.CanvasTexture {
   );
 }
 
+/** Packed snow with two grey-blue ruts and glitter. */
+function snowTex(): THREE.CanvasTexture {
+  return canvasTex(
+    256,
+    256,
+    (g, w, h) => {
+      const r = rng(13);
+      g.fillStyle = '#e9eff6';
+      g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 5000; k++) {
+        const t = r();
+        g.fillStyle = t < 0.5 ? '#f8fbff' : t < 0.85 ? '#d6e0ec' : '#c3cfde';
+        g.fillRect(r() * w, r() * h, 1 + r() * 2, 1 + r() * 2);
+      }
+      g.globalAlpha = 0.35;
+      g.fillStyle = '#a9b8cc';
+      g.fillRect(w * 0.25, 0, w * 0.11, h);
+      g.fillRect(w * 0.63, 0, w * 0.11, h);
+      g.globalAlpha = 0.2;
+      g.strokeStyle = '#8fa2ba';
+      for (let k = 0; k < 30; k++) {
+        const x = (r() < 0.5 ? 0.28 : 0.66) * w + r() * w * 0.06;
+        const y = r() * h;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(x + (r() - 0.5) * 6, y + 20);
+        g.stroke();
+      }
+      g.globalAlpha = 1;
+    },
+    true,
+  );
+}
+
+/** Pale blue glare ice with white scratches and a crack or two. */
+function iceTex(): THREE.CanvasTexture {
+  return canvasTex(
+    256,
+    256,
+    (g, w, h) => {
+      const r = rng(17);
+      const gr = g.createLinearGradient(0, 0, w, h);
+      gr.addColorStop(0, '#bcd8ea');
+      gr.addColorStop(1, '#a6c8e0');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(255,255,255,0.55)';
+      for (let k = 0; k < 90; k++) {
+        const x = r() * w;
+        const y = r() * h;
+        g.lineWidth = 0.5 + r();
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(x + (r() - 0.5) * 30, y + (r() - 0.5) * 60);
+        g.stroke();
+      }
+      g.strokeStyle = 'rgba(70,110,150,0.4)';
+      for (let k = 0; k < 4; k++) {
+        let x = r() * w;
+        let y = r() * h;
+        g.beginPath();
+        g.moveTo(x, y);
+        for (let j = 0; j < 6; j++) {
+          x += (r() - 0.5) * 40;
+          y += (r() - 0.5) * 40;
+          g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+    },
+    true,
+  );
+}
+
+/** Soft sand with ripples and tyre tracks. */
+function sandTex(): THREE.CanvasTexture {
+  return canvasTex(
+    256,
+    256,
+    (g, w, h) => {
+      const r = rng(21);
+      g.fillStyle = '#e4cf98';
+      g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 6000; k++) {
+        const t = r();
+        g.fillStyle = t < 0.45 ? '#f0dfb0' : t < 0.85 ? '#d4bd86' : '#c4ab74';
+        g.fillRect(r() * w, r() * h, 1 + r() * 1.5, 1 + r() * 1.5);
+      }
+      g.globalAlpha = 0.18;
+      g.strokeStyle = '#b89c62';
+      g.lineWidth = 3;
+      for (let y = 0; y < h; y += 14) {
+        g.beginPath();
+        for (let x = 0; x <= w; x += 8) g.lineTo(x, y + Math.sin(x * 0.05 + y) * 3);
+        g.stroke();
+      }
+      g.globalAlpha = 0.25;
+      g.fillStyle = '#b39660';
+      g.fillRect(w * 0.26, 0, w * 0.1, h);
+      g.fillRect(w * 0.64, 0, w * 0.1, h);
+      g.globalAlpha = 1;
+    },
+    true,
+  );
+}
+
+/** Weathered boardwalk planks across the road. */
+function deckTex(): THREE.CanvasTexture {
+  return canvasTex(
+    256,
+    256,
+    (g, w, h) => {
+      const r = rng(25);
+      for (let y = 0; y < h; y += 16) {
+        const v = 150 + Math.floor(r() * 40);
+        g.fillStyle = 'rgb(' + v + ',' + Math.round(v * 0.78) + ',' + Math.round(v * 0.55) + ')';
+        g.fillRect(0, y, w, 15);
+        g.fillStyle = 'rgba(60,40,20,0.6)';
+        g.fillRect(0, y + 15, w, 1);
+        for (let k = 0; k < 20; k++) {
+          g.fillStyle = 'rgba(90,60,30,0.25)';
+          g.fillRect(r() * w, y + r() * 14, 10 + r() * 30, 1);
+        }
+      }
+    },
+    true,
+  );
+}
+
 function checkerTex(cols: number, rows: number): THREE.CanvasTexture {
   return canvasTex(cols * 16, rows * 16, (g) => {
     for (let y = 0; y < rows; y++)
@@ -92,7 +224,17 @@ export interface Road {
   dispose(): void;
 }
 
-export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low', aniso: number): Road {
+export interface RoadOpts {
+  /** Wet asphalt that mirrors the sky (rain, the city). */
+  wet?: boolean;
+  envMap?: THREE.Texture | null;
+  /** Grid boxes behind the line. */
+  grid?: number;
+  /** Free roam: only the real walls (stone walls, bridge rails) stand; the run-off fences are gone. */
+  roam?: boolean;
+}
+
+export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low', aniso: number, course?: CourseDef, opts: RoadOpts = {}): Road {
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
   const t = track;
@@ -100,7 +242,9 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
   const L = (i: number): number => ((i % n) + n) % n;
   const shadows = quality === 'high';
 
-  // ---- asphalt and gravel strips ----
+  // ---- the road strips, one per surface (the boardwalk counts as its own) ----
+  const DECK = 9;
+  const surfAt = (i: number): number => (t.deck[i] ? DECK : t.surf[i]!);
   const strip = (surf: number): THREE.BufferGeometry => {
     const pos: number[] = [];
     const uv: number[] = [];
@@ -109,16 +253,16 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
     for (let k = 0; k <= n; k++) {
       const i = L(k);
       const prev = L(k - 1);
-      const on = t.surf[i] === surf || (k > 0 && t.surf[prev] === surf);
+      const on = surfAt(i) === surf || (k > 0 && surfAt(prev) === surf);
       if (!on) {
         open = false;
         continue;
       }
       const lx = t.tz[i]!;
       const lz = -t.tx[i]!;
-      const hw = t.hw[i]! + (surf === Surf.Gravel ? 0.6 : 0);
-      const y = t.py[i]!;
-      const v = (k * t.ds) / (surf === Surf.Gravel ? 9 : 12);
+      const hw = t.hw[i]! + (surf !== Surf.Asphalt && surf !== DECK ? 0.6 : 0);
+      const y = t.py[i]! + (surf === DECK ? 0.03 : 0);
+      const v = (k * t.ds) / (surf === Surf.Asphalt ? 12 : surf === DECK ? 6 : 9);
       const o = pos.length / 3;
       pos.push(t.px[i]! + lx * hw, y, t.pz[i]! + lz * hw, t.px[i]! - lx * hw, y, t.pz[i]! - lz * hw);
       uv.push(0, v, 1, v);
@@ -132,26 +276,38 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
     g.computeVertexNormals();
     return g;
   };
-  const aTex = asphaltTex();
-  aTex.anisotropy = aniso;
-  const gTex = gravelTex();
-  gTex.anisotropy = aniso;
-  const asphalt = new THREE.Mesh(strip(Surf.Asphalt), new THREE.MeshLambertMaterial({ map: aTex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
-  const gravel = new THREE.Mesh(strip(Surf.Gravel), new THREE.MeshLambertMaterial({ map: gTex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
-  for (const m of [asphalt, gravel]) {
+  const texFor: Record<number, () => THREE.CanvasTexture> = {
+    [Surf.Asphalt]: asphaltTex,
+    [Surf.Gravel]: gravelTex,
+    [Surf.Snow]: snowTex,
+    [Surf.Sand]: sandTex,
+    [Surf.Ice]: iceTex,
+    [DECK]: deckTex,
+  };
+  const used = new Set<number>();
+  for (let i = 0; i < n; i++) used.add(surfAt(i));
+  for (const surf of [Surf.Asphalt, Surf.Gravel, Surf.Snow, Surf.Sand, Surf.Ice, DECK]) {
+    if (!used.has(surf)) continue;
+    const tex = texFor[surf]!();
+    tex.anisotropy = aniso;
+    const shiny = (opts.wet && surf === Surf.Asphalt) || surf === Surf.Ice;
+    const material = shiny
+      ? new THREE.MeshStandardMaterial({ map: tex, roughness: surf === Surf.Ice ? 0.18 : 0.32, metalness: 0.05, envMap: opts.envMap ?? null, envMapIntensity: surf === Surf.Ice ? 0.9 : 0.75, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })
+      : new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    if (shiny && surf === Surf.Asphalt) material.color.set('#a2a2aa');
+    const m = new THREE.Mesh(strip(surf), material);
     m.receiveShadow = shadows;
     group.add(m);
-    disposables.push(m.geometry, m.material as THREE.Material);
+    disposables.push(m.geometry, material, tex);
   }
-  disposables.push(aTex, gTex);
 
   // ---- verges (a dirt edge sloping down to the grass) and kerbs ----
   const vg: number[] = [];
   const vc: number[] = [];
   const kc: number[] = [];
   const kp: number[] = [];
-  const cDirt = new THREE.Color('#857a55');
-  const cGrass = new THREE.Color('#6b9a45');
+  const cDirt = new THREE.Color(course?.theme.verge ?? '#857a55');
+  const cGrass = new THREE.Color(course?.theme.vergeGrass ?? '#6b9a45');
   const cRed = new THREE.Color('#d6352b');
   const cWhite = new THREE.Color('#f4f2ec');
   const quad = (arr: number[], carr: number[], a: number[], b: number[], c: number[], d: number[], ca: THREE.Color, cb: THREE.Color): void => {
@@ -220,13 +376,14 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
   const line = new THREE.Mesh(lineGeo, lineMat);
   const p0 = t.point(0, 0);
   line.position.set(p0.x, p0.y + 0.01, p0.z);
-  line.rotation.y = t.heading(0) + Math.PI / 2;
+  // the long side of the plane (its x) across the road: x turns to the left normal at the heading
+  line.rotation.y = t.heading(0);
   line.scale.set(t.hw[0]! * 2, 1, 1.8);
   line.receiveShadow = shadows;
   group.add(line);
   disposables.push(chk, lineGeo, lineMat);
   const gridG = new Geo();
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < (opts.grid ?? 6); k++) {
     const s = -11 - k * 9;
     const d = k % 2 ? -3.4 : 3.4;
     const c = t.point(s + 2.6, d);
@@ -238,10 +395,12 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
     piece.box(0.2, 0.01, 1.3, WHITE, -1.1, 0, -0.55);
     gridG.addColored(piece.build(), m);
   }
-  const gridGeo = gridG.build();
-  const gridMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
-  group.add(new THREE.Mesh(gridGeo, gridMat));
-  disposables.push(gridGeo, gridMat);
+  if (!gridG.empty) {
+    const gridGeo = gridG.build();
+    const gridMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+    group.add(new THREE.Mesh(gridGeo, gridMat));
+    disposables.push(gridGeo, gridMat);
+  }
 
   // ---- the bridge: a deck with white fascias and stone piers ----
   const bg = new Geo();
@@ -291,7 +450,9 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
   }
 
   // ---- fences along both sides of the run-off ----
-  const kinds = [Fence.Pole, Fence.Bales, Fence.Rail, Fence.Stone] as const;
+  const kinds = [Fence.Pole, Fence.Bales, Fence.Rail, Fence.Stone, FenceX.Snow, FenceX.Tyres, FenceX.Rope, FenceX.Logs, FenceX.Barrier] as const;
+  const pieceLen = (kind: number): number =>
+    kind === Fence.Bales ? 2.4 : kind === Fence.Rail ? 2.0 : kind === Fence.Stone ? 2.6 : kind === Fence.Pole ? 3.0 : themeFencePiece(kind, true).len;
   const placed = new Map<string, [number, number][]>();
   const near = (x: number, z: number, r: number): boolean => {
     const cx = Math.floor(x / 4);
@@ -327,7 +488,7 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
       const j = L(i + 1);
       const seg = Math.hypot(wx[j]! - wx[i]!, wz[j]! - wz[i]!);
       const kind = fence[i]!;
-      const len = kind === Fence.Bales ? 2.4 : kind === Fence.Rail ? 2.0 : kind === Fence.Stone ? 2.6 : 3.0;
+      const len = pieceLen(kind);
       while (nextAt <= acc + seg) {
         const f = seg > 1e-4 ? (nextAt - acc) / seg : 0;
         const x = wx[i]! + (wx[j]! - wx[i]!) * f;
@@ -336,9 +497,10 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
         const a = L(i - 2);
         const b = L(i + 3);
         const hd = Math.atan2(wx[b]! - wx[a]!, wz[b]! - wz[a]!);
-        if (kind !== Fence.None && !near(x, z, len * 0.55)) {
+        const shown = kind !== Fence.None && (!opts.roam || kind === Fence.Stone || kind === Fence.Rail);
+        if (shown && !near(x, z, len * 0.55)) {
           remember(x, z);
-          const y = kind === Fence.Rail ? t.py[i]! : terrain.visual(x, z) - 0.05;
+          const y = kind === Fence.Rail || t.tunnel[i] ? t.py[i]! : terrain.visual(x, z) - 0.05;
           const jitter = kind === Fence.Bales ? (r() - 0.5) * 0.12 : 0;
           mats.get(kind)!.push(mat(x, y, z, 0, hd + Math.PI / 2 + jitter, 0));
         }
@@ -352,7 +514,7 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
   for (const kind of kinds) {
     const list = mats.get(kind)!;
     if (!list.length) continue;
-    const { geo } = fencePiece(kind);
+    const { geo } = kind <= Fence.Stone ? fencePiece(kind) : themeFencePiece(kind);
     const im = new THREE.InstancedMesh(geo, fenceMat, list.length);
     list.forEach((m, k) => im.setMatrixAt(k, m));
     im.instanceMatrix.needsUpdate = true;
@@ -421,6 +583,17 @@ export function buildRoad(track: Track, terrain: Terrain, quality: 'high' | 'low
     const pm = new THREE.MeshLambertMaterial({ vertexColors: true });
     group.add(new THREE.Mesh(pg, pm));
     disposables.push(pg, pm);
+  }
+
+  // ---- the tunnel (the city) ----
+  const tg = tunnelGeo(t);
+  if (tg) {
+    const tm = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const tmesh = new THREE.Mesh(tg, tm);
+    tmesh.castShadow = shadows;
+    tmesh.receiveShadow = shadows;
+    group.add(tmesh);
+    disposables.push(tg, tm);
   }
 
   // ---- the start gantry ----
