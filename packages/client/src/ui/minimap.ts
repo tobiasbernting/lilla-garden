@@ -1,5 +1,5 @@
 // A small map of the farm (or the cave) drawn on a canvas: terrain, trees, buildings and who is where.
-import { ANIMALS, DUNGEON_H, DUNGEON_W, MAP_H, MAP_W, NPCS, isSagaKey, isUnderground, objectDef, themeOfEntrance, type WorldState } from '@lilla-garden/shared';
+import { ANIMALS, DUNGEON_H, DUNGEON_W, MAP_H, MAP_W, NPCS, isSagaKey, isUnderground, mapH, mapW, objectDef, themeOfEntrance, tileIndex, type WorldState } from '@lilla-garden/shared';
 import { activeWorld, bus, client, myArea, myPlayer } from '../state.ts';
 import { h } from './dom.ts';
 
@@ -89,8 +89,9 @@ export class Minimap {
     const saga = isSagaKey(world.area);
     const cave = isUnderground(world.area) || saga;
     this.lastKey = world.area ?? 'farm';
-    const w = world.cave?.w ?? (cave && !saga ? DUNGEON_W : MAP_W);
-    const hgt = world.cave?.h ?? (cave && !saga ? DUNGEON_H : MAP_H);
+    // two pixels a tile: a big wild map (96) draws finer in the same box
+    const w = world.cave?.w ?? (cave && !saga ? DUNGEON_W : mapW(world));
+    const hgt = world.cave?.h ?? (cave && !saga ? DUNGEON_H : mapH(world));
     this.base.width = w * 2;
     this.base.height = hgt * 2;
     this.canvas.width = w * 2;
@@ -99,7 +100,7 @@ export class Minimap {
     ctx.fillRect(0, 0, w * 2, hgt * 2);
     for (let y = 0; y < hgt; y++)
       for (let x = 0; x < w; x++) {
-        const t = world.terrain[y * MAP_W + x]!;
+        const t = world.terrain[tileIndex(world, x, y)]!;
         if (cave && (t === 'rock' || t === 'basalt' || (t === 'water' && world.area === 'dungeon'))) continue;
         ctx.fillStyle = COLORS[t] ?? '#888';
         ctx.fillRect(x * 2, y * 2, 2, 2);

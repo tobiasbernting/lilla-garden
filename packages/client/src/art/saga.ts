@@ -3589,6 +3589,143 @@ function questIcon2(id: string): Px {
   return p;
 }
 
+/** The forge's materials and Smed-Stina's plain starter gear (honest iron and wood: no glow on these). */
+function forgeIcon(id: string): Px {
+  const p = new Px(16, 16);
+  const IRONW = pal('#2e323a', '#4a505a', '#7a808c', '#a8aeb8', '#d4d8de');
+  const OAKW = pal('#3a2414', '#5a3a1e', '#7e5630', '#a47444', '#c8965e');
+  switch (id) {
+    case 'monsteressens': {
+      // a swirling violet drop with a small, sleepy-happy face
+      const V = pal('#3a1460', '#5a2490', '#8a44c8', '#b47ae8', '#e2c4ff');
+      paint(p, 2, 0, 12, 16, (x, y) => {
+        const dx = x + 0.5 - 8;
+        const dy = y + 0.5 - 10;
+        const r = Math.hypot(dx, dy);
+        const inDrop = r <= 5.4 || (y + 0.5 < 10 && Math.abs(dx) <= (y + 0.5 - 0.6) * 0.62 && y >= 1);
+        if (!inDrop) return null;
+        const a = Math.atan2(dy, dx);
+        const swirl = Math.abs(((a / Math.PI + 1) * 2 + r * 0.42) % 2 - 1) < 0.32;
+        const base = tone(V, light(dx / 5.5, dy / 6, Math.sqrt(Math.max(0, 1 - Math.min(1, (r / 5.5) ** 2))) + 0.25));
+        return swirl && r > 2 ? (base === V.d || base === V.d2 ? V.b : V.l) : base;
+      });
+      p.px(6, 10, '#1a0a2a').px(10, 10, '#1a0a2a').px(7, 12, '#1a0a2a').px(8, 12, '#1a0a2a').px(9, 12, '#1a0a2a').px(6, 12, '#3a1460').px(10, 12, '#3a1460');
+      p.px(5, 11, '#f08ac8').px(11, 11, '#f08ac8');
+      p.outline('#1e0a30');
+      halo(p, 8, 10, 8, '#b47ae8', 0.18);
+      twinkle(p, 5, 6, '#f0e0ff');
+      break;
+    }
+    case 'drakfjall': {
+      // a dragon's scale: rounded at the root, pointed at the tip, red in the middle going to gold at the rim,
+      // growth lines following its edge and a keel down the middle
+      paint(p, 1, 0, 14, 16, (x, y) => {
+        const cx = x + 0.5 - 8;
+        const cy = y + 0.5;
+        let v: number;
+        if (cy <= 6.5) v = Math.hypot(cx / 6.5, (cy - 6.5) / 6);
+        else v = Math.max(Math.abs(cx) / Math.max(0.01, (15.5 - cy) * 0.72), (cy - 6.5) / 9);
+        if (v > 1) return null;
+        if (v > 0.84) return cx < 0 ? GOLD.l : GOLD.b;
+        if (Math.abs(v - 0.62) < 0.07 || Math.abs(v - 0.36) < 0.06) return '#7a1414';
+        if (Math.abs(cx) < 0.6 && cy > 3) return v < 0.6 ? '#ff7a4a' : '#d84a20';
+        const lit = cx + (cy - 7) * 0.8 < -2;
+        return v > 0.69 ? (lit ? '#ffb040' : '#e07a20') : lit ? '#e8502a' : '#b82a1a';
+      });
+      p.outline('#2a0808');
+      p.px(4, 4, '#fff6c8').px(5, 3, '#ffe27a');
+      twinkle(p, 12, 3, '#ffe27a');
+      break;
+    }
+    case 'jarnsvard': {
+      // a plain iron sword: grey blade, a straight iron guard, a leather grip, a round pommel
+      blade(p, 4, 11, 13, 2, IRONW);
+      p.rect(2, 10, 2, 2, '#5a3a1e').rect(1, 12, 3, 2, '#5a3a1e').px(2, 12, '#7a5230');
+      p.line(3, 8, 6, 11, IRONW.b).px(3, 8, IRONW.l).px(6, 11, IRONW.d);
+      p.rect(0, 13, 2, 2, IRONW.b).px(0, 13, IRONW.l2);
+      p.outline(OUTLINE);
+      break;
+    }
+    case 'jarnyxa': {
+      // an iron axe: a wooden haft, a plain head flaring to a curved edge
+      p.line(3, 14, 11, 4, OAKW.b).line(4, 14, 12, 4, OAKW.d).px(5, 11, OAKW.l).px(8, 8, OAKW.l);
+      paint(p, 6, 0, 10, 12, (x, y) => {
+        const dx = x + 0.5 - 11;
+        const dy = y + 0.5 - 4.5;
+        const s = dx * 0.625 - dy * 0.78; // along the haft
+        const t = dx * 0.78 + dy * 0.625; // out towards the edge
+        if (t < -1.8 || t > 6) return null;
+        const half = t < 0 ? 1.4 : 1.6 + t * 0.55;
+        if (Math.abs(s) > half) return null;
+        if (t > 4.9) return s < 0 ? IRONW.l2 : IRONW.l;
+        return s > half - 1 ? IRONW.d : t < 0.6 ? IRONW.d : IRONW.b;
+      });
+      p.px(11, 4, IRONW.d2);
+      p.outline(OUTLINE);
+      break;
+    }
+    case 'ekstav': {
+      // an oak staff: a straight shaft, a big knot halfway, the top curling over with a sprig of oak leaves
+      p.line(3, 15, 11, 3, OAKW.b).line(4, 15, 12, 3, OAKW.d).px(5, 12, OAKW.l).px(9, 6, OAKW.l);
+      p.rect(6, 8, 3, 3, OAKW.b).px(6, 8, OAKW.l2).px(8, 10, OAKW.d2).px(7, 9, OAKW.d);
+      p.line(11, 3, 12, 1, OAKW.b).line(12, 1, 14, 1, OAKW.b).line(14, 1, 14, 3, OAKW.d).px(13, 3, OAKW.d);
+      p.tpl(2, 1, ['.##.', '####', '.##.', '..#.'], { '#': '#5a9a3a' });
+      p.px(3, 1, '#8ac860').px(4, 4, '#a07030');
+      p.outline(OUTLINE);
+      break;
+    }
+    case 'jaktbage': {
+      // a hunting bow: wooden limbs, a leather grip, a plain string, an arrow nocked
+      p.line(4, 1, 9, 4, OAKW.b).line(9, 4, 11, 8, OAKW.b).line(11, 8, 9, 12, OAKW.b).line(9, 12, 4, 15, OAKW.b);
+      p.line(5, 1, 9, 3, OAKW.l).px(10, 6, OAKW.l).px(11, 9, OAKW.d);
+      p.line(4, 2, 4, 14, '#e8e0cc');
+      p.rect(10, 7, 2, 3, '#5a3a1e');
+      p.line(4, 8, 14, 8, '#a47444').px(15, 8, IRONW.l).px(14, 7, IRONW.b).px(14, 9, IRONW.b).px(3, 7, '#e8e8e8').px(3, 9, '#e8e8e8');
+      p.outline(OUTLINE);
+      break;
+    }
+    case 'traskold': {
+      // a round shield of planks with an iron rim and boss
+      paint(p, 1, 1, 14, 14, (x, y) => {
+        const dx = (x + 0.5 - 8) / 6.6;
+        const dy = (y + 0.5 - 8) / 6.6;
+        const r = Math.hypot(dx, dy);
+        if (r > 1) return null;
+        if (r > 0.84) return tone(IRONW, light(dx, dy, 0.5) + 0.1);
+        if (r < 0.28) return tone(IRONW, light(dx, dy, Math.sqrt(Math.max(0, 1 - (r / 0.28) ** 2))) + 0.15);
+        if (r < 0.36) return IRONW.d2;
+        if ((x + 2) % 4 === 0) return OAKW.d2;
+        return tone(OAKW, light(dx, dy, 0.9) + 0.1 + grain(x, y, 77) * 0.3);
+      });
+      p.px(6, 6, IRONW.l2);
+      for (const [x, y] of [[8, 2], [2, 8], [13, 8], [8, 13]] as const) p.px(x, y, IRONW.l);
+      p.outline(OUTLINE);
+      break;
+    }
+    case 'stenamulett': {
+      // a flat grey-green river stone, a hole worn through its top, hung on a leather cord
+      for (let i = 0; i <= 12; i++) {
+        const a = Math.PI * (i / 12);
+        p.px(Math.round(8 - Math.cos(a) * 5), Math.round(1 + Math.sin(a) * 5), i % 2 ? '#7a5230' : '#a07040');
+      }
+      const RIVER = pal('#3a4440', '#56625c', '#7a8880', '#a2b0a6', '#c8d4ca');
+      paint(p, 3, 5, 10, 11, (x, y) => {
+        const dx = (x + 0.5 - 8) / 4.6;
+        const dy = (y + 0.5 - 10.5) / 5.2;
+        const r = dx * dx + dy * dy;
+        if (r > 1) return null;
+        return tone(RIVER, light(dx, dy, Math.sqrt(1 - r) + 0.35) + grain(x, y, 78) * 0.2);
+      });
+      p.rect(7, 7, 2, 2, '#1e2420').px(7, 6, '#7a5230').px(8, 6, '#a07040');
+      p.tpl(6, 10, ['.##.', '#..#', '#.##', '.#..'], { '#': RIVER.d });
+      p.outline(OUTLINE);
+      p.px(5, 9, RIVER.l2);
+      break;
+    }
+  }
+  return p;
+}
+
 const SAGA2_WEAPONS = ['helsvard', 'garmklo', 'gruvhacka', 'fafnerstand', 'korallspjut', 'stormbage', 'alvklinga', 'manstav', 'fenristand', 'tyrsyxa', 'lokesstav', 'bifrostbage', 'heimdallshorn'];
 const SAGA2_OFFHANDS = ['offhand_helskold', 'offhand_runbok', 'offhand_dvargskold', 'offhand_koger', 'offhand_perlemorskold', 'offhand_alvlykta', 'offhand_tyrshandske', 'offhand_lokesmask'];
 const SAGA2_AMULETS = ['amulet_vegvisir', 'amulet_helring', 'amulet_andvaranaut', 'amulet_perla', 'amulet_alvsten', 'amulet_gleipnir', 'amulet_brisingamen'];
@@ -3608,6 +3745,8 @@ export function sagaIcons(): Record<string, Px> {
   for (const id of ['glimmersten', 'alvdagg', 'krabbklo', 'ulvtand', 'bifrostskarva']) out[id] = questIcon2(id);
   for (const id of Object.keys(KEEPSAKES)) out[id] = keepsakeIcon(id);
   out.styrkedryck = potionIcon(true);
+  // Smedjan: its materials and Stina's starter set
+  for (const id of ['monsteressens', 'drakfjall', 'jarnsvard', 'jarnyxa', 'ekstav', 'jaktbage', 'traskold', 'stenamulett']) out[id] = forgeIcon(id);
   return out;
 }
 

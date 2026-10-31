@@ -157,13 +157,13 @@ describe('weather', () => {
 
   it('rain waters the fields and their crops', () => {
     const { world } = setup();
-    world.terrain[tileIndex(10, 30)] = 'soil';
+    world.terrain[tileIndex(world, 10, 30)] = 'soil';
     world.crops[key(10, 30)] = { crop: 'carrot', stage: 0, progress: 0, watered: false };
     setWeather(world, 'rain', ctx(), true);
     tick(world, 50, ctx(1_000_000 + 2000));
-    expect(world.terrain[tileIndex(10, 30)]).toBe('soil'); // just started
+    expect(world.terrain[tileIndex(world, 10, 30)]).toBe('soil'); // just started
     const out = tick(world, 50, ctx(1_000_000 + 10_000));
-    expect(world.terrain[tileIndex(10, 30)]).toBe('soil_wet');
+    expect(world.terrain[tileIndex(world, 10, 30)]).toBe('soil_wet');
     expect(world.crops[key(10, 30)]!.watered).toBe(true);
     expect(out.some((c) => c.t === 'crop' && c.k === key(10, 30))).toBe(true);
   });

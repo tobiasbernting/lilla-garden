@@ -3,7 +3,7 @@
 // Each biome has its own look and treasure; the loot chest at the far end gives every player something
 // once a week, and the crystals and ore grow back.
 import { objectDef } from './data.ts';
-import { addObject, emptyWorld, inBounds, objectAt } from './map.ts';
+import { addObject, emptyWorld, inBounds, mapH, mapW, objectAt, tileIndex } from './map.ts';
 import { hashString, mulberry32, randInt } from './rng.ts';
 import { reachableFrom, walkableTile, wouldBlock } from './worldgen.ts';
 import { MAP_H, MAP_W, type CaveTheme, type Terrain, type WorldObject, type WorldState } from './types.ts';
@@ -207,6 +207,7 @@ const THEMES: Record<CaveTheme, ThemeStyle> = {
 /** The floor of a cave theme (regrowth puts crystals back on it). */
 export const caveFloor = (t: CaveTheme): Terrain => THEMES[t].floor;
 
+/** Caves are always 64×64 maps (the cave fills a box in the top-left), so the generator indexes rows of MAP_W. */
 const idx = (x: number, y: number): number => y * MAP_W + x;
 const N8 = [
   [-1, -1],
@@ -362,7 +363,7 @@ function carveCave(key: string, theme: CaveTheme, parent: string, out: { x: numb
       const painted: number[] = [];
       for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++)
         for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-          if (!inBounds(x, y) || !open[idx(x, y)] || objectAt(world, x, y)) continue;
+          if (!inBounds(world, x, y) || !open[idx(x, y)] || objectAt(world, x, y)) continue;
           if ((x - cx) ** 2 + (y - cy) ** 2 > r * r) continue;
           painted.push(idx(x, y));
           T[idx(x, y)] = st.pool;
@@ -375,7 +376,7 @@ function carveCave(key: string, theme: CaveTheme, parent: string, out: { x: numb
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (T[idx(x, y)] !== 'rock') continue;
-      if (!N8.some(([dx, dy]) => inBounds(x + dx, y + dy) && T[idx(x + dx, y + dy)] !== 'rock')) continue;
+      if (!N8.some(([dx, dy]) => inBounds(world, x + dx, y + dy) && T[idx(x + dx, y + dy)] !== 'rock')) continue;
       addObject(world, 'cave_wall', x, y, { variant: caveWallVariant(theme) });
     }
   if (st.torches) {
@@ -543,7 +544,8 @@ export function regrow(world: WorldState, rnd: () => number, blocked: (x: number
     have[o.kind] = (have[o.kind] ?? 0) + 1;
     if (o.variant !== undefined) (variants[o.kind] ??= []).push(o.variant);
   }
-  const box = world.cave ? { w: world.cave.w, h: world.cave.h } : { w: MAP_W, h: MAP_H };
+  const box = world.cave ? { w: world.cave.w, h: world.cave.h } : { w: mapW(world), h: mapH(world) };
+  const idx = (x: number, y: number): number => tileIndex(world, x, y);
   const caveFloorT = world.cave ? THEMES[world.cave.theme].floor : null;
   for (const [kind, base] of Object.entries(world.renew)) {
     const rule = RENEWABLE[kind];

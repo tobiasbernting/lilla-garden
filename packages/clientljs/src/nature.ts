@@ -1,6 +1,6 @@
 // Nature through the day and the year: trees turning with the seasons, leaves falling and lying under them in the
 // autumn, mist over the water and the fields at dawn, dew glinting on the grass in the morning sun.
-import { MAP_H, MAP_W, TILE } from '@lilla-garden/shared';
+import { TILE, mapH, mapW } from '@lilla-garden/shared';
 import type { Sprite } from './atlas.ts';
 import { AUTUMN, DECIDUOUS, type Extras } from './extras.ts';
 import { autumnProgress, on, type YearSeason } from './features.ts';
@@ -200,11 +200,12 @@ export class Nature {
     if (!sp) return;
     const x0 = Math.max(0, Math.floor(sc.vx / TILE));
     const y0 = Math.max(0, Math.floor(sc.vy / TILE));
-    const x1 = Math.min(MAP_W - 1, Math.ceil((sc.vx + sc.vw) / TILE));
-    const y1 = Math.min(MAP_H - 1, Math.ceil((sc.vy + sc.vh) / TILE));
+    const W = mapW(sc.world);
+    const x1 = Math.min(W - 1, Math.ceil((sc.vx + sc.vw) / TILE));
+    const y1 = Math.min(mapH(sc.world) - 1, Math.ceil((sc.vy + sc.vh) / TILE));
     for (let y = y0; y <= y1; y++)
       for (let x = x0; x <= x1; x++) {
-        if (sc.world.terrain[y * MAP_W + x] !== 'grass') continue;
+        if (sc.world.terrain[y * W + x] !== 'grass') continue;
         for (let k = 0; k < 2; k++) {
           const h = cellHash(x, y, 90 + k);
           if (h > 0.55) continue;

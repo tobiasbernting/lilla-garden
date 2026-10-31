@@ -6,7 +6,10 @@ import {
   callPets,
   castSpell,
   chooseClass,
+  craftGear,
   equipGear,
+  forgeGear,
+  noticeLandmarks,
   setHero,
   shownHeld,
   drinkPotion,
@@ -188,6 +191,8 @@ export class Game {
     this.lastTick = now;
     this.tickCount++;
     const changes = tick(this.world, dt, this.ctx());
+    // once a second: the landmarks each player out in the world has come within sight of (for the world map)
+    if (this.tickCount % TICK_HZ === 0) changes.push(...noticeLandmarks(this.world));
     if (changes.length) this.pending.push(...changes);
     this.races.tick(now);
     this.dispatchPending();
@@ -506,6 +511,8 @@ export class Game {
         else if (msg.a === 'quest') changes = sagaQuestAct(this.world, pid, String(msg.id ?? ''));
         else if (msg.a === 'equip') changes = equipGear(this.world, pid, String(msg.slot ?? ''), typeof msg.item === 'string' ? msg.item : null);
         else if (msg.a === 'hero') changes = setHero(this.world, pid, msg.on === true);
+        else if (msg.a === 'forge') changes = forgeGear(this.world, pid, String(msg.item ?? ''));
+        else if (msg.a === 'craft') changes = craftGear(this.world, pid, String(msg.item ?? ''));
         break;
       case 'jump':
         changes = jumpTo(this.world, pid, String(msg.to ?? ''));

@@ -1,15 +1,18 @@
 // One painter per biome: the ground, water and cliffs first, then landmarks, plants and things to find,
 // and last the paths that keep every opening and entrance reachable.
 import { CAVE_THEMES } from './caves.ts';
-import { addObject, objectAt } from './map.ts';
+import { objectDef } from './data.ts';
+import { landmarkKind, landmarksOf } from './landmarks.ts';
+import { addObject, objectAt, removeObject } from './map.ts';
+import { hashString, mulberry32 } from './rng.ts';
+import { DUNGEONS } from './saga.ts';
 import { BASE_ROCKET, buildLaunchSite } from './space.ts';
-import { Painter, connect, inEdgeGap, plankBridge } from './worldgen.ts';
-import { MAP_H, MAP_W, WALL_TERRAIN, isCliff, type CaveTheme, type Terrain } from './types.ts';
+import { Painter, connect, plankBridge } from './worldgen.ts';
+import { MAP_W, TILE, WALL_TERRAIN, isCliff, type CaveTheme, type Terrain, type WorldObject, type WorldState } from './types.ts';
 
 export type PaintFn = (g: Painter) => void;
 
 const theme = (t: CaveTheme): number => CAVE_THEMES.indexOf(t);
-const MID = MAP_W / 2;
 
 /** A ring of `kinds` around the map (thick at the very edge), leaving the openings free. */
 function belt(g: Painter, kind: () => string, inner: number, ground?: (t: Terrain) => boolean): void {
@@ -22,7 +25,7 @@ function belt(g: Painter, kind: () => string, inner: number, ground?: (t: Terrai
 /** Cliffs around the map instead of trees (mountains, Dinodalen, the volcano). */
 function cliffBelt(g: Painter, cliff: Terrain, salt: number): void {
   g.each((x, y) => {
-    if (inEdgeGap(x, y)) return;
+    if (g.gap(x, y)) return;
     const e = g.edge(x, y);
     const n = g.noise(x, y, 4, salt);
     if (e <= 1 || (e === 2 && n > 0.3) || (e === 3 && n > 0.65)) g.set(x, y, cliff);
@@ -32,24 +35,44 @@ function cliffBelt(g: Painter, cliff: Terrain, salt: number): void {
 /** A winding stream (or river of lava, or chocolate) across the map, away from the middle openings. */
 function stream(g: Painter, t: Terrain, width: number, salt: number): void {
   const vertical = g.chance(0.5);
+  const len = vertical ? g.H : g.W;
+  const across = vertical ? g.W : g.H;
+  const mid = across / 2;
+  // a third of the way in from either side (12–22 or 42–52 on a 64 map)
   let pos = g.chance(0.5) ? g.int(12, 22) : g.int(42, 52);
-  for (let s = 0; s < MAP_W; s++) {
+  if (across !== MAP_W) pos = Math.round((pos * across) / MAP_W);
+  for (let s = 0; s < len; s++) {
     pos += (g.noise(s, 0, 6, salt) - 0.5) * 1.8;
-    pos = Math.max(6, Math.min(MAP_W - 7 - width, pos));
-    if (Math.abs(pos + width / 2 - MID) < 6) pos += pos < MID ? -1 : 1;
+    pos = Math.max(6, Math.min(across - 7 - width, pos));
+    if (Math.abs(pos + width / 2 - mid) < 6) pos += pos < mid ? -1 : 1;
     const p = Math.round(pos);
     for (let w = 0; w < width; w++) {
       const x = vertical ? p + w : s;
       const y = vertical ? s : p + w;
-      if (!inEdgeGap(x, y)) g.set(x, y, t);
+      if (!g.gap(x, y)) g.set(x, y, t);
     }
   }
+}
+
+/**
+ * The biome's streams: one with chance `p` (as on a 64 map), and on a bigger map now and then a second
+ * one, so there is as much stream per tile as before (the streams are longer there, too).
+ */
+function streams(g: Painter, p: number, t: Terrain, width: () => number, salt: number): void {
+  if (g.chance(p)) stream(g, t, width(), salt);
+  for (let k = g.extra(p, g.density / g.span); k > 0; k--) stream(g, t, width(), salt + 50 * k);
+}
+
+/** Something a 64 map has with chance `p` (a cave, a pond): a bigger map rolls for more of them. */
+function some(g: Painter, p: number, make: () => void, lucky = false): void {
+  if (lucky ? g.lucky(p) : g.chance(p)) make();
+  for (let k = g.extra(p); k > 0; k--) make();
 }
 
 /** Ponds (or bog pools, lava lakes…) wherever a noise field is high. */
 function pools(g: Painter, t: Terrain, scale: number, above: number, salt: number, keepEdge = 4): void {
   g.each((x, y) => {
-    if (g.edge(x, y) < keepEdge || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < keepEdge || g.gap(x, y)) return;
     if (g.fbm(x, y, scale, salt) > above) g.set(x, y, t);
   });
 }
@@ -76,9 +99,9 @@ function smoothPatches(g: Painter, patch: Terrain, base: Terrain, passes = 2): v
 /** A spot for a landmark: open ground, away from the edges and the openings' paths. */
 function spot(g: Painter, w: number, h: number, ok: (t: Terrain) => boolean = (t) => !WALL_TERRAIN.has(t)): { x: number; y: number } | null {
   for (let tries = 0; tries < 200; tries++) {
-    const x = g.int(8, MAP_W - 9 - w);
-    const y = g.int(8, MAP_H - 10 - h);
-    if (Math.abs(x + w / 2 - MID) < 4 + w / 2 || Math.abs(y + h / 2 - MID) < 3 + h / 2) continue; // keep the crossroads open
+    const x = g.int(8, g.W - 9 - w);
+    const y = g.int(8, g.H - 10 - h);
+    if (Math.abs(x + w / 2 - g.midX) < 4 + w / 2 || Math.abs(y + h / 2 - g.midY) < 3 + h / 2) continue; // keep the crossroads open
     let good = true;
     for (let dy = -1; dy <= h + 2 && good; dy++) for (let dx = -1; dx <= w && good; dx++) if (!ok(g.at(x + dx, y + dy)!)) good = false;
     if (good) return { x, y };
@@ -95,9 +118,9 @@ function caveSomewhere(g: Painter, cliff: Terrain, t: CaveTheme, size = 1): void
 /** A cave mouth cut into the foot of an existing cliff, if there is a good face; else a hill of its own. */
 function caveInCliff(g: Painter, cliff: Terrain, t: CaveTheme): void {
   for (let tries = 0; tries < 400; tries++) {
-    const x = g.int(6, MAP_W - 8);
-    const y = g.int(6, MAP_H - 9);
-    if (inEdgeGap(x, y + 2) || inEdgeGap(x + 1, y + 2)) continue;
+    const x = g.int(6, g.W - 8);
+    const y = g.int(6, g.H - 9);
+    if (g.gap(x, y + 2) || g.gap(x + 1, y + 2)) continue;
     let face = true;
     for (let dy = -1; dy <= 1 && face; dy++) for (let dx = 0; dx <= 1 && face; dx++) if (!isCliff(g.at(x + dx, y + dy))) face = false;
     for (let dx = 0; dx <= 1 && face; dx++) if (WALL_TERRAIN.has(g.at(x + dx, y + 2)!) || objectAt(g.world, x + dx, y + 2) || WALL_TERRAIN.has(g.at(x + dx, y + 3)!)) face = false;
@@ -110,6 +133,102 @@ function caveInCliff(g: Painter, cliff: Terrain, t: CaveTheme): void {
   caveSomewhere(g, cliff, t);
 }
 
+// ---------------------------------------------------------------------------- Upptäcktsboken's landmarks
+
+/** Something wild that may be cleared to make room (a tree, a stone, a flower), never something built or to open. */
+const clearable = (o: WorldObject): boolean => {
+  const d = objectDef(o.kind);
+  return !!d.breakWith && !d.interact && !o.by;
+};
+
+/**
+ * Puts the biome's landmarks on a map: both of a wild biome's on a big map, one on a 64 map (the space base and the
+ * moon have one each). Each on open ground away from the edges, out of the crossroads where the openings' trails meet,
+ * clear of the map's dungeon arch, and far from the other one; what grows there is cleared, the row in front too.
+ * Draws only from its own `rnd`, so the rest of the map comes out as it always did. Call it before connect(), which
+ * then makes sure the front of each can be reached. Returns the landmarks placed.
+ */
+export function placeLandmarks(g: Painter, rnd: () => number, count?: number, accept?: (o: WorldObject) => boolean): WorldObject[] {
+  const kinds = landmarksOf(g.world.biome).map((d) => d.id);
+  for (let i = kinds.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [kinds[i], kinds[j]] = [kinds[j]!, kinds[i]!];
+  }
+  const want = Math.min(kinds.length, count ?? (g.W > MAP_W ? 2 : 1));
+  // the dungeon arch planned for this map (drawn for 64 maps; it moves out with a bigger map)
+  const arches = Object.values(DUNGEONS)
+    .filter((d) => d.portal.area === g.world.area)
+    .map((d) => ({ x: Math.round((d.portal.x * g.W) / MAP_W) + 1, y: Math.round((d.portal.y * g.H) / MAP_W) + 1 }));
+  const placed: WorldObject[] = [];
+  // (on a saved map animals may be about: never shut one in)
+  const animals = new Set(Object.values(g.world.animals).map((a) => g.idx(Math.floor(a.x / TILE), Math.floor(a.y / TILE))));
+  const free = (x: number, y: number, ground: boolean): boolean => {
+    const t = g.at(x, y);
+    if (t === undefined || g.gap(x, y) || g.reserved.has(g.idx(x, y)) || animals.has(g.idx(x, y))) return false;
+    if (ground && (WALL_TERRAIN.has(t) || MADE.has(t))) return false;
+    if (g.world.crops[`${x},${y}`]) return false;
+    const o = objectAt(g.world, x, y);
+    return !o || clearable(o);
+  };
+  for (const id of kinds.slice(0, want)) {
+    const kind = landmarkKind(id);
+    const { w, h } = objectDef(kind);
+    const tries = 600;
+    for (let t = 0; t < tries; t++) {
+      const x = 8 + Math.floor(rnd() * (g.W - 16 - w));
+      const y = 8 + Math.floor(rnd() * (g.H - 19 - h));
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      // keep the crossroads (and the trails from the openings to them) open
+      if (Math.abs(cx - g.midX) < 4 + w / 2 || Math.abs(cy - g.midY) < 3 + h / 2) continue;
+      if (arches.some((a) => Math.abs(a.x - cx) < 7 && Math.abs(a.y - cy) < 7)) continue;
+      // far from the other landmark (a little less strict after many tries)
+      const apart = (t < tries / 2 ? 0.45 : 0.25) * g.W;
+      if (placed.some((o) => Math.hypot(o.x + objectDef(o.kind).w / 2 - cx, o.y + objectDef(o.kind).h / 2 - cy) < apart)) continue;
+      // the footprint and two rows in front on open ground; around it nothing to keep
+      let ok = true;
+      for (let dy = -1; dy <= h + 1 && ok; dy++)
+        for (let dx = -1; dx <= w && ok; dx++) {
+          const inner = dx >= 0 && dx < w && dy >= 0;
+          if (!free(x + dx, y + dy, inner)) ok = false;
+        }
+      if (!ok) continue;
+      const cleared: WorldObject[] = [];
+      for (let dy = 0; dy <= h; dy++)
+        for (let dx = 0; dx < w; dx++) {
+          const o = objectAt(g.world, x + dx, y + dy);
+          if (o) cleared.push(removeObject(g.world, o.id)!);
+        }
+      const o = addObject(g.world, kind, x, y);
+      if (o && accept && !accept(o)) removeObject(g.world, o.id);
+      if (!o || !g.world.objects[o.id]) {
+        // not here after all: what grew there grows there again
+        for (const c of cleared) putBack(g.world, c);
+        continue;
+      }
+      g.reserve(x, y, w, h + 1);
+      placed.push(o);
+      break;
+    }
+  }
+  return placed;
+}
+
+/** Ground people (or the painters' trails) made: a landmark never stands on a path, a floor or a field. */
+const MADE = new Set<Terrain>(['path_dirt', 'path_stone', 'floor_wood', 'floor_stone', 'soil', 'soil_wet']);
+
+/** Puts a removed object back where it was (same id). */
+function putBack(world: WorldState, o: WorldObject): void {
+  const d = objectDef(o.kind);
+  world.objects[o.id] = o;
+  for (let dy = 0; dy < d.h; dy++) for (let dx = 0; dx < d.w; dx++) world.occupancy[`${o.x + dx},${o.y + dy}`] = o.id;
+}
+
+/** The painters' landmarks step (before connect), with numbers of its own so nothing else on the map moves. */
+function landmarks(g: Painter): void {
+  if (g.landmarks) placeLandmarks(g, mulberry32((g.seed ^ hashString('upptäckt')) >>> 0));
+}
+
 const flowerVariant = (g: Painter) => ({ variant: g.int(0, 3) });
 const tuftVariant = (g: Painter) => ({ variant: g.int(0, 2) });
 const open = (g: Painter, x: number, y: number, ...ground: Terrain[]) => g.edge(x, y) > 3 && ground.includes(g.at(x, y)!) && !objectAt(g.world, x, y);
@@ -119,8 +238,8 @@ const open = (g: Painter, x: number, y: number, ...ground: Terrain[]) => g.edge(
 const skog: PaintFn = (g) => {
   g.ground = 'grass';
   g.fill('grass');
-  if (g.chance(0.5)) stream(g, 'water', g.int(1, 2), 11);
-  if (g.lucky(0.55)) caveSomewhere(g, 'rock', 'rot');
+  streams(g, 0.5, 'water', () => g.int(1, 2), 11);
+  some(g, 0.55, () => caveSomewhere(g, 'rock', 'rot'), true);
   const tree = () => g.pick(['tree', 'tree', 'tree', 'tree_pine', 'tree_pine', 'tree_apple']);
   belt(g, tree, 0.85);
   g.each((x, y) => {
@@ -136,6 +255,7 @@ const skog: PaintFn = (g) => {
   g.scatter('mushroom', g.int(4, 8), (x, y) => open(g, x, y, 'grass'));
   g.scatter('rock_small', g.int(2, 5), (x, y) => open(g, x, y, 'grass'));
   g.scatter('stump', g.int(1, 3), (x, y) => open(g, x, y, 'grass'));
+  landmarks(g);
   connect(g, { trail: 'path_dirt', trails: true, bridge: plankBridge, pass: 'grass' });
 };
 
@@ -144,7 +264,7 @@ const skog: PaintFn = (g) => {
 const ang: PaintFn = (g) => {
   g.ground = 'grass';
   g.fill('grass');
-  const ponds = g.int(1, 2);
+  const ponds = g.many(g.int(1, 2));
   for (let i = 0; i < ponds; i++) {
     const s = spot(g, 10, 7);
     if (!s) continue;
@@ -156,7 +276,7 @@ const ang: PaintFn = (g) => {
     if (sandy) g.blob(cx, cy, rx + 1.2, ry + 1.2, (x, y) => g.set(x, y, 'sand'), 0.3, i);
     g.blob(cx, cy, rx, ry, (x, y) => g.set(x, y, 'water'), 0.3, i);
   }
-  if (g.chance(0.3)) caveSomewhere(g, 'rock', 'rot', 0);
+  some(g, 0.3, () => caveSomewhere(g, 'rock', 'rot', 0));
   belt(g, () => g.pick(['tree', 'tree', 'tree_apple', 'tree_pine']), 0.55);
   g.each((x, y) => {
     if (g.edge(x, y) <= 3 || objectAt(g.world, x, y) || g.at(x, y) !== 'grass') return;
@@ -167,6 +287,7 @@ const ang: PaintFn = (g) => {
   });
   g.scatter('beehive', g.int(1, 3), (x, y) => open(g, x, y, 'grass') && g.fbm(x, y, 8, 2) > 0.55);
   g.scatter('rock_small', g.int(2, 4), (x, y) => open(g, x, y, 'grass'));
+  landmarks(g);
   connect(g, { trail: g.chance(0.5) ? 'path_dirt' : null, trails: true, bridge: plankBridge, pass: 'grass' });
 };
 
@@ -177,10 +298,10 @@ const is: PaintFn = (g) => {
   g.fill('snow');
   pools(g, 'ice', 12, 0.66, 3);
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y) || g.at(x, y) === 'ice') return;
+    if (g.edge(x, y) < 4 || g.gap(x, y) || g.at(x, y) === 'ice') return;
     if (g.fbm(x, y, 9, 4) > 0.68) g.set(x, y, 'rock');
   });
-  if (g.lucky(0.7)) caveInCliff(g, 'rock', 'is');
+  some(g, 0.7, () => caveInCliff(g, 'rock', 'is'), true);
   belt(g, () => g.pick(['tree_pine', 'tree_pine', 'rock']), 0.65);
   g.each((x, y) => {
     if (g.edge(x, y) <= 3 || objectAt(g.world, x, y) || g.at(x, y) !== 'snow') return;
@@ -190,6 +311,7 @@ const is: PaintFn = (g) => {
   });
   g.scatter('iceberry', g.int(6, 10), (x, y) => open(g, x, y, 'snow'));
   if (g.chance(0.4)) g.scatter('snowman_wild', 1, (x, y) => open(g, x, y, 'snow'));
+  landmarks(g);
   connect(g, { trail: null, trails: false, bridge: plankBridge, pass: 'snow' });
 };
 
@@ -204,16 +326,17 @@ const berg: PaintFn = (g) => {
   smoothPatches(g, 'grass', 'gravel');
   cliffBelt(g, 'rock', 7);
   g.each((x, y) => {
-    if (g.edge(x, y) < 3 || inEdgeGap(x, y)) return;
-    if (Math.hypot(x - MID, y - MID) < 7) return; // a valley in the middle
+    if (g.edge(x, y) < 3 || g.gap(x, y)) return;
+    if (Math.hypot(x - g.midX, y - g.midY) < 7 * g.span) return; // a valley in the middle
     if (g.fbm(x, y, 11, 8) > 0.58) g.set(x, y, 'rock');
   });
-  if (g.chance(0.5)) {
+  some(g, 0.5, () => {
     const s = spot(g, 8, 6, (t) => t === 'gravel' || t === 'grass');
     if (s) g.blob(s.x + 4, s.y + 3, g.int(2, 4), g.int(2, 3), (x, y) => g.set(x, y, 'water'), 0.3, 9);
-  }
+  });
   caveInCliff(g, 'rock', 'kristall');
-  if (g.chance(0.45)) caveInCliff(g, 'rock', 'kristall');
+  some(g, 0.45, () => caveInCliff(g, 'rock', 'kristall'));
+  for (let k = g.extra(1); k > 0; k--) caveInCliff(g, 'rock', 'kristall');
   g.each((x, y) => {
     if (g.edge(x, y) <= 2 || objectAt(g.world, x, y)) return;
     const t = g.at(x, y);
@@ -224,6 +347,7 @@ const berg: PaintFn = (g) => {
     else if (t === 'grass' && g.chance(0.02)) g.put('flower', x, y, flowerVariant(g));
   });
   g.scatter('ore', g.int(6, 10), (x, y) => open(g, x, y, 'gravel'));
+  landmarks(g);
   connect(g, { trail: null, trails: true, bridge: plankBridge, pass: 'gravel' });
 };
 
@@ -234,24 +358,24 @@ const strand: PaintFn = (g) => {
   g.fill('sand');
   // the sea to the west, with a wavy shore
   const shoreAt: number[] = [];
-  for (let y = 0; y < MAP_H; y++) {
-    const shore = 11 + Math.round(Math.sin(y / 6) * 2.5 + (g.noise(0, y, 5, 12) - 0.5) * 4);
+  for (let y = 0; y < g.H; y++) {
+    const shore = Math.round(11 * g.span) + Math.round(Math.sin(y / 6) * 2.5 + (g.noise(0, y, 5, 12) - 0.5) * 4);
     shoreAt.push(shore);
-    for (let x = 0; x < shore; x++) if (!inEdgeGap(x, y)) g.set(x, y, 'water');
+    for (let x = 0; x < shore; x++) if (!g.gap(x, y)) g.set(x, y, 'water');
   }
   g.each((x, y) => {
     if (x > shoreAt[y]! + 10 && g.fbm(x, y, 9, 13) > 0.58) g.set(x, y, 'grass');
   });
   smoothPatches(g, 'grass', 'sand');
   // a sea cave in the cliffs by the shore, and a wreck on the beach
-  if (g.lucky(0.55)) {
-    const y = g.int(10, 22) + (g.chance(0.5) ? 28 : 0);
+  some(g, 0.55, () => {
+    const y = Math.round((g.int(10, 22) + (g.chance(0.5) ? 28 : 0)) * g.span);
     g.caveHill(shoreAt[y]! + 5, y, 'rock', theme('sjorovare'), 1);
-  }
+  }, true);
   if (g.lucky(0.5)) {
     for (let tries = 0; tries < 60; tries++) {
-      const y = g.int(8, MAP_H - 12);
-      if (Math.abs(y - MID) < 5) continue;
+      const y = g.int(8, g.H - 12);
+      if (Math.abs(y - g.midY) < 5) continue;
       const x = shoreAt[y]! + 1;
       const wreck = g.put('shipwreck', x, y);
       if (!wreck) continue;
@@ -269,6 +393,7 @@ const strand: PaintFn = (g) => {
   g.scatter('shell', g.int(8, 12), (x, y) => open(g, x, y, 'sand') && x < shoreAt[y]! + 6);
   g.scatter('rock_small', g.int(2, 4), (x, y) => open(g, x, y, 'sand'));
   g.scatter('dig_spot', g.int(2, 3), (x, y) => open(g, x, y, 'sand') && x > shoreAt[y]! + 2);
+  landmarks(g);
   connect(g, { trail: null, trails: false, bridge: plankBridge, pass: 'sand' });
 };
 
@@ -278,10 +403,10 @@ const oken: PaintFn = (g) => {
   g.ground = 'sand';
   g.fill('sand');
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (g.fbm(x, y, 12, 14) > 0.7) g.set(x, y, 'sandstone');
   });
-  if (g.chance(0.5)) {
+  some(g, 0.5, () => {
     const s = spot(g, 10, 8, (t) => t === 'sand');
     if (s) {
       const cx = s.x + 5;
@@ -290,7 +415,7 @@ const oken: PaintFn = (g) => {
       g.blob(cx, cy, 3, 2, (x, y) => g.set(x, y, 'water'), 0.3, 16);
       for (let k = 0; k < 6; k++) g.put('palm', cx + g.int(-5, 5), cy + g.int(-4, 4));
     }
-  }
+  });
   if (g.lucky(0.5)) {
     const s = spot(g, 6, 4, (t) => t === 'sand');
     if (s) {
@@ -298,10 +423,12 @@ const oken: PaintFn = (g) => {
       g.reserve(s.x - 1, s.y + 4, 8, 2);
     }
   } else if (g.chance(0.4)) caveInCliff(g, 'sandstone', 'pyramid');
+  for (let k = g.extra(0.4); k > 0; k--) caveInCliff(g, 'sandstone', 'pyramid');
   belt(g, () => g.pick(['cactus', 'rock', 'rock_small', 'palm']), 0.2);
   g.scatter('cactus', g.int(8, 14), (x, y) => open(g, x, y, 'sand'));
   g.scatter('rock', g.int(2, 4), (x, y) => open(g, x, y, 'sand'));
   g.scatter('dig_spot', g.int(2, 3), (x, y) => open(g, x, y, 'sand'));
+  landmarks(g);
   connect(g, { trail: null, trails: false, bridge: plankBridge, pass: 'sand' });
 };
 
@@ -315,7 +442,7 @@ const trask: PaintFn = (g) => {
   });
   smoothPatches(g, 'grass', 'mud');
   pools(g, 'bog', 6, 0.6, 18, 3);
-  if (g.lucky(0.3)) caveSomewhere(g, 'rock', 'rot', 0);
+  some(g, 0.3, () => caveSomewhere(g, 'rock', 'rot', 0), true);
   belt(g, () => g.pick(['dead_tree', 'tree_pine', 'dead_tree', 'bush']), 0.6);
   const byBog = (x: number, y: number) => [g.at(x + 1, y), g.at(x - 1, y), g.at(x, y + 1), g.at(x, y - 1)].includes('bog');
   g.each((x, y) => {
@@ -330,6 +457,7 @@ const trask: PaintFn = (g) => {
   g.scatter('cloudberry', g.int(6, 10), (x, y) => open(g, x, y, 'mud', 'grass'));
   g.scatter('wisp', g.int(4, 7), (x, y) => open(g, x, y, 'mud', 'grass') && byBog(x, y));
   g.scatter('mushroom', g.int(3, 5), (x, y) => open(g, x, y, 'grass', 'mud'));
+  landmarks(g);
   connect(g, { trail: 'floor_wood', narrow: true, trails: true, bridge: plankBridge, pass: 'mud' });
 };
 
@@ -338,7 +466,7 @@ const trask: PaintFn = (g) => {
 const djungel: PaintFn = (g) => {
   g.ground = 'grass';
   g.fill('grass');
-  if (g.chance(0.6)) stream(g, 'water', 2, 19);
+  streams(g, 0.6, 'water', () => 2, 19);
   if (g.lucky(0.65)) {
     const s = spot(g, 8, 7, (t) => t === 'grass');
     if (s) {
@@ -366,6 +494,7 @@ const djungel: PaintFn = (g) => {
   });
   g.scatter('banana_plant', g.int(5, 8), (x, y) => open(g, x, y, 'grass'));
   g.scatter('ruin_pillar', g.int(0, 3), (x, y) => open(g, x, y, 'grass'));
+  landmarks(g);
   connect(g, { trail: 'path_dirt', trails: true, bridge: plankBridge, pass: 'grass' });
 };
 
@@ -376,10 +505,10 @@ const vulkan: PaintFn = (g) => {
   g.fill('ash');
   cliffBelt(g, 'basalt', 21);
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (g.fbm(x, y, 9, 22) > 0.66) g.set(x, y, 'basalt');
   });
-  if (g.chance(0.7)) stream(g, 'lava', 2, 23);
+  streams(g, 0.7, 'lava', () => 2, 23);
   if (g.lucky(0.85)) {
     const s = spot(g, 6, 5, (t) => t === 'ash');
     if (s) {
@@ -393,6 +522,7 @@ const vulkan: PaintFn = (g) => {
     }
   }
   caveInCliff(g, 'basalt', 'lava');
+  for (let k = g.extra(1); k > 0; k--) caveInCliff(g, 'basalt', 'lava');
   pools(g, 'lava', 7, 0.76, 26, 5);
   belt(g, () => g.pick(['dead_tree', 'obsidian_rock']), 0.15, (t) => t === 'ash');
   g.each((x, y) => {
@@ -403,6 +533,7 @@ const vulkan: PaintFn = (g) => {
   g.scatter('obsidian_rock', g.int(6, 10), (x, y) => open(g, x, y, 'ash'));
   g.scatter('fire_crystal', g.int(3, 5), (x, y) => open(g, x, y, 'ash'));
   g.scatter('steam_vent', g.int(4, 6), (x, y) => open(g, x, y, 'ash'));
+  landmarks(g);
   connect(g, { trail: null, trails: true, bridge: plankBridge, pass: 'ash' });
 };
 
@@ -415,7 +546,7 @@ const svamp: PaintFn = (g) => {
     if (g.fbm(x, y, 8, 27) < 0.33) g.set(x, y, 'grass');
   });
   smoothPatches(g, 'grass', 'moss');
-  if (g.lucky(0.5)) caveSomewhere(g, 'rock', 'svamp');
+  some(g, 0.5, () => caveSomewhere(g, 'rock', 'svamp'), true);
   const big = () => g.pick(['giant_mushroom', 'giant_mushroom', 'giant_glowshroom', 'tree', 'tree_pine']);
   belt(g, big, 0.8);
   g.each((x, y) => {
@@ -430,6 +561,7 @@ const svamp: PaintFn = (g) => {
   g.scatter('glowshroom', g.int(8, 12), (x, y) => open(g, x, y, 'moss', 'grass'));
   g.scatter('mushroom', g.int(5, 8), (x, y) => open(g, x, y, 'moss', 'grass'));
   g.scatter('fairy_ring', g.int(1, 2), (x, y) => open(g, x, y, 'moss', 'grass') && open(g, x + 1, y + 1, 'moss', 'grass'));
+  landmarks(g);
   connect(g, { trail: 'path_dirt', trails: true, bridge: plankBridge, pass: 'moss' });
 };
 
@@ -440,13 +572,13 @@ const dino: PaintFn = (g) => {
   g.fill('redsand');
   cliffBelt(g, 'sandstone', 29);
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (g.fbm(x, y, 10, 30) > 0.65) g.set(x, y, 'sandstone');
     else if (g.fbm(x, y, 8, 31) < 0.3) g.set(x, y, 'grass');
   });
   smoothPatches(g, 'grass', 'redsand');
-  if (g.lucky(0.6)) caveInCliff(g, 'sandstone', 'fossil');
-  const bones = g.int(1, 2);
+  some(g, 0.6, () => caveInCliff(g, 'sandstone', 'fossil'), true);
+  const bones = g.many(g.int(1, 2));
   for (let i = 0; i < bones; i++) {
     const s = spot(g, 3, 2, (t) => t === 'redsand');
     if (s) g.put('dino_bones', s.x, s.y);
@@ -460,6 +592,7 @@ const dino: PaintFn = (g) => {
   });
   g.scatter('fossil_rock', g.int(6, 10), (x, y) => open(g, x, y, 'redsand'));
   g.scatter('dig_spot', g.int(2, 3), (x, y) => open(g, x, y, 'redsand'));
+  landmarks(g);
   connect(g, { trail: null, trails: true, bridge: plankBridge, pass: 'redsand' });
 };
 
@@ -468,7 +601,7 @@ const dino: PaintFn = (g) => {
 const godis: PaintFn = (g) => {
   g.ground = 'candy';
   g.fill('candy');
-  if (g.chance(0.8)) stream(g, 'choco', g.int(2, 3), 32);
+  streams(g, 0.8, 'choco', () => g.int(2, 3), 32);
   pools(g, 'choco', 8, 0.74, 33, 5);
   if (g.lucky(0.85)) {
     const s = spot(g, 3, 3, (t) => t === 'candy');
@@ -484,6 +617,7 @@ const godis: PaintFn = (g) => {
     if (g.fbm(x, y, 7, 34) > 0.55 && g.chance(0.3)) g.put('lollipop_tree', x, y, { variant: g.int(0, 2) });
     else if (g.chance(0.035)) g.put('candy_cane', x, y);
   });
+  landmarks(g);
   connect(g, { trail: null, trails: true, bridge: plankBridge, pass: 'candy' });
 };
 
@@ -493,7 +627,7 @@ const rymdbas: PaintFn = (g) => {
   g.ground = 'sand';
   g.fill('sand');
   g.each((x, y) => {
-    if (g.edge(x, y) < 4 || inEdgeGap(x, y)) return;
+    if (g.edge(x, y) < 4 || g.gap(x, y)) return;
     if (Math.hypot(x - BASE_ROCKET.x, y - BASE_ROCKET.y) < 12) return;
     if (g.fbm(x, y, 12, 35) > 0.72) g.set(x, y, 'sandstone');
   });
@@ -502,6 +636,7 @@ const rymdbas: PaintFn = (g) => {
   belt(g, () => g.pick(['cactus', 'rock_small', 'palm']), 0.15);
   g.scatter('cactus', g.int(6, 10), (x, y) => open(g, x, y, 'sand'));
   g.scatter('dig_spot', g.int(1, 2), (x, y) => open(g, x, y, 'sand'));
+  landmarks(g);
   connect(g, { trail: 'path_stone', trails: true, bridge: plankBridge, pass: 'sand' });
 };
 

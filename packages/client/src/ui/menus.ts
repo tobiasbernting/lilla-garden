@@ -68,7 +68,7 @@ import { PaintBoard } from './paint.ts';
 import { stackIconUrl } from '../art/painting.ts';
 import { SFX } from '../sound.ts';
 import { familyScores } from './arcade.ts';
-import { hasSagaQuests, sagaQuestRows } from './saga.ts';
+import { FORGE_NPC, hasSagaQuests, landmarkMarks, sagaQuestRows } from './saga.ts';
 import { RALLY_HELP_LINE } from './rally.ts';
 
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel' | 'prizes' | 'scores';
@@ -775,6 +775,7 @@ export class Menus {
     const here = parseCaveKey(outside)?.parent ?? (outside === MOON_KEY ? SPACEPORT_KEY : outside);
     const c = areaCoords(here) ?? { ax: 0, ay: 0 };
     const visited = new Set(me.visited ?? ['farm']);
+    const marks = landmarkMarks(me);
     const R = 3;
     const grid = h('div', { class: 'worldmap' });
     for (let dy = -R; dy <= R; dy++)
@@ -786,11 +787,15 @@ export class Menus {
         const biome = k === 'farm' ? 'farm' : known ? (client.biomes[k] ?? client.areas[k]?.biome ?? biomeAt(ax, ay)) : null;
         // the rocket is rumoured about before anyone finds it
         const rumour = !known && k === SPACEPORT_KEY;
+        // Upptäcktsboken: a landmark seen here but not yet touched ("?"), or every one seen here found (🧭)
+        const mark = known ? marks.get(k) : undefined;
+        const tip = known ? `${placeName(biome!)}${mark ? ` · ${mark === 'seen' ? T.mapLandmarkSeen : T.mapLandmarkFound}` : ''}` : rumour ? T.spaceportRumour : T.notVisited;
         const cell = h(
           'div',
-          { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: known ? placeName(biome!) : rumour ? T.spaceportRumour : T.notVisited },
+          { class: `cell${known ? ' known' : ''}${k === here ? ' here' : ''}`, title: tip },
           h('span', { class: 'em' }, known ? placeEmoji(biome!) : rumour ? '🚀' : '❔'),
           known ? h('span', { class: 'nm' }, placeName(biome!)) : rumour ? h('span', { class: 'nm' }, '?') : null,
+          mark ? h('span', { class: `lm-mark ${mark}` }, mark === 'seen' ? '?' : '🧭') : null,
         );
         if (known && k !== me.area && me.area !== 'dungeon') {
           onTap(cell, () => {
@@ -866,7 +871,7 @@ export class Menus {
     body.append(talk);
     const chat = h('button', null, '💬 Prata!');
     onTap(chat, () => this.say(npc.id, 'start', ''));
-    body.append(h('div', { class: 'npc-actions' }, chat));
+    body.append(h('div', { class: 'npc-actions' }, chat, this.forgeButton(npc.id)));
     // the saga's quests (ui/saga.ts)
     if (saga) body.append(sagaQuestRows(npc.id));
     const rows = h('div', { class: 'rows' });
@@ -927,15 +932,30 @@ export class Menus {
       opts.append(b);
     }
     body.append(opts);
-    if (hasQuests) {
-      const back = h('button', { class: 'alt' }, '📜 Uppdrag');
-      onTap(back, () => {
-        this.talk = null;
-        this.said = '';
-        this.rerender();
-      });
-      body.append(h('div', { class: 'npc-actions', style: { marginTop: 'calc(2 * var(--u))' } }, back));
+    const forge = this.forgeButton(npcId);
+    if (hasQuests || forge) {
+      let back: HTMLElement | null = null;
+      if (hasQuests) {
+        back = h('button', { class: 'alt' }, '📜 Uppdrag');
+        onTap(back, () => {
+          this.talk = null;
+          this.said = '';
+          this.rerender();
+        });
+      }
+      body.append(h('div', { class: 'npc-actions', style: { marginTop: 'calc(2 * var(--u))' } }, back, forge));
     }
+  }
+
+  /** Smed-Stina's forge (ui/saga.ts): a button in her window, for everyone (anyone can own gear). */
+  private forgeButton(npcId: string): HTMLElement | null {
+    if (npcId !== FORGE_NPC) return null;
+    const b = h('button', { class: 'forge-btn' }, T.forgeBtn);
+    onTap(b, () => {
+      this.close();
+      document.dispatchEvent(new CustomEvent('lilla:forge'));
+    });
+    return b;
   }
 
   // ---- help ----
