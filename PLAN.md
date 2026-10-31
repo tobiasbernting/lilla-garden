@@ -193,7 +193,7 @@ Total: roughly 60–90 evenings. M1 and M2 can start now and do not depend on ar
 
 ## 7. Open points and risks
 
-- **Godot and Synty FBX.** The Vikings and Nature packs do not ship a Godot project. Godot imports FBX through its
+- **Godot and Synty FBX.** The Vikings pack does not ship a Godot project. Godot imports FBX through its
   bundled converter, but materials sometimes need a pass in Blender. Budget one evening in M3 to settle the import
   pipeline before buying more packs.
 - **Keeping the saga tests honest.** `saga.test.ts` walks every dungeon; the run generator must keep those tests and
