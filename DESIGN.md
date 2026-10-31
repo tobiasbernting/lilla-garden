@@ -111,6 +111,37 @@ Sharing the world beyond the family. Default on; `ACCESS=open` restores the old 
 - Parents: `PARENT_PASSWORD` (scrypt-compared), optional TOTP stored in `settings`, in-memory 8 h sessions, per-IP and global rate limits. Gate events go to `access_log`.
 - Sharing it publicly is meant to happen through a tunnel/proxy (`PUBLIC_URL`, `TRUST_PROXY=1`), not by opening ports.
 
+## Röstprat (2026-10-31)
+Talking to the players who are not in the room: a parent and two kids on the sofa, an uncle at his place. The trap is
+the room itself: with a microphone open on every tablet, the uncle's voice would come out of three speakers, be picked
+up by three microphones and come back to him three times with a delay (browser echo cancellation only removes a
+device's own output), and the kids would hear each other live and again through the speakers. So:
+- **Voice is per room, not per player.** Every device is in a room; by default everyone behind the same public
+  address (the same home Wi-Fi) shares one, so the uncle's house is a room of its own. You never hear the players in
+  your own room. The window lets a device say it is in another room ("Jag sitter i ett annat rum") or in another
+  player's room ("Jag sitter hos …", for a phone on mobile data at home).
+- **One speakerphone per room.** The first device in a room to pick up (📞, "Ring upp") is the room's speaker: the
+  only one that opens its microphone and plays the other rooms' speakers. The other devices in the room never ask for
+  a microphone; any of them that has picked up can take over ("Använd den här som högtalare"), and when the speaker
+  hangs up or drops off, another device there that picked up takes over, else the room falls silent. A family evening
+  is two or three audio streams, not eight.
+- **Straight between the browsers.** WebRTC audio between the rooms' speakers (a mesh, at most eight), signaled over
+  the game socket (`voice` messages: `join`/`leave`/`speaker`/`room`/`signal`/`talking`; the server relays `signal`
+  only between the speakers of different rooms, 40 a second and 16 kB at most). Perfect negotiation with `offers()`
+  deciding who is impolite; the polite side waits for the first offer. The server never sees sound and saves nothing.
+  `shared/src/voice.ts` has the types and `voicePeers`/`mySpeaker`/`offers`; `server/src/voice.ts` the rooms (keyed
+  by address, shown to clients as a hash); `client/src/ui/voice.ts` the window, the microphone and the connections.
+- **Servers.** STUN by default (Cloudflare's public server); optional TURN from the environment: a fixed login, a
+  coturn with `use-auth-secret` (short-lived HMAC logins made by the server) or Cloudflare's TURN service (logins
+  fetched from its API and cached, `server/src/ice.ts`). The public farm has no open inbound ports, so a relay of
+  its own is out and Cloudflare's is the fit. Sent to a device when it becomes a speaker.
+- **Family rules.** The parent page chooses off / family only (default) / family and guests; guests left out never
+  see the button. Open microphone with a mute button rather than push-to-talk (holding a button while steering on a
+  tablet is hard for a seven-year-old); echo cancellation, noise suppression and gain control on. The speaker device
+  measures its own level and reports `talking` on/off, shown as 🔊 by that player's name for everyone (the game cannot
+  know which of the three people around a speakerphone is talking). A new speaker in another room rings: a toast and
+  the chat sound. Microphones need a secure context, so LAN dev over plain HTTP has no voice.
+
 ## Rallyvärlden (2026-10-30)
 The rally minigame grows into a part of the game: a garage on the farm, cars to buy, tune and style, races with the family on five courses, damage mended for kr, and a 3D free roam. What other racers do well and fits a family game went in: steering assist for the little ones, drift boost (a held slide charges a mini-turbo), instant respawn, a gentle rubber band, medals and a ghost (Trackmania), boost pads and mud as the only pickups (Mario Kart), underglow and liveries (Need for Speed), an animal in the driver's seat, damage as spectacle with a small bill (Burnout), one currency, never a zero payout, no fail states.
 - `shared/src/rally.ts` is the contract: bodies (`hatch` free, `buggy`, `pickup`, `coupe`, `monster`; power/grip/tough/size), six parts with three levels (`PART_PRICES`, `PART_EFFECTS`), the `CarStyle` (paint, paint2, finish, livery, decals in four slots, number, wheels, rim colour, spoiler, extras, horn, underglow, driver, smoke colour, plate) with `STYLE_PRICES`, `GarageCar`/`GarageState` on `PlayerState.garage` (up to six cars, the active one, best times per `course:laps`, today's roam coins), `RaceRules` (`cleanRules` makes anything a client sent valid), the money formulas (`racePrize` by place/laps/difficulty/damage/field/course, a practice prize alone on the track, `RACE_DNF_PRIZE`, `repairCost` capped at 400 kr, `DAMAGE_HEAL_PER_DAY`, roam coins at 2 kr with a daily cap), medals (`raceMedal` from each course's gold time), and the room/snapshot/result shapes relayed online.

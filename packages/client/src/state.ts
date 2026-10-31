@@ -43,6 +43,8 @@ export interface Events {
   target: void;
   /** Rallyvärlden: the lobby, the race and free roam from the server (ui/rally.ts). */
   rally: Extract<ServerMsg, { t: 'race' | 'roam' }>;
+  /** Röstprat: rooms, speakers, the handshake and who is talking (ui/voice.ts). */
+  voice: Extract<ServerMsg, { t: 'voice' }>;
 }
 
 class Bus {
@@ -85,6 +87,8 @@ export const client = {
   chatBubbles: new Map<string, { text: string; until: number }>(),
   /** Dungeons: everyone's health and state in each dungeon with someone in it (the server sends it 10 times a second). */
   saga: {} as Record<string, SagaSnap>,
+  /** Röstprat: the speakers whose room is talking right now (a 🔊 by their name). */
+  talking: new Set<string>(),
 };
 
 export const serverNow = (): number => Date.now() - client.serverOffset;

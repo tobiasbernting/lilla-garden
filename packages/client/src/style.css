@@ -1311,3 +1311,82 @@ body.touch .round.pet-btn i {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- röstprat: the phone button and its window ---- */
+.round.voice-btn.on {
+  box-shadow:
+    0 0 0 calc(0.75 * var(--u)) #5fd36b,
+    0 var(--u) 0 var(--ink);
+}
+.round.voice-btn.muted {
+  box-shadow:
+    0 0 0 calc(0.75 * var(--u)) #e07a5f,
+    0 var(--u) 0 var(--ink);
+}
+.voice-box {
+  width: calc(230 * var(--u));
+  max-width: calc(100% - 4 * var(--u));
+  max-height: calc(100% - 20 * var(--u));
+  overflow-y: auto;
+}
+.voice-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: calc(4.5 * var(--u));
+}
+.voice-hint,
+.voice-status {
+  font-size: calc(3.6 * var(--u));
+  color: #6a5a40;
+  margin: 0;
+}
+.voice-status.connected {
+  color: #2f8f3a;
+}
+.voice-status.failed {
+  color: #b5452c;
+}
+.voice-room {
+  display: flex;
+  flex-direction: column;
+  gap: var(--u);
+  padding: calc(1.5 * var(--u));
+  border: var(--u) solid var(--panel-dark);
+  border-radius: calc(2 * var(--u));
+  margin-top: calc(1.5 * var(--u));
+}
+.voice-room.mine {
+  border-color: var(--ink);
+}
+.voice-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--u) calc(2 * var(--u));
+  font-size: calc(4 * var(--u));
+}
+.voice-member.speaker {
+  font-weight: 800;
+}
+.voice-member.me {
+  text-decoration: underline;
+}
+.voice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--u);
+}
+.voice-row button {
+  font-size: calc(3.8 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(2 * var(--u));
+}
+.voice-row button.small {
+  font-size: calc(3.4 * var(--u));
+}
+.voice-others {
+  margin-top: calc(1.5 * var(--u));
+  font-size: calc(4 * var(--u));
+}
+.label.talking::before {
+  content: '🔊 ';
+}

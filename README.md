@@ -16,6 +16,9 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - Allt tillsammans med upp till åtta spelare på samma gård. Inget dör, inget går sönder.
 - Det du bygger är ditt: bara den som byggde något kan riva det (staket, väggar, kistor, möbler, djurhus…).
 - 2D: chatta med alla som spelar (Enter/T eller 💬, färdiga ord för den som inte vill skriva).
+- Röstprat (📞): prata med dem som sitter någon annanstans. De som är i samma rum (samma wifi) hör inte varandra
+  genom spelet – en enhet i rummet är högtalare och pratar med de andra rummen. Rösten går direkt mellan
+  enheterna och sparas aldrig; föräldrasidan väljer av / bara familjen / familj och gäster.
 - 2D: säg åt hund, katt och häst att stanna (✋, X) och vissla så kommer de igen (🎵, V) – även från en annan karta.
 - 2D: prata med alla bybor (Prata! i bybons fönster): frågor, berättelser, skämt, gåtor och sten, sax, påse med Elsa.
 - 2D: väder som skiftar av sig självt – sol, moln, regn, åska, snö, hagel, blåst och dimma. Regnet vattnar åkrarna,
@@ -88,6 +91,9 @@ Environment:
 | `ADMIN_PORT`      | Serve the parent page on its own port (and not on `PORT`). `ADMIN_HOST` sets its address (default `0.0.0.0`). |
 | `NTFY_URL`        | ntfy topic URL for push notifications, e.g. `http://ntfy.example.lan/lilla-garden`. `NTFY_TOKEN` if the server needs one. |
 | `TRUST_PROXY`     | `1` behind a tunnel or reverse proxy: take the visitor's IP from `CF-Connecting-IP`/`X-Forwarded-For`. Only set it when the server can't be reached directly. |
+| `STUN_URLS`       | Röstprat: STUN servers, comma-separated. Default `stun:stun.cloudflare.com:3478`. Enough for most home networks. |
+| `TURN_URLS`       | Röstprat: a TURN relay for the connections STUN can't manage (mobile data, strict NATs), with either `TURN_USERNAME` + `TURN_CREDENTIAL` (fixed login) or `TURN_SECRET` (coturn `use-auth-secret`: short-lived logins made by the server). |
+| `CLOUDFLARE_TURN_KEY_ID` | Röstprat: Cloudflare's TURN service instead of a relay of your own (`CLOUDFLARE_TURN_API_TOKEN` alongside). Short-lived logins are fetched from its API and cached. The public farm has no open ports, so this is the one that fits it. |
 
 ## Who may enter (access control)
 

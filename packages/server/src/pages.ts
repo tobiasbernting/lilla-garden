@@ -151,6 +151,7 @@ const EVENTS: Record<string, string> = {
   character: 'ny karaktär',
   mode: 'vem får komma in',
   hours: 'speltid',
+  voice: 'röstprat',
   'totp-on': 'tvåsteg på',
   'totp-off': 'tvåsteg av',
   refused: 'stoppad',
@@ -173,6 +174,7 @@ export function accessSections(v: AccessView): string {
   const st = access.settings;
   const playerName = new Map(v.players.map((p) => [p.id, p.name]));
   const mode = (m: string, label: string) => `<label><input type="radio" name="mode" value="${m}"${st.mode === m ? ' checked' : ''}> ${label}</label>`;
+  const voice = (m: string, label: string) => `<label><input type="radio" name="voice" value="${m}"${access.voicePolicy() === m ? ' checked' : ''}> ${label}</label>`;
 
   const pending = access.pending();
   const pendingHtml = pending.length
@@ -262,6 +264,12 @@ ${chars}
     <label>Till <input type="time" name="to" value="${st.to ?? ''}"></label>
     <button>Spara</button> <span class="muted">Tomt = när som helst. Svensk tid, gäller alla enheter.</span>
   </form>
+  <h3>📞 Röstprat</h3>
+  <form method="post" action="/admin/access/voice" class="block">
+    ${voice('off', 'Av')}<br>${voice('family', 'Bara familjen')}<br>${voice('open', 'Familjen och gästerna')}<br>
+    <button>Spara</button>
+  </form>
+  <p class="muted">Rösten går direkt mellan enheterna och sparas aldrig. De som är i samma rum (samma wifi) hör inte varandra genom spelet: en enhet per rum är högtalare och pratar med de andra rummen.</p>
 </div>
 ${
   pending.length
