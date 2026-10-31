@@ -182,8 +182,11 @@ export interface AnimalDef {
   tame?: number;
   /** Predators chase players within aggroRange tiles and bite; hp like a monster, they drop fur. */
   predator?: { hp: number; aggroRange: number };
-  /** Dungeon monsters: hit points and whether it is the boss. */
-  mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[] };
+  /**
+   * Monsters (the cave's, and Loke's roaming ones out in the world): hit points, whether it is the boss, what it drops,
+   * and for a roaming one how close you must come before it notices you (aggro, tiles; 4.5 if left out).
+   */
+  mob?: { hp: number; boss?: boolean; drops: { item: string; min: number; max: number; chance: number }[]; aggro?: number };
   /** Vehicles: speed multiplier when driven; traffic = AI-driven city vehicles; rideable = players may drive/board it. */
   vehicle?: { speed: number; ride?: number; traffic?: boolean; seats?: number; rideable?: boolean };
   /** Dungeon monsters and bosses (see saga.ts): they fight by the dungeon's rules. */

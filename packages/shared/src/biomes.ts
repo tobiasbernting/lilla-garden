@@ -25,7 +25,7 @@ export const BIOME_NAMES: Record<Place, string> = {
   berg: 'Bergen',
   strand: 'Stranden',
   oken: 'Öknen',
-  by: 'Staden',
+  by: 'Köpingen',
   trask: 'Träsket',
   djungel: 'Djungeln',
   vulkan: 'Vulkanen',

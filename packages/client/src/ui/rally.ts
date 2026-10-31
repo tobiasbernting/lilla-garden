@@ -306,7 +306,7 @@ const HORN_SFX: Record<string, () => void> = {
     setTimeout(() => tone(740, 0.14, 'square', 0.05, -320), 170);
   },
   train: () => [311, 370, 466].forEach((f) => tone(f, 0.7, 'sawtooth', 0.035)),
-  honk: () => SFX.honk(),
+  honk: () => SFX.horn(),
 };
 
 // ---------------------------------------------------------------------------

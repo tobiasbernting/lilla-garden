@@ -1754,3 +1754,148 @@ button.pick {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Saga III: the hero level ---- */
+.chip.level {
+  color: #8a5400;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.chip.level:active {
+  scale: 0.94;
+}
+
+/* "+4 xp" rising from you after a kill */
+.label.saga-fct.xp {
+  font-size: calc(3.8 * var(--u));
+  color: #ffd84a;
+  text-shadow:
+    0 calc(0.4 * var(--u)) 0 #4a2a00,
+    0 0 calc(2 * var(--u)) rgba(255, 200, 60, 0.8);
+  animation-duration: 1.3s;
+}
+
+/* the level-up banner's golden reward line */
+.saga-banner.level .sub.reward {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  color: #ffe98a;
+  background: linear-gradient(rgba(60, 36, 8, 0.85), rgba(30, 18, 6, 0.85));
+  border: calc(0.6 * var(--u)) solid #e8b84a;
+  box-shadow: 0 0 calc(5 * var(--u)) rgba(255, 200, 80, 0.6);
+}
+.saga-banner.level .sub.reward .pic {
+  display: inline-flex;
+  width: calc(10 * var(--u));
+  height: calc(10 * var(--u));
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 calc(2 * var(--u)) #ffd23f);
+}
+.saga-banner.level .sub.reward .pic img {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.saga-banner.level .sub.reward .pic .em {
+  font-size: calc(7 * var(--u));
+}
+
+/* the journal's hero level page */
+.saga-level {
+  background: #2b2419;
+  color: #fff;
+  border-radius: calc(2.5 * var(--u));
+  padding: calc(2 * var(--u)) calc(3 * var(--u));
+}
+.saga-level .lvl {
+  color: #ffe08a;
+  font-size: calc(5 * var(--u));
+}
+.saga-level .saga-meter.xp {
+  background: #3a2e48;
+  border-color: #0d0a12;
+}
+.saga-level .saga-meter.xp i {
+  background: linear-gradient(#ffe98a, #e8a82a);
+}
+.saga-level .saga-meter.xp span {
+  color: #fff;
+  font-size: calc(3.2 * var(--u));
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
+}
+.saga-level .tx {
+  margin: calc(1.5 * var(--u)) 0 0;
+  font-size: calc(3.6 * var(--u));
+  color: #d8cbb0;
+}
+.saga-levels {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--u));
+  margin-top: calc(1.5 * var(--u));
+}
+.saga-levels .lv {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  padding: calc(1 * var(--u)) calc(2 * var(--u));
+  border-radius: calc(2 * var(--u));
+  background: #e8e0cc;
+  color: #8a8070;
+  font-size: calc(3.8 * var(--u));
+}
+.saga-levels .lv .n {
+  flex: 0 0 calc(16 * var(--u));
+  font-weight: 900;
+}
+.saga-levels .lv .rws {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(1 * var(--u)) calc(3 * var(--u));
+}
+.saga-levels .rw {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(1 * var(--u));
+}
+.saga-levels .rw img,
+.saga-levels .rw .em {
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(5 * var(--u));
+  image-rendering: pixelated;
+}
+.saga-levels .lv:not(.got) .rw img,
+.saga-levels .lv:not(.got) .rw .em {
+  filter: grayscale(1) opacity(0.45);
+}
+.saga-levels .lv.next {
+  background: #f4ead0;
+  color: #6a5a40;
+  outline: calc(0.6 * var(--u)) dashed #c8a95a;
+}
+.saga-levels .lv.got {
+  background: #2b2419;
+  color: #fff;
+}
+.saga-levels .lv.got .n {
+  color: #ffd86a;
+}
+.saga-levels .lv.got .rw b {
+  /* the rarity's colour, lightened so it reads on the dark row */
+  color: color-mix(in srgb, var(--r, #ffe08a) 60%, #fff);
+}
+.saga-levels .lv.got .rw img {
+  filter: drop-shadow(0 0 calc(1.5 * var(--u)) var(--r, #ffd23f));
+}
+.saga-levels .lv.got .rw.aura.a2 b {
+  background: linear-gradient(90deg, #ff7a7a, #ffd23f, #7aff9a, #7ad8ff, #c87aff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

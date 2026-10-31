@@ -78,7 +78,7 @@ export const RIDDLES: { q: string; answers: string[]; right: number }[] = [
   { q: 'Vad kan man fånga men aldrig kasta?', answers: ['En boll', 'En fisk', 'En förkylning'], right: 2 },
   { q: 'Vilken månad har 28 dagar?', answers: ['Februari', 'Alla månader', 'Juni'], right: 1 },
   { q: 'Vad har en hals men inget huvud?', answers: ['En flaska', 'En giraff', 'En orm'], right: 0 },
-  { q: 'Vad har tangenter men kan inte låsa upp en enda dörr?', answers: ['En vaktmästare', 'En bil', 'Ett piano'], right: 2 },
+  { q: 'Vad har tangenter men kan inte låsa upp en enda dörr?', answers: ['En vaktmästare', 'En kärra', 'Ett piano'], right: 2 },
   { q: 'Vad springer men går aldrig, och har en bädd men sover aldrig?', answers: ['En å', 'En hund', 'En klocka'], right: 0 },
   { q: 'Vad går upp men kommer aldrig ner igen?', answers: ['En ballong', 'Hur gammal man är', 'En hiss'], right: 1 },
   { q: 'Vad är ditt, men används mest av alla andra?', answers: ['Din tandborste', 'Ditt namn', 'Din cykel'], right: 1 },

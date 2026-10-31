@@ -335,17 +335,21 @@ function rimturs(p: Px, f: number): void {
 // Surts smedja: fire imps, lava golems, fire hounds; the smith and Surt himself
 // ---------------------------------------------------------------------------
 
+/** An imp: round, two little horns, a big grin, bat wings, a pointy tail (the fire imp's flame comes after the outline). */
+function imp(p: Px, f: number, skin: Pal, horn: string, eyes: string): void {
+  p.line(0, 12, 3, 11, skin.d).tpl(0, 10, ['#.', '##'], { '#': skin.b });
+  p.tpl(1, 4, ['..##', '.###', '####', '..##'], { '#': f ? skin.d : skin.b });
+  const [b, fr] = stride(f, 4, 8);
+  p.rect(b, 13, 2, 3, skin.d).rect(fr, 13, 2, 3, skin.b);
+  lump(p, 2, 5, 11, 9, skin, 0.15, 111, 0.35);
+  p.rect(5, 3, 1, 3, horn).px(4, 2, horn).rect(10, 3, 1, 3, horn).px(11, 2, horn);
+  p.rect(8, 7, 2, 2, K).px(9, 7, eyes).rect(11, 7, 2, 2, K).px(12, 7, eyes);
+  p.rect(8, 10, 5, 1, K).px(9, 10, '#ffffff').px(11, 10, '#ffffff');
+}
+
 function eldimp(p: Px, f: number): void {
   // a small fire imp: round and red, two little horns, a big grin, bat wings, a pointy tail, a flame on top
-  const red = pal('#6a140c', '#a8241a', '#e04a2a', '#ff8a5a', '#ffc0a0');
-  p.line(0, 12, 3, 11, red.d).tpl(0, 10, ['#.', '##'], { '#': red.b });
-  p.tpl(1, 4, ['..##', '.###', '####', '..##'], { '#': f ? red.d : red.b });
-  const [b, fr] = stride(f, 4, 8);
-  p.rect(b, 13, 2, 3, red.d).rect(fr, 13, 2, 3, red.b);
-  lump(p, 2, 5, 11, 9, red, 0.15, 111, 0.35);
-  p.rect(5, 3, 1, 3, '#f4e0c0').px(4, 2, '#f4e0c0').rect(10, 3, 1, 3, '#f4e0c0').px(11, 2, '#f4e0c0');
-  p.rect(8, 7, 2, 2, K).px(9, 7, '#ffe14a').rect(11, 7, 2, 2, K).px(12, 7, '#ffe14a');
-  p.rect(8, 10, 5, 1, K).px(9, 10, '#ffffff').px(11, 10, '#ffffff');
+  imp(p, f, pal('#6a140c', '#a8241a', '#e04a2a', '#ff8a5a', '#ffc0a0'), '#f4e0c0', '#ffe14a');
 }
 
 function lavagolem(p: Px, f: number): void {
@@ -812,8 +816,23 @@ const hexRgb = (h: string): [number, number, number] => {
 const SHEET = pal('#7e7e98', '#aaaac0', '#d6d6e6', '#eeeef8', '#ffffff');
 const HELGREEN = '#7aff6a';
 
+interface SheetLook {
+  sheet: Pal;
+  cheek: string;
+  /** The lantern's frame: its top, bottom and two sides (stripes when they alternate), and its light. */
+  frame: [string, string, string, string];
+  light: string;
+  /** Stripes across the sheet (the sugar ghost). */
+  stripe?: string;
+}
+
 function gengangare(p: Px, f: number): void {
   // a sheet ghost bobbing along with a lantern: a round top, a wavy hem that sways, big dark eyes, a little "o" mouth
+  sheetGhost(p, f, { sheet: SHEET, cheek: '#f0c0d0', frame: [IRON.b, IRON.d, IRON.b, IRON.d], light: '#c8ffb0' });
+}
+
+function sheetGhost(p: Px, f: number, o: SheetLook): void {
+  const sh = o.sheet;
   const bob = f ? 1 : 0;
   const cx = 8.5;
   paint(p, 0, 0, 17, 23, (x, y) => {
@@ -824,22 +843,24 @@ function gengangare(p: Px, f: number): void {
     if (Math.abs(u) > 1) return null;
     const hem = 19 + Math.round(Math.sin((x + f * 2) * 1.2) * 1.3);
     if (yy > hem) return null;
-    if (yy >= hem - 1) return SHEET.d;
-    if (yy < 4 && u < 0.1) return SHEET.l2;
-    if (u < -0.55) return SHEET.l;
-    if (u > 0.62) return SHEET.d;
+    if (yy >= hem - 1) return sh.d;
+    if (yy < 4 && u < 0.1) return sh.l2;
+    if (u < -0.55) return sh.l;
+    if (u > 0.62) return sh.d;
     // a fold or two down the sheet
-    return (x === 5 || x === 11) && yy > 11 ? SHEET.b : yy > 13 && u > 0.3 ? SHEET.b : SHEET.l;
+    if (o.stripe && yy > 9 && yy < hem - 1 && (x - yy + 120) % 6 < 2) return o.stripe;
+    return (x === 5 || x === 11) && yy > 11 ? sh.b : yy > 13 && u > 0.3 ? sh.b : sh.l;
   });
   // the face
   p.rect(10, 6 + bob, 2, 3, K).px(10, 6 + bob, '#ffffff');
   p.rect(13, 6 + bob, 2, 3, K).px(13, 6 + bob, '#ffffff');
-  p.rect(12, 11 + bob, 2, 2, '#4a4458').px(11, 10 + bob, '#f0c0d0').px(15, 10 + bob, '#f0c0d0');
+  p.rect(12, 11 + bob, 2, 2, '#4a4458').px(11, 10 + bob, o.cheek).px(15, 10 + bob, o.cheek);
   // an arm of sheet holding the lantern out in front
-  p.rect(13, 13 + bob, 3, 2, SHEET.l).px(16, 13 + bob, SHEET.b);
+  const [top, bottom, left, right] = o.frame;
+  p.rect(13, 13 + bob, 3, 2, sh.l).px(16, 13 + bob, sh.b);
   p.line(16, 14 + bob, 16, 15 + bob, IRON.l);
-  p.rect(14, 16 + bob, 4, 1, IRON.b).rect(14, 21 + bob, 4, 1, IRON.d).rect(14, 17 + bob, 1, 4, IRON.b).rect(17, 17 + bob, 1, 4, IRON.d);
-  p.rect(15, 17 + bob, 2, 4, '#c8ffb0');
+  p.rect(14, 16 + bob, 4, 1, top).rect(14, 21 + bob, 4, 1, bottom).rect(14, 17 + bob, 1, 4, left).rect(17, 17 + bob, 1, 4, right);
+  p.rect(15, 17 + bob, 2, 4, o.light);
 }
 
 function helhund(p: Px, f: number): void {
@@ -951,17 +972,18 @@ function gruvtroll(p: Px, f: number): void {
   p.rect(5, 4, 14, 1, '#7a5208').rect(15, 1, 3, 3, IRON.b).rect(16, 2, 2, 1, '#fff6c8');
 }
 
-function beetle(p: Px, f: number, bow: boolean): void {
+const BEETLE_HEAD = pal('#1e1408', '#3a2810', '#5a4018', '#7a5a26', '#9a7838');
+
+function beetle(p: Px, f: number, bow: boolean, shell = GOLD, head = BEETLE_HEAD, shine = '#fff6c8'): void {
   // a golden beetle: a shiny round shell, a dark head with feelers, six busy legs
-  const head = pal('#1e1408', '#3a2810', '#5a4018', '#7a5a26', '#9a7838');
   const legs = [3, 6, 9];
   legs.forEach((x, i) => p.line(x + 1, 8, x + (i % 2 === f ? 0 : 2), 11, head.d2));
-  lump(p, 1, 2, 11, 8, GOLD, 0.15, 251, 0.35);
-  p.line(2, 4, 6, 2, GOLD.l2).rect(2, 8, 10, 1, GOLD.d).px(4, 6, '#fff6c8');
+  lump(p, 1, 2, 11, 8, shell, 0.15, 251, 0.35);
+  p.line(2, 4, 6, 2, shell.l2).rect(2, 8, 10, 1, shell.d).px(4, 6, shine);
   legs.forEach((x, i) => p.line(x, 9, x + (i % 2 === f ? 2 : 0), 11, head.b));
   lump(p, 10, 4, 5, 5, head, 0.1, 252, 0.4);
   eye(p, 12, 5, 2);
-  p.line(12, 4, 14, 1, head.b).line(13, 4, 15, 2, head.d).px(14, 1, GOLD.l).px(15, 2, GOLD.l);
+  p.line(12, 4, 14, 1, head.b).line(13, 4, 15, 2, head.d).px(14, 1, shell.l).px(15, 2, shell.l);
   p.px(15, 8, head.l);
   if (bow) p.tpl(4, 0, ['#.#', '###', '#.#'], { '#': '#e8405a' }).px(5, 1, '#ff8aa0');
 }
@@ -1634,6 +1656,210 @@ function kustjatte(p: Px, f: number): void {
 }
 
 // ---------------------------------------------------------------------------
+// Out in the world: the easy wild monsters of every biome (a gnome, troll cubs, a sand spirit, a bone lizard, and
+// the dungeon creatures' cousins in their biome's colours)
+// ---------------------------------------------------------------------------
+
+function angsvatte(p: Px, f: number): void {
+  // a meadow gnome, small and grumpy: a red pointed cap flopping back, bushy grey brows in a scowl, a big round nose,
+  // a long grey beard, a brown coat, and a crooked stick he shakes at you
+  const coat = pal('#2a1e14', '#43301e', '#5e452c', '#7c5e3e', '#9a7a54');
+  const cap = pal('#5a0e0e', '#8e1a16', '#c8302a', '#ec5a48', '#ff9a86');
+  const beard = pal('#55555c', '#7c7c86', '#a4a4ae', '#c8c8d0', '#ececf2');
+  const skin = pal('#6a3a2a', '#9a5a44', '#c88466', '#e8a888', '#f8ccb0');
+  const nose = pal('#6a1a1a', '#a03030', '#d0504a', '#ec7a6a', '#ffb0a0');
+  const lift = f ? 1 : 0;
+  // little legs and boots, taking turns
+  const [b, fr] = stride(f, 4, 8);
+  p.rect(b, 15, 2, 2, coat.d2).rect(fr, 15, 2, 2, coat.d);
+  p.rect(b - 1, 17, 3, 2, '#241c1c').rect(fr, 17, 3, 2, '#3a2e2a').px(fr + 2, 17, '#4e403a');
+  // the coat, a belt
+  lump(p, 2, 8, 10, 9, coat, 0.15, 501, 0.3);
+  p.rect(3, 13, 8, 1, '#2a1a10').px(5, 13, GOLD.b);
+  // the stick, held out in front and shaken
+  p.line(14, 4 - lift, 14, 18 - lift, WOOD.b).px(13, 4 - lift, WOOD.l).px(13, 3 - lift, WOOD.b).px(14, 10 - lift, WOOD.d);
+  // the face, the nose, the scowl
+  lump(p, 5, 3, 8, 8, skin, 0.1, 502, 0.35);
+  lump(p, 11, 6, 4, 4, nose, 0.05, 503, 0.45);
+  p.rect(9, 7, 2, 2, K).px(10, 7, '#ffffff');
+  p.px(8, 6, beard.l2).px(9, 6, beard.l).px(10, 6, beard.l).px(11, 7, beard.b);
+  // the beard, long and pointed, over the coat
+  paint(p, 5, 9, 9, 9, (x, y) => {
+    const half = 3.8 - (y - 9) * 0.45;
+    if (Math.abs(x + 0.5 - (10 - (y - 9) * 0.25)) > half) return null;
+    if (y === 9 && x > 11) return beard.l2;
+    return x < 7 ? beard.l : (x + y) % 3 === 0 ? beard.b : y > 14 ? beard.b : beard.l;
+  });
+  p.rect(10, 9, 3, 1, beard.l2);
+  // the arm holding the stick
+  p.rect(11, 11 - lift, 2, 2, coat.b);
+  lump(p, 12, 10 - lift, 3, 3, skin, 0.05, 504, 0.4);
+  // the cap: a tall red cone flopping back, with a brim pulled down over the brows
+  paint(p, 1, 0, 13, 6, (x, y) => {
+    const t = y / 5;
+    const cx = 3 + 5.5 * t;
+    const half = 0.6 + 4.2 * t;
+    const u = (x + 0.5 - cx) / half;
+    if (Math.abs(u) > 1) return null;
+    return u < -0.4 ? cap.l : u > 0.5 ? cap.d : cap.b;
+  });
+  p.rect(4, 5, 10, 1, cap.d).rect(4, 5, 3, 1, cap.b).px(2, 0, cap.l2);
+}
+
+function trollunge(p: Px, f: number): void {
+  // a troll cub: round and mossy brown, a tuft of hair, big eyes, a big round nose, stubby arms and a cow's tail
+  const skin = pal('#2e2618', '#4e422a', '#76653f', '#9c8a5c', '#c2b080');
+  const nose = pal('#4a3020', '#7a5a3a', '#a8825a', '#cca67a', '#ead2a8');
+  const hair = pal('#1a1008', '#32200e', '#4e3418', '#6e4c24', '#8e6a36');
+  const [b, fr] = stride(f, 3, 8);
+  // the tail with its tuft, swishing
+  p.line(2, 11, 0, f ? 12 : 14, skin.d);
+  p.rect(0, f ? 12 : 14, 2, 2, hair.b).px(0, f ? 12 : 14, hair.l);
+  // legs and big flat feet
+  p.rect(b, 12, 3, 3, skin.d).rect(fr, 12, 3, 3, skin.b);
+  p.rect(b - 1, 15, 4, 2, skin.d2).rect(fr, 15, 4, 2, skin.d);
+  // the far arm, the round body, a paler belly
+  lump(p, 0, 7, 4, 5, skin, 0.1, 511, 0.3);
+  lump(p, 1, 3, 12, 12, skin, 0.15, 512, 0.3);
+  lump(p, 4, 9, 7, 5, pal(skin.b, skin.l, '#bca878', '#d4c498', '#e8dcb8'), 0.1, 513, 0.4);
+  // a pointy ear
+  p.tpl(2, 2, ['#..', '##.', '###'], { '#': skin.b }).px(3, 4, '#c8908a');
+  // the tuft of hair on top, curling forward
+  p.line(5, 4, 4, 1, hair.b).line(6, 4, 6, 0, hair.l).line(7, 4, 8, 1, hair.b).line(8, 1, 9, 1, hair.b).px(6, 0, hair.l2).px(4, 1, hair.l);
+  // big eyes, the big nose, a little toothy smile
+  eye(p, 8, 5, 3);
+  lump(p, 11, 6, 6, 5, nose, 0.05, 514, 0.45);
+  p.px(13, 7, nose.l2).px(15, 10, nose.d2);
+  p.rect(9, 11, 4, 1, skin.d2).px(10, 12, '#fffaf0').px(12, 12, '#fffaf0');
+  // the near arm, stubby, swinging
+  lump(p, f ? 5 : 6, 10, 4, 4, skin, 0.1, 515, 0.35);
+}
+
+function snotroll(p: Px, f: number): void {
+  // a snow troll, the rime troll's little cousin: a round ball of white-blue fur, a pale blue face, icicle brows, a
+  // round blue nose and two little ice spikes on its head
+  const face = pal('#3e5a7a', '#5e80a4', '#86a8c8', '#aecae0', '#d6e8f4');
+  const [b, fr] = stride(f, 3, 9);
+  p.rect(b, 12, 3, 3, SNOWFUR.d).rect(fr, 12, 3, 3, SNOWFUR.b);
+  p.rect(b - 1, 14, 4, 2, face.d).rect(fr, 14, 4, 2, face.b);
+  // the far arm, the furry body with a ragged fringe
+  lump(p, 0, 6, 4, 5, SNOWFUR, 0.1, 521, 0.3);
+  lump(p, 1, 2, 13, 12, SNOWFUR, 0.3, 522, 0.3);
+  for (const x of [3, 6, 9, 12]) p.px(x, 13, SNOWFUR.d).px(x - 1, 12, SNOWFUR.b);
+  // two ice spikes on top
+  shard(p, 5, 3, 2, 3, -1, FROST);
+  shard(p, 8, 3, 2, 4, 0, FROST);
+  // the face
+  lump(p, 8, 4, 7, 7, face, 0.1, 523, 0.35);
+  eye(p, 10, 6, 2);
+  lump(p, 12, 6, 4, 4, face, 0.05, 524, 0.5);
+  p.px(13, 7, face.l2);
+  p.rect(10, 10, 3, 1, face.d2).px(11, 11, '#fffaf0');
+  // icicle brows: a frosty ridge with drips
+  p.rect(8, 5, 6, 1, '#ffffff').px(9, 6, '#bfe8ff').px(9, 7, '#8ad8f8').px(12, 6, '#bfe8ff').px(13, 6, '#8ad8f8');
+  // the near arm
+  lump(p, 9, 9, 4, 4, SNOWFUR, 0.1, 525, 0.35);
+}
+
+const SAND = pal('#6a4a20', '#9a7034', '#c89c52', '#e6c47a', '#fbe6b0');
+
+function sandande(p: Px, f: number): void {
+  // a sand spirit: a whirl of desert sand, round at the top and spun to a point below, with two bright eyes (the
+  // grains flying round it come after the outline)
+  const ph = f ? Math.PI : 0;
+  paint(p, 0, 0, 16, 19, (x, y) => {
+    if (y < 1) return null;
+    const cx = 8 + Math.sin(y * 0.5 + ph) * (y > 7 ? (y - 7) * 0.22 : 0);
+    const half = y < 7 ? Math.sqrt(Math.max(0, 1 - ((y - 7) / 6.4) ** 2)) * 7 : 7 - (y - 7) * 0.6;
+    const u = (x + 0.5 - cx) / Math.max(0.5, half);
+    if (Math.abs(u) > 1) return null;
+    // bands of sand wound round it, frayed at the edges, lit on the left
+    const band = Math.floor(y * 0.8 - u * 2.6 + f * 1.4 + 100) % 3;
+    if (band === 0) return Math.abs(u) > 0.8 && y > 4 ? null : u < -0.4 ? SAND.b : SAND.d;
+    return u < -0.55 ? SAND.l2 : u < 0.15 ? SAND.l : u < 0.65 ? SAND.b : SAND.d;
+  });
+  // the eyes, deep in the whirl
+  p.rect(8, 4, 3, 4, SAND.d2).rect(12, 4, 3, 4, SAND.d2);
+}
+
+function benodla(p: Px, f: number): void {
+  // a bone lizard: a little skeleton with a knobbly spine and a long tail, ribs, four bony legs splayed out, and a
+  // skull held up with a green light in its eye
+  const spine = (x: number) => (x < 7 ? 9 - Math.round(Math.sin((x / 7) * Math.PI * 0.5 + (f ? 0.6 : 0)) * 2) : x < 15 ? 8 : 8 - Math.round((x - 14) * 0.6));
+  // a leg from the hip down to a splayed foot; `s` swings it back and forth
+  const leg = (hx: number, s: number, c: Pal) => {
+    const kx = hx - 1 + s;
+    const fx = hx + s * 2;
+    p.line(hx, 9, kx, 11, c.l).line(kx, 11, fx, 13, c.b);
+    p.px(fx - 1, 14, c.b).px(fx + 1, 14, c.b).px(fx, 14, c.d).px(fx + 2, 14, c.d);
+  };
+  const FAR = pal(BONE.d2, BONE.d2, BONE.d, BONE.b, BONE.b);
+  leg(8, f ? 1 : -1, FAR);
+  leg(15, f ? -1 : 1, FAR);
+  // the spine and the tail: knobbly vertebrae, thicker towards the body, little spikes along the top
+  for (let x = 0; x < 17; x++) {
+    const y = spine(x);
+    p.px(x, y, x % 2 ? BONE.l : BONE.b);
+    if (x > 3) p.px(x, y + 1, BONE.d);
+    if (x > 5 && x < 16 && x % 2 === 0) p.px(x, y - 1, BONE.l2);
+  }
+  // the ribs hanging under the spine, the hips and the shoulders
+  for (const x of [10, 12, 14]) p.line(x, 10, x - 1, 12, BONE.l).px(x, 10, BONE.b);
+  p.rect(6, 8, 3, 2, BONE.b).rect(6, 8, 3, 1, BONE.l);
+  p.rect(14, 8, 3, 2, BONE.b).rect(14, 8, 2, 1, BONE.l);
+  leg(7, f ? -1 : 1, BONE);
+  leg(16, f ? 1 : -1, BONE);
+  // the neck and the skull: a long wedge with a big socket, a nostril and a toothy grin
+  p.line(16, 7, 17, 5, BONE.l).px(17, 6, BONE.d);
+  lump(p, 16, 1, 6, 6, BONE, 0.1, 531, 0.35);
+  p.rect(20, 3, 3, 3, BONE.l).rect(20, 5, 3, 1, BONE.b).px(22, 3, BONE.b);
+  p.rect(18, 2, 2, 2, K);
+  p.px(22, 4, K);
+  p.rect(18, 6, 5, 1, K).px(19, 6, BONE.l2).px(21, 6, BONE.l2);
+  p.rect(17, 7, 5, 1, BONE.b).px(17, 7, BONE.d);
+}
+
+function djungelimp(p: Px, f: number): void {
+  // the fire imp's jungle cousin: moss green with leafy wings and bright yellow-green eyes, a broad leaf on its head
+  // where the flame would be
+  const leaf = pal('#0e3a12', '#1a5a1e', '#2e8a2e', '#5ac04a', '#a8ec7a');
+  imp(p, f, pal('#123a1a', '#1e5a28', '#2e8838', '#5ab85a', '#9ae08a'), '#c8b880', '#e8ff6a');
+  p.tpl(5, 0, ['....LL', '..LLML', '.LMBB.', 'LMBB..', '.S....'], { L: leaf.l, M: leaf.l2, B: leaf.b, S: leaf.d });
+}
+
+function sockerspoke(p: Px, f: number): void {
+  // a sugar ghost: the sheet ghost in pink and white with candy stripes, carrying a lantern striped like a candy cane
+  const bob = f ? 1 : 0;
+  sheetGhost(p, f, {
+    sheet: pal('#b0607e', '#e8a0bc', '#fbd6e4', '#fff0f6', '#ffffff'),
+    cheek: '#ff6aa0',
+    frame: ['#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    light: '#ffe0f0',
+    stripe: '#ff9ac4',
+  });
+  // the candy-cane stripes round the lantern's frame
+  for (let y = 16; y < 22; y++)
+    for (let x = 14; x < 18; x++) if ((y === 16 || y === 21 || x === 14 || x === 17) && (x + y) % 2 === 0) p.px(x, y + bob, '#e8305a');
+}
+
+const rymdkryp = (p: Px, f: number): void => {
+  // a space critter: the golden beetle's drawing in violet, a few stars in its shell, its feelers lit at the tips
+  beetle(p, f, false, pal('#2a1048', '#4a1e7a', '#7a3ab8', '#a86ae0', '#d8b0ff'), pal('#0e0a1c', '#1c1430', '#2c2046', '#40325e', '#584878'), '#f0e0ff');
+  p.px(7, 4, '#ffffff').px(9, 7, '#e8d8ff').px(3, 7, '#c8b0f0');
+};
+
+function ljushjort(p: Px, f: number): void {
+  // Ljushjorten, the stag of light: the great stag in pale white-blue, its antlers bright as frost, a royal blue saddle
+  // cloth with gold trim (the star on its brow and the antlers' glow come after the outline)
+  stag(p, f, {
+    c: pal('#5a7494', '#8aa4c2', '#bcd2e8', '#e2eef8', '#ffffff'),
+    hoof: '#4a5a7a',
+    antlers: ['#9ad8ff', '#e8faff', '#d8f6ff', '#ffffff'],
+    saddle: ['#4a5ac8', '#ffe27a', '#2a2e6a'],
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Pets and mounts from Lokes list
 // ---------------------------------------------------------------------------
 
@@ -1690,19 +1916,37 @@ function havshast(p: Px, f: number): void {
   p.px(14, 13, '#f8f0ff');
 }
 
-function jattehjort(p: Px, f: number): void {
-  // a great stag with antlers that glow pale blue, a white throat and a mossy saddle cloth
-  const c = pal('#3a2414', '#5e3c22', '#86603a', '#a88458', '#cab084');
-  horse(p, f, 1.08, { c, mane: c, tail: 'short', deer: true, hoof: '#2a1a10', oy: 8 });
+interface StagLook {
+  c: Pal;
+  hoof: string;
+  /** The far antlers and their tips, then the near ones. */
+  antlers: [string, string, string, string];
+  /** The saddle cloth, its trim and the seat. */
+  saddle: [string, string, string];
+}
+
+/** A great stag to ride (scale 1.08 of the horse, standing 8 px down so the antlers fit above it). */
+function stag(p: Px, f: number, o: StagLook): void {
+  horse(p, f, 1.08, { c: o.c, mane: o.c, tail: 'short', deer: true, hoof: o.hoof, oy: 8 });
   // the antlers: two branching sets, the far one darker
   const ant = (dx: number, col: string, tip: string) => {
     p.line(24 + dx, 9, 22 + dx, 4, col).line(22 + dx, 4, 20 + dx, 0, col).line(22 + dx, 4, 25 + dx, 1, col).line(21 + dx, 6, 17 + dx, 3, col);
     p.line(23 + dx, 2, 22 + dx, 0, col);
     p.px(20 + dx, 0, tip).px(25 + dx, 1, tip).px(17 + dx, 3, tip).px(22 + dx, 0, tip);
   };
-  ant(-2, '#7aa8c8', '#c8ecff');
-  ant(1, '#b8e8ff', '#ffffff');
-  saddle(p, 12, 17, 11, '#3e6a2e', '#c8a040', '#5a3a20');
+  ant(-2, o.antlers[0], o.antlers[1]);
+  ant(1, o.antlers[2], o.antlers[3]);
+  saddle(p, 12, 17, 11, ...o.saddle);
+}
+
+function jattehjort(p: Px, f: number): void {
+  // a great stag with antlers that glow pale blue, a white throat and a mossy saddle cloth
+  stag(p, f, {
+    c: pal('#3a2414', '#5e3c22', '#86603a', '#a88458', '#cab084'),
+    hoof: '#2a1a10',
+    antlers: ['#7aa8c8', '#c8ecff', '#b8e8ff', '#ffffff'],
+    saddle: ['#3e6a2e', '#c8a040', '#5a3a20'],
+  });
 }
 
 function fenrisulvRidbar(p: Px, f: number): void {
@@ -1856,6 +2100,36 @@ const AFTER: Record<string, Draw> = {
   },
   lokeshast: (p, f) => p.px(f ? 19 : 20, f ? 3 : 6, '#c8ffb0'),
   spindelnat,
+  // the wild monsters out in the world
+  sandande: (p, f) => {
+    // eyes like two hot coals, and grains of sand flying round the whirl
+    for (const x of [9, 13]) p.rect(x, 5, 1, 2, '#ffd84a').px(x, 5, '#fff6c8');
+    halo(p, 11, 6, 5, '#ffc84a', 0.14);
+    const grains: [number, number][] = f ? [[1, 11], [15, 8], [3, 16], [15, 14], [0, 5], [12, 18]] : [[0, 9], [15, 11], [2, 14], [14, 3], [1, 3], [5, 18]];
+    grains.forEach(([x, y], i) => p.px(x, y, i % 2 ? SAND.l : SAND.b));
+  },
+  benodla: (p, f) => {
+    p.px(19, 2, GHOST).px(18, 3, shade(GHOST, 0.7)).px(19, 3, '#e8ffd8');
+    halo(p, 19, 3, 3, GHOST, f ? 0.22 : 0.16);
+  },
+  sockerspoke: (p, f) => {
+    const bob = f ? 1 : 0;
+    p.rect(15, 18 + bob, 2, 2, '#ff9ad0').px(16, 17 + bob, '#fff0f8');
+    halo(p, 16, 18 + bob, 6, '#ff9ad0', 0.22);
+  },
+  rymdkryp: (p, f) => {
+    p.px(14, 1, '#7affd8').px(15, 2, '#7affd8').px(f ? 14 : 15, f ? 1 : 2, '#e8fff8');
+    halo(p, 14.5, 1.5, 3.5, '#7affd8', 0.26);
+    twinkle(p, f ? 4 : 8, f ? 4 : 3, '#e8d8ff');
+  },
+  ljushjort: (p, f) => {
+    halo(p, 21, 4, 12, '#c8f0ff', f ? 0.32 : 0.24);
+    twinkle(p, f ? 21 : 26, f ? 0 : 1, '#e8faff');
+    twinkle(p, f ? 15 : 18, f ? 3 : 2, '#e8faff');
+    // the star on its brow
+    twinkle(p, 29, 11, '#ffe27a', '#ffffff');
+    halo(p, 29, 11, 3, '#fff3b0', 0.3);
+  },
 };
 
 // The illusions on Bifrost: Loke conjures beaten foes again, pale and see-through (variant 1).
@@ -1927,6 +2201,14 @@ export const SAGA_ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   mosspoke: { w: 14, h: 18 },
   bergatroll: { w: 34, h: 36 },
   kustjatte: { w: 38, h: 48 },
+  angsvatte: { w: 16, h: 19 },
+  trollunge: { w: 18, h: 17 },
+  snotroll: { w: 16, h: 16 },
+  sandande: { w: 16, h: 19 },
+  benodla: { w: 24, h: 15 },
+  djungelimp: { w: 14, h: 16 },
+  sockerspoke: { w: 18, h: 23 },
+  rymdkryp: { w: 16, h: 12 },
   // pets and mounts
   garmvalp: { w: 16, h: 15 },
   ulvvalp: { w: 16, h: 15 },
@@ -1937,6 +2219,7 @@ export const SAGA_ANIMAL_SIZE: Record<string, { w: number; h: number }> = {
   jattehjort: { w: 34, h: 38 },
   fenrisulv_ridbar: { w: 35, h: 24 },
   lokeshast: { w: 31, h: 28 },
+  ljushjort: { w: 34, h: 38 },
 };
 
 export const SAGA_DRAW: Record<string, Draw> = {
@@ -1993,6 +2276,14 @@ export const SAGA_DRAW: Record<string, Draw> = {
   mosspoke,
   bergatroll,
   kustjatte,
+  angsvatte,
+  trollunge,
+  snotroll,
+  sandande,
+  benodla,
+  djungelimp,
+  sockerspoke,
+  rymdkryp,
   garmvalp,
   ulvvalp,
   guldbagge_tam: guldbaggeTam,
@@ -2002,6 +2293,7 @@ export const SAGA_DRAW: Record<string, Draw> = {
   jattehjort,
   fenrisulv_ridbar: fenrisulvRidbar,
   lokeshast,
+  ljushjort,
 };
 export const SAGA_AFTER = AFTER;
 
@@ -2063,6 +2355,14 @@ export const SAGA_HAT_POS: Record<string, [number, number]> = {
   mosspoke: [7, 1],
   bergatroll: [16, 3],
   kustjatte: [20, 4],
+  angsvatte: [8, 1],
+  trollunge: [7, 2],
+  snotroll: [8, 2],
+  sandande: [9, 1],
+  benodla: [19, 1],
+  djungelimp: [8, 3],
+  sockerspoke: [8, 2],
+  rymdkryp: [12, 4],
   garmvalp: [11, 0],
   ulvvalp: [11, 0],
   guldbagge_tam: [12, 4],
@@ -2072,6 +2372,7 @@ export const SAGA_HAT_POS: Record<string, [number, number]> = {
   jattehjort: [25, 10],
   fenrisulv_ridbar: [26, 1],
   lokeshast: [24, 0],
+  ljushjort: [25, 10],
 };
 
 /** Outlines for the creatures of ice, mist and silk, which a dark brown edge would make heavy. */
@@ -2084,7 +2385,11 @@ export const SAGA_OUTLINE: Record<string, string> = {
   mosspoke: '#1e6a5a',
   alvljus_fe: '#9a7a2a',
   lokesskugga: '#0a0614',
+  snotroll: '#3a5a7a',
+  sandande: '#5a3a18',
+  sockerspoke: '#7a3a5a',
+  ljushjort: '#3a5274',
 };
 
 /** How high a rider sits on the dungeons' mounts (the horse: 7). */
-export const SAGA_RIDE_LIFT: Record<string, number> = { sleipner: 8, gullinbursti: 5, havshast: 10, jattehjort: 10, fenrisulv_ridbar: 7, lokeshast: 9 };
+export const SAGA_RIDE_LIFT: Record<string, number> = { sleipner: 8, gullinbursti: 5, havshast: 10, jattehjort: 10, fenrisulv_ridbar: 7, lokeshast: 9, ljushjort: 10 };

@@ -56,6 +56,16 @@ import {
   sagaSnapshot,
   setHero,
   shownHeld,
+  LEVEL_REWARDS,
+  MAX_LEVEL,
+  SAGA_ITEMS,
+  SAGA_LOOT,
+  SAGA_TREASURE,
+  addItem,
+  auraOf,
+  ensureLevelRewards,
+  giveXp,
+  killXpOf,
   type AnimalState,
   type Change,
   type DungeonId,
@@ -813,8 +823,8 @@ describe('Lokes list: gear and levels', () => {
     expect(out.some((c) => c.t === 'banner' && c.kind === 'level' && c.text === 'Nivå 2!')).toBe(true);
     expect(p.saga!.level).toBe(2);
     expect(p.stats.sagaLevel).toBe(2);
-    expect(inst.fighters[p.id]!.max).toBe(Math.round(CLASSES.krigare.hp * 1.03));
-    expect(gearStats(p).power).toBeCloseTo(1.03);
+    expect(inst.fighters[p.id]!.max).toBe(Math.round(CLASSES.krigare.hp * 1.015));
+    expect(gearStats(p).power).toBeCloseTo(1.015);
   });
 });
 
@@ -881,7 +891,7 @@ describe('Lokes list: out in the world', () => {
     expect(out.some((c) => c.t === 'spell' && c.area === 'a:0,-1')).toBe(true);
     expect(p.saga!.quests[fieldKey(4)]).toBe(1);
     expect(friend.saga!.quests[fieldKey(4)]).toBe(1);
-    expect(p.saga!.xp).toBe(SAGA_XP.field);
+    expect(p.saga!.xp).toBe(SAGA_XP.wild);
     expect(chapterDone(p.saga!)).toBe(false);
     p.saga!.quests[fieldKey(4)] = 8;
     expect(chapterDone(p.saga!)).toBe(true);
@@ -950,5 +960,156 @@ describe('Lokes list: out in the world', () => {
     for (const x of Object.values(a.animals)) if (x.species === 'vandrardraug') delete a.animals[x.id];
     newDay(world, ctx());
     expect(Object.values(a.animals).filter((x) => x.species === 'vandrardraug').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Saga III: hero levels for everyone', () => {
+  /** A family of three on a forest map, no class, holding swords; a monster can be put next to the first. */
+  function forest() {
+    clock += 30_000;
+    const { world, players } = family(3);
+    const a = getArea(world, 'a:0,-1')!;
+    for (const x of Object.values(a.animals)) if (ANIMALS[x.species]?.mob || ANIMALS[x.species]?.predator) delete a.animals[x.id];
+    const at = openTileNear(a, 32, 30);
+    const [p, friend, far] = players as [PlayerState, PlayerState, PlayerState];
+    placeIn(world, p, 'a:0,-1', at.x, at.y, 'right', []);
+    placeIn(world, friend, 'a:0,-1', at.x, at.y + 1, 'up', []);
+    placeIn(world, far, 'a:0,-1', at.x, at.y, 'up', []);
+    far.y += 12 * TILE;
+    for (const q of players) {
+      addItem(q.inventory, 'sword', 1);
+      q.selected = q.inventory.findIndex((s) => s?.item === 'sword');
+    }
+    /** Puts a fresh monster of a species right east of the player and returns it. */
+    const monster = (species: string): AnimalState => {
+      const id = a.nextId++;
+      const def = ANIMALS[species]!;
+      const m: AnimalState = { id, species, name: species, x: p.x + TILE, y: p.y, facing: 'left', moving: false, hearts: 0, heartProgress: 0, fed: false, petted: false, brushed: false, hasProduct: false, named: true, age: 10, homeId: 0, waitMs: 0, hp: def.mob?.hp ?? def.predator!.hp, attackAt: 0 };
+      a.animals[id] = m;
+      return m;
+    };
+    const swing = (): Change[] => performAction(a, p.id, Math.floor(p.x / TILE) + 1, Math.floor(p.y / TILE), ctx());
+    return { world, a, p, friend, far, monster, swing };
+  }
+
+  it('a sword beats a wild monster in two hits, and everyone close by gets experience, with or without a class', () => {
+    const { a, p, friend, far, monster, swing } = forest();
+    expect(p.saga?.cls).toBeUndefined();
+    const m = monster('trollunge');
+    expect(swing().some((c) => c.t === 'xp')).toBe(false);
+    expect(a.animals[m.id]).toBeDefined();
+    const out = swing();
+    expect(a.animals[m.id]).toBeUndefined();
+    expect(p.saga!.xp).toBe(SAGA_XP.wild);
+    expect(friend.saga!.xp).toBe(SAGA_XP.wild);
+    expect(far.saga?.xp ?? 0).toBe(0);
+    // the +4 xp floats up from each of them
+    expect(out).toContainEqual({ t: 'xp', to: p.id, n: SAGA_XP.wild, x: p.x, y: p.y, area: 'a:0,-1' });
+    expect(out.some((c) => c.t === 'xp' && c.to === friend.id)).toBe(true);
+    expect(out.some((c) => c.t === 'player' && c.id === friend.id)).toBe(true);
+  });
+
+  it('a predator, a cave monster, the cave troll and a world boss are worth their own experience', () => {
+    const { p, monster, swing } = forest();
+    const wolf = monster('wolf');
+    wolf.hp = 1;
+    swing();
+    expect(p.saga!.xp).toBe(SAGA_XP.predator);
+    expect(killXpOf('slime')).toBe(SAGA_XP.cave);
+    expect(killXpOf('boss')).toBe(SAGA_XP.caveBoss);
+    expect(killXpOf('bergatroll')).toBe(SAGA_XP.worldBoss);
+    expect(killXpOf('angsvatte')).toBe(SAGA_XP.wild);
+    expect(killXpOf('hen')).toBe(0);
+  });
+
+  it('the meadow gnome only notices you close up', () => {
+    const { world, a, p, monster } = forest();
+    const g = monster('angsvatte');
+    g.x = p.x + 4 * TILE;
+    // (standing still between wanders: it moves only if it comes for you)
+    g.waitMs = 60_000;
+    const x0 = g.x;
+    run(world, 500);
+    expect(g.x).toBe(x0);
+    g.x = p.x + 2.5 * TILE;
+    run(world, 500);
+    expect(g.x).toBeLessThan(p.x + 2.5 * TILE);
+    expect(a.animals[g.id]).toBeDefined();
+  });
+
+  it('levels give glowing clothes, a pet, titles and an aura, once each', () => {
+    const { p } = forest();
+    let out: Change[] = [];
+    giveXp(p, XP_LEVELS[1]!, out);
+    expect(p.saga!.level).toBe(2);
+    expect(p.wardrobe).toContain('shirt_vandrarmantel');
+    expect(out.some((c) => c.t === 'banner' && c.kind === 'level' && c.sub === 'Du får Vandrarmanteln!')).toBe(true);
+    out = [];
+    giveXp(p, XP_LEVELS[3]! - XP_LEVELS[1]!, out);
+    expect(p.saga!.level).toBe(4);
+    expect(p.saga!.titles).toContain('Vandrare');
+    expect(p.wardrobe).toContain('hat_glodkrans');
+    expect(out.some((c) => c.t === 'banner' && c.sub?.includes('Ny titel: Vandrare') && c.sub.includes('Glödkransen'))).toBe(true);
+    giveXp(p, XP_LEVELS[4]! - XP_LEVELS[3]!, out);
+    expect(p.inventory.filter((s) => s?.item === 'pet_lyktfe')).toHaveLength(1);
+    expect(auraOf(p.saga!.level!)).toBe(0);
+    giveXp(p, XP_LEVELS[9]! - XP_LEVELS[4]!, out);
+    expect(p.saga!.level).toBe(10);
+    expect(p.saga!.titles).toEqual(expect.arrayContaining(['Vandrare', 'Hjälte']));
+    expect(p.wardrobe).toEqual(expect.arrayContaining(['shirt_glodmantel', 'hat_stjarnkrona', 'shirt_stjarnmantel']));
+    expect(p.inventory.filter((s) => s?.item === 'amulet_hjaltemarke')).toHaveLength(1);
+    expect(auraOf(p.saga!.level!)).toBe(1);
+    // more experience gives nothing twice
+    giveXp(p, 10, out);
+    expect(p.inventory.filter((s) => s?.item === 'pet_lyktfe')).toHaveLength(1);
+    expect(p.wardrobe.filter((w) => w === 'shirt_vandrarmantel')).toHaveLength(1);
+    expect(p.saga!.cls).toBeUndefined();
+    // the top: a rainbow cloak, the rainbow aura and the last title
+    giveXp(p, XP_LEVELS[MAX_LEVEL - 1]!, out);
+    expect(p.saga!.level).toBe(20);
+    expect(p.wardrobe).toContain('shirt_bifrostmantel');
+    expect(p.saga!.titles).toContain('Midgårds väktare');
+    expect(auraOf(20)).toBe(2);
+  });
+
+  it('a full bag keeps a pet waiting until there is room', () => {
+    const { p } = forest();
+    for (let i = 0; i < p.inventory.length; i++) if (!p.inventory[i]) p.inventory[i] = { item: 'stone', count: 1 };
+    const out: Change[] = [];
+    giveXp(p, XP_LEVELS[4]!, out);
+    expect(p.saga!.level).toBe(5);
+    expect(p.inventory.some((s) => s?.item === 'pet_lyktfe')).toBe(false);
+    expect(out.some((c) => c.t === 'toast' && c.text.includes('Väskan är full'))).toBe(true);
+    p.inventory[p.inventory.findIndex((s) => s?.item === 'stone')] = null;
+    giveXp(p, 1, out);
+    expect(p.inventory.filter((s) => s?.item === 'pet_lyktfe')).toHaveLength(1);
+  });
+
+  it('an old save at level 7 gets every reward up to its level, exactly once', () => {
+    const { p } = forest();
+    p.saga = { cls: 'krigare', chapter: 3, heard: true, cleared: ['draug', 'frost'], titles: ['Draugbane'], quests: {}, done: [], found: [], xp: XP_LEVELS[6]!, level: 5 };
+    expect(ensureLevelRewards(p)).toBe(true);
+    expect(p.saga.level).toBe(7);
+    expect(p.wardrobe).toEqual(expect.arrayContaining(['shirt_vandrarmantel', 'hat_glodkrans', 'shirt_glodmantel']));
+    expect(p.wardrobe).not.toContain('hat_stjarnkrona');
+    expect(p.inventory.filter((s) => s?.item === 'pet_lyktfe')).toHaveLength(1);
+    expect(p.saga.titles).toEqual(['Draugbane', 'Vandrare', 'Hjälte']);
+    const before = JSON.stringify(p);
+    expect(ensureLevelRewards(p)).toBe(false);
+    expect(JSON.stringify(p)).toBe(before);
+    // nobody without experience is touched
+    const q = createPlayer(generateWorld(2), 'Ny', { skin: '#f1c9a5', hair: '#2b2119', hairStyle: 'short' });
+    expect(ensureLevelRewards(q)).toBe(false);
+    expect(q.saga).toBeUndefined();
+  });
+
+  it('the rewards are never found in a chest, and level 20 gives only +28.5 %', () => {
+    const rewards = new Set(Object.values(LEVEL_REWARDS).flatMap((r) => (r.item ? [r.item] : [])));
+    for (const r of rewards) expect(SAGA_ITEMS.find((i) => i.id === r)?.levelReward).toBeGreaterThan(1);
+    for (const t of [...Object.values(SAGA_LOOT), ...Object.values(SAGA_TREASURE)]) for (const g of [...t.gear, ...(t.rare ?? [])]) expect(rewards.has(g.item)).toBe(false);
+    const { p } = forest();
+    p.saga = { cls: 'krigare', chapter: 0, heard: false, cleared: [], titles: [], quests: {}, done: [], found: [], xp: XP_LEVELS[19]! };
+    expect(gearStats(p).power).toBeCloseTo(1.285);
+    expect(fighterMax(p, 'krigare')).toBe(Math.round(CLASSES.krigare.hp * 1.285));
   });
 });

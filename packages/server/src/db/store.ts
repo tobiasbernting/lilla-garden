@@ -5,7 +5,7 @@ import { inArray, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureRoaming, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
+import { AREA_GEN, CAVE_EXIT_TILE, MAX_HEARTS, TILE, settlePlayer, upgradeSavedArea, ensureArcadeHall, ensureBathhouse, ensureGear, ensureLevelRewards, ensureRoaming, ensureTownDress, ensureSagaPlaces, ensureCave, ensureCity, ensureFarmBusStop, ensureFarmExits, ensureGarage, ensureInterior, ensurePizzeria, ensureTransport, ensureTv, ensureVillagers, generateWorld, isHallKey, isSagaKey, DUNGEONS, dungeonOfKey, portalFront, rebuildOccupancy, type Change, type WorldState } from '../../../shared/src/index.ts';
 import * as s from './schema.ts';
 import { PgAccessStore } from './accessStore.ts';
 
@@ -117,6 +117,11 @@ export class PgStore implements Store {
       delete world.players[p.id]!.fishing;
       // heroes from before gear: their best weapon goes from the bag into their hand
       ensureGear(world.players[p.id]!);
+      // heroes from before the level rewards: everything their level has earned (and levels from the new table)
+      if (ensureLevelRewards(world.players[p.id]!)) {
+        this.players.add(p.id);
+        this.worldDirty = true;
+      }
     }
     rebuildOccupancy(world);
     world.areas = {};
@@ -167,6 +172,10 @@ export class PgStore implements Store {
       if (ensureArcadeHall(a)) {
         this.dirtyAreas.add(k);
         console.log(`added Spelhallen to ${k}`);
+      }
+      if (ensureTownDress(a)) {
+        this.dirtyAreas.add(k);
+        console.log(`dressed ${k} as a Norse market town`);
       }
       if (ensureSagaPlaces(k, a)) {
         this.dirtyAreas.add(k);

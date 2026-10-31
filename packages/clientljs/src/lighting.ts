@@ -220,6 +220,17 @@ export function lampForAnimal(species: string): LampSpec | null {
     case 'guldbagge':
     case 'guldbagge_tam':
       return { color: [1.0, 0.89, 0.48], radius: 1.2, strength: 0.45, flicker: 0.2, glow: 0.5, sparkle: 0.3 };
+    // Saga III: the pale stag of level 15 and the small wild monsters that glow (the gnome, troll cubs and imp don't)
+    case 'ljushjort':
+      return { color: [0.78, 0.94, 1.0], radius: 2.8, strength: 0.6, flicker: 0.15, glow: 1.1, sparkle: 0.25 };
+    case 'sockerspoke':
+      return { color: [1.0, 0.6, 0.82], radius: 2.2, strength: 0.5, flicker: 0.35, glow: 0.9 };
+    case 'sandande':
+      return { color: [1.0, 0.78, 0.29], radius: 1.4, strength: 0.4, flicker: 0.3, glow: 0.5 };
+    case 'rymdkryp':
+      return { color: [0.48, 1.0, 0.85], radius: 1.2, strength: 0.45, flicker: 0.2, glow: 0.5, sparkle: 0.3 };
+    case 'benodla':
+      return { color: [0.61, 1.0, 0.54], radius: 1, strength: 0.35, flicker: 0.2, glow: 0.3 };
     default:
       return null;
   }
@@ -266,6 +277,9 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       ];
       return { color: c[(variant ?? 0) % 4]!, radius: 2.4, strength: 0.8, flicker: 0.15, glow: 1.1, always: true };
     }
+    // Köpingen's runestone by the well: its runes glow a gentle blue, like a crystal
+    case 'runestone':
+      return { color: [0.23, 0.61, 1], radius: 2.4, strength: 0.7, flicker: 0.15, glow: 1.1, always: true };
     case 'fire_crystal':
       return { color: [1, 0.45, 0.2], radius: 2.4, strength: 0.85, flicker: 0.35, glow: 1.2, always: true };
     case 'star_crystal':

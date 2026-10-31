@@ -14,7 +14,7 @@ import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { DUNGEONS, VOLVA_ID, dungeonOfKey, isSagaKey, sagaItem } from './saga.ts';
 import { generateSaga } from './sagamap.ts';
 import { garageOf, healCars } from './rallysim.ts';
-import { enterSaga, ensureSagaPlaces, heroAction, idleSaga, isSagaMob, roamingDown, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
+import { enterSaga, ensureSagaPlaces, heroAction, idleSaga, isSagaMob, killXp, roamingDown, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, quickStack, removeItem, sortInventory, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -2126,6 +2126,8 @@ export function attackMob(d: WorldState, p: PlayerState, mob: AnimalState, dmg: 
     out.push({ t: 'drop', id: dr.id, drop: dr });
   }
   bump(p, predator ? 'predators' : 'mobs', 1, out);
+  // experience for everyone close by, whatever beat it (SAGA_XP: roaming monsters, predators, the cave's monsters)
+  killXp(d, p, mob, out);
   if (predator) {
     out.push(toast(p.id, fmt(T.predatorDown, { name: mob.name })), playerChange(p));
     return;
@@ -2674,8 +2676,9 @@ function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: 
   const def = ANIMALS[a.species];
   const predator = def?.predator;
   // predators and Loke's roaming servants notice you closer than cave monsters do, and keep chasing a bit further
+  // (a roaming monster may have its own, shorter reach: the meadow's Ängsvätte next to the farm)
   const roaming = !!def?.mob && !!def.wild;
-  const sight = predator ? predator.aggroRange * TILE : roaming ? ROAM_SIGHT : MOB_SIGHT;
+  const sight = predator ? predator.aggroRange * TILE : roaming ? (def.mob!.aggro !== undefined ? def.mob!.aggro * TILE : ROAM_SIGHT) : MOB_SIGHT;
   const keep = predator || roaming ? (a.moving ? sight * 1.5 : sight) : MOB_SIGHT;
   const areaKeyStr = d.area ?? 'farm';
   let target: PlayerState | null = null;

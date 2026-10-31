@@ -1,6 +1,7 @@
 // The wider world: biomes, caves, treasure, fairy rings, the rocket to the moon, dragon eggs and regrowth.
 import { describe, expect, it } from 'vitest';
 import {
+  ANIMALS,
   AREA_GEN,
   BASE_ROCKET,
   CAVE_THEMES,
@@ -21,6 +22,7 @@ import {
   biomeAt,
   caveKey,
   createPlayer,
+  ensureRoaming,
   entranceFront,
   generateArea,
   generateCave,
@@ -149,6 +151,31 @@ describe('biomerna', () => {
       for (const k of kinds) expect(kindsHere, `${b} has ${k}`).toContain(k);
       expect(wildSpeciesOf(b).length, b).toBeGreaterThan(0);
     }
+  });
+
+  it("each biome has its own small monster (never in the city), and saved maps get them too", () => {
+    const want: Record<string, string> = { ang: 'angsvatte', skog: 'trollunge', berg: 'trollunge', is: 'snotroll', oken: 'sandande', djungel: 'djungelimp', dino: 'benodla', godis: 'sockerspoke' };
+    for (const [b, species] of Object.entries(want)) {
+      let at: [number, number] | null = null;
+      for (let r = 1; r < 12 && !at; r++) for (let ay = -r; ay <= r && !at; ay++) for (let ax = -r; ax <= r && !at; ax++) if (biomeAt(ax, ay) === b) at = [ax, ay];
+      expect(at, b).not.toBeNull();
+      const a = generateArea(at![0], at![1]);
+      const here = Object.values(a.animals).filter((x) => x.species === species);
+      expect(here.length, `${b} has ${species}`).toBeGreaterThanOrEqual(3);
+      expect(here.length).toBeLessThanOrEqual(5);
+      for (const x of here) expect(x.hp).toBe(ANIMALS[species]!.mob!.hp);
+      // only where it belongs
+      for (const x of Object.values(a.animals)) if (ANIMALS[x.species]?.mob && ANIMALS[x.species]?.wild) expect(ANIMALS[x.species]!.wild!.split('|')).toContain(b);
+      // a map saved before them gets them on load
+      for (const x of here) delete a.animals[x.id];
+      expect(ensureRoaming(a)).toBe(true);
+      expect(Object.values(a.animals).filter((x) => x.species === species).length).toBeGreaterThanOrEqual(3);
+    }
+    expect(Object.values(generateMoon().animals).filter((x) => x.species === 'rymdkryp').length).toBeGreaterThanOrEqual(3);
+    // none in the city, none on the farm
+    expect(wildSpeciesOf('by').some((d) => d.mob || d.predator)).toBe(false);
+    expect(Object.values(generateArea(1, 0).animals).some((x) => ANIMALS[x.species]?.mob)).toBe(false);
+    expect(Object.values(generateWorld(1).animals).some((x) => ANIMALS[x.species]?.mob)).toBe(false);
   });
 
   it('godislandet has candy and a gingerbread house more often than not', () => {

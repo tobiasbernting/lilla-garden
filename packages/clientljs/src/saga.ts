@@ -6,7 +6,7 @@
 // glowing on top. Out in the world a hero's spells and hits are drawn the same way (the telegraphs, bars and the
 // fallen and frozen are the dungeons' only).
 import { cameraShake, drawEllipse, drawLine, drawLineList, drawPoly, rgb, setAdditiveBlendMode, vec2, type Color, type Vector2 } from 'littlejsengine';
-import { BLOCK_SPECIES, SAGA_BOSSES, SAGA_MOBS, SPELLS, T, TILE, isSagaKey, type Change, type SagaZone } from '@lilla-garden/shared';
+import { BLOCK_SPECIES, SAGA_BOSSES, SAGA_MOBS, SPELLS, T, TILE, fmt, isSagaKey, type Change, type SagaZone } from '@lilla-garden/shared';
 import { FLAG, fightMode, flagsOf, isFoe, liveTarget, sagaSnap, setTarget, webbed } from '@v1/saga.ts';
 import { SAGA_SFX, bossWindup } from '@v1/sagasfx.ts';
 import { activeWorld, bus, client, myPlayer, serverNow } from '@v1/state.ts';
@@ -205,6 +205,8 @@ export class SagaView {
     if (!this.live) return;
     if (c.t === 'spell' && c.area === this.area) return this.spell(c);
     if (c.t === 'hit' && c.area === this.area) return this.hit(c);
+    // experience for you, on the map you are on (the farm's has no area)
+    if (c.t === 'xp' && c.to === client.me && (c.area ?? 'farm') === this.area) return this.xp(c.n);
     if (!this.on) return;
     if (c.t === 'object' && c.obj?.kind === 'saga_plate' && c.obj.variant === 1 && (c.area ?? '') === this.area) return this.plateLit(c.obj.x, c.obj.y);
     if (c.t === 'zone') {
@@ -982,6 +984,19 @@ export class SagaView {
       SAGA_SFX.kick();
       if (typeof c.on === 'number') this.stopped(c.on);
     }
+  }
+
+  /** Experience for a monster beaten (yours or a friend's nearby): a small golden "+4 xp" rising from you. */
+  private xp(n: number): void {
+    if (n <= 0 || !this.find(client.me)) return;
+    const s = this.find(client.me)!;
+    const el = document.createElement('div');
+    el.className = 'label saga-fct xp';
+    el.textContent = fmt(T.sagaXpFloat, { n });
+    this.labels.appendChild(el);
+    // from your shoulder (below your name, beside the damage numbers over your head); a second one rises above it
+    const k = this.floaters.filter((f) => f.on === client.me && f.el.classList.contains('xp') && this.t - f.born < 0.6).length % 3;
+    this.floaters.push({ el, on: client.me, x: s.x, y: s.y + 4 - s.h, dx: 18, dy: s.h - 8 - 7 * k, born: this.t, life: 1.3, at: this.t });
   }
 
   // ------------------------------------------------------------------ every frame

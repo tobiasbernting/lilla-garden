@@ -11,7 +11,11 @@ import {
   MAX_HEARTS,
   applyMove,
   ensureCity,
+  ensureTownDress,
+  SAGA_XP,
   isCity,
+  reachableFrom,
+  removeObject,
   isVehicle,
   areaOf,
   getArea,
@@ -1087,6 +1091,9 @@ describe('grottan', () => {
     expect(troll.hp).toBe(0);
     expect(d.animals[troll.id]).toBeUndefined();
     expect(d.animals[slime.id]).toBeUndefined(); // within the blast radius
+    // experience for both, class or not (Saga III)
+    expect(p.saga?.xp).toBe(2 * SAGA_XP.cave);
+    expect(ch.filter((x) => x.t === 'xp' && x.to === p.id && x.area === 'dungeon')).toHaveLength(2);
     expect(countItem(p.inventory, 'rocket')).toBe(1);
     expect(p.achievements).toContain('boom_1');
     // reloading: nothing happens for a second
@@ -1797,7 +1804,7 @@ describe('fordon', () => {
     expect(car.owner).toBe(p.id);
     expect(car.variant).toBe(1);
     expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThanOrEqual(TILE * 1.5);
-    expect(toasts(ch).some((t) => t.includes('parkerad'))).toBe(true);
+    expect(toasts(ch).some((t) => t.includes('bredvid dig'))).toBe(true);
     expect(toasts(buy(world, p.id, 'vehicle_car_red', 1, ctx()))[0]).toContain('redan');
     // somebody else cannot take it
     const other = createPlayer(world, 'Kompis', { skin: '#f0c0a0', hair: '#553322', hairStyle: 'short' });
@@ -1834,7 +1841,7 @@ describe('fordon', () => {
     const ftx = tileOf(p.x) + 1;
     const off = performAction(world, p.id, ftx, tileOf(p.y), ctx());
     expect(p.riding).toBeUndefined();
-    expect(toasts(off).some((t) => t.includes('parkerar'))).toBe(true);
+    expect(toasts(off).some((t) => t.includes('vägkanten'))).toBe(true);
     expect(world.terrain[tileIndex(ftx, tileOf(p.y))]).toBe('grass');
     expect(Math.hypot(car.x - p.x, car.y - p.y)).toBeLessThan(2 * TILE);
     // parked cars stay where they are
@@ -1947,7 +1954,7 @@ describe('buss och tåg', () => {
     expect(unknown).not.toBe('a:1,0');
     const dests = transportDestinations(p, 'train');
     expect(dests.find((d) => d.unknown)?.key).toBe(unknown);
-    expect(dests.find((d) => d.unknown)?.name).toBe('Okänd stad');
+    expect(dests.find((d) => d.unknown)?.name).toBe('Okänd köping');
     expect(dests.find((d) => d.unknown)?.price).toBe(15);
     // bus never lists it
     expect(transportDestinations(p, 'bus').some((d) => d.key === unknown)).toBe(false);
@@ -2034,13 +2041,46 @@ describe('staden', () => {
     expect(isSolidForPlayer(city, tileOfPx(car.x), tileOfPx(car.y))).toBe(true);
     // tapping a car just makes it honk; nothing to feed or pet
     const ch = performAction(city, p.id, tileOfPx(car.x), tileOfPx(car.y), ctx());
-    expect(toasts(ch).some((t) => t.includes('Tut'))).toBe(true);
+    expect(toasts(ch).some((t) => t.includes('Gnägg'))).toBe(true);
     expect(car.petted).toBe(false);
     // out of the way again: it drives on
     p.x = 8 * TILE;
     p.y = 8 * TILE;
     for (let i = 0; i < 20; i++) step();
     expect(Math.hypot(car.x - before.x, car.y - before.y)).toBeGreaterThan(TILE / 2);
+  });
+
+  it('is dressed as a Norse market town, and a city saved before that gets dressed once, still walkable', () => {
+    const DRESS = ['banner_pole', 'barrel_stack', 'runestone', 'hay_cart'];
+    const counts = (w: WorldState): Record<string, number> => Object.fromEntries(DRESS.map((k) => [k, Object.values(w.objects).filter((o) => o.kind === k).length]));
+    const walkable = (w: WorldState): void => {
+      const reach = reachableFrom(w, arrivalTile('w'));
+      for (const side of ['n', 's', 'e'] as const) expect(reach[tileIndex(arrivalTile(side).x, arrivalTile(side).y)], side).toBe(1);
+      // the villagers' spots, the doors, and every open tile of the square
+      for (const n of npcsIn(w)) for (const wp of [n, ...n.routine]) expect(reach[tileIndex(wp.x, wp.y)], `${n.id} ${wp.x},${wp.y}`).toBe(1);
+      for (const o of Object.values(w.objects))
+        if (['pizzeria', 'bathhouse', 'arcade_hall', 'train_station'].includes(o.kind)) expect(reach[tileIndex(o.x + 1, o.y + 2)], o.kind).toBe(1);
+      for (let y = 20; y <= 31; y++) for (let x = 34; x <= 47; x++) if (!isSolidForPlayer(w, x, y)) expect(reach[tileIndex(x, y)], `square ${x},${y}`).toBe(1);
+    };
+    const city = generateArea(1, 0);
+    expect(counts(city)).toEqual({ banner_pole: 2, barrel_stack: 3, runestone: 1, hay_cart: 1 });
+    walkable(city);
+    expect(ensureTownDress(city)).toBe(false);
+    // a city saved before Saga III
+    for (const o of Object.values(city.objects)) if (DRESS.includes(o.kind)) removeObject(city, o.id);
+    expect(counts(city)).toEqual({ banner_pole: 0, barrel_stack: 0, runestone: 0, hay_cart: 0 });
+    expect(ensureTownDress(city)).toBe(true);
+    expect(counts(city)).toEqual({ banner_pole: 2, barrel_stack: 3, runestone: 1, hay_cart: 1 });
+    expect(ensureTownDress(city)).toBe(false);
+    walkable(city);
+    // a spot the kids have built on is left alone
+    const stone = Object.values(city.objects).find((o) => o.kind === 'runestone')!;
+    removeObject(city, stone.id);
+    addObject(city, 'chest', stone.x, stone.y);
+    expect(ensureTownDress(city)).toBe(false);
+    expect(objectAt(city, stone.x, stone.y)?.kind).toBe('chest');
+    // not a city: nothing
+    expect(ensureTownDress(generateWorld(1))).toBe(false);
   });
 
   it('a village saved before the streets existed is rebuilt as a city, once', () => {

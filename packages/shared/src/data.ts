@@ -442,6 +442,12 @@ addO(O('shop', { w: 3, h: 2, breakWith: undefined, light: true }));
 addO(O('traffic_light', { breakWith: undefined }));
 addO(O('street_lamp', { solid: false, breakWith: undefined, light: true }));
 addO(O('parked_car', { w: 2, h: 1, breakWith: undefined }));
+// Köpingen's Norse dressing (Saga III): a pole with a cloth banner (variant = colour 0–2), stacked barrels, a lit
+// runestone by the well and a hay cart by the market. Decoration only: nothing to use or break.
+addO(O('banner_pole', { breakWith: undefined }));
+addO(O('barrel_stack', { breakWith: undefined }));
+addO(O('runestone', { breakWith: undefined, light: true }));
+addO(O('hay_cart', { w: 2, h: 1, breakWith: undefined }));
 addO(O('bath_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_exit', { solid: false, flat: true, interact: 'exit', breakWith: undefined }));
 addO(O('cave_wall', { breakWith: undefined }));
@@ -626,14 +632,14 @@ ANIMALS.lokeshast = { species: 'lokeshast', house: '', growDays: 0, speed: 30, m
 // Act II: Loke's servants roam the open world, one kind per biome, and a world boss in the mountains and on the
 // beach. They chase and bite like predators (hearts) and poof when beaten; hero mode's spells are made for them.
 // Some are dungeon monsters too: inside a dungeon its own fight record wins (world.saga.mobs).
-const roam = (species: string, wild: string, speed: number, hp: number, drops: [string, number][], boss = false, wildCount: [number, number] = [2, 4]): void => {
+const roam = (species: string, wild: string, speed: number, hp: number, drops: [string, number][], opts: { boss?: boolean; count?: [number, number]; aggro?: number } = {}): void => {
   ANIMALS[species] = {
     ...(ANIMALS[species] ?? { species, house: '', growDays: 0, speed }),
     speed,
     wild,
-    wildCount,
+    wildCount: opts.count ?? [2, 4],
     tame: 0,
-    mob: { hp, ...(boss ? { boss } : {}), drops: drops.map(([item, chance]) => ({ item, min: 1, max: 1, chance })) },
+    mob: { hp, ...(opts.boss ? { boss: true } : {}), ...(opts.aggro !== undefined ? { aggro: opts.aggro } : {}), drops: drops.map(([item, chance]) => ({ item, min: 1, max: 1, chance })) },
   };
 };
 roam('vandrardraug', 'skog', 30, 6, [['old_coin', 0.3]]);
@@ -643,10 +649,41 @@ roam('sjodraug', 'strand', 32, 7, [['old_coin', 0.3], ['krabbklo', 0.4]]);
 roam('skuggalv', 'svamp', 34, 6, [['alvdagg', 0.5]]);
 roam('isvarg', 'is', 40, 6, [['ulvtand', 0.5]]);
 roam('eldimp', 'vulkan', 40, 5, [['glodkol', 0.4], ['bifrostskarva', 0.3]]);
-roam('bergatroll', 'berg', 22, 24, [], true, [1, 1]);
-roam('kustjatte', 'strand', 22, 24, [], true, [1, 1]);
-/** Roaming monsters out in the world (hero mode's targets). */
-export const ROAMING: readonly string[] = ['vandrardraug', 'mosspoke', 'gruvtroll', 'sjodraug', 'skuggalv', 'isvarg', 'eldimp', 'bergatroll', 'kustjatte'];
+roam('bergatroll', 'berg', 22, 24, [], { boss: true, count: [1, 1] });
+roam('kustjatte', 'strand', 22, 24, [], { boss: true, count: [1, 1] });
+// Saga III: small, easy monsters all over the world (a sword beats one in two hits), worth a little experience each.
+// Never in the city, on the farm or indoors. The meadow's gnome lives next door to the farm, so it only notices you close up.
+const WILD_COUNT: [number, number] = [3, 5];
+roam('angsvatte', 'ang', 28, 3, [['old_coin', 0.2], ['fiber', 0.4]], { count: WILD_COUNT, aggro: 3 });
+roam('trollunge', 'skog|berg', 26, 4, [['stone', 0.4]], { count: WILD_COUNT });
+roam('snotroll', 'is', 26, 4, [['iceberry', 0.4]], { count: WILD_COUNT });
+roam('sandande', 'oken', 32, 4, [['gold', 0.2], ['cactus_fruit', 0.3]], { count: WILD_COUNT });
+roam('djungelimp', 'djungel', 32, 4, [['fiber', 0.4]], { count: WILD_COUNT });
+roam('benodla', 'dino', 30, 4, [['old_coin', 0.3]], { count: WILD_COUNT });
+roam('sockerspoke', 'godis', 28, 3, [['lollipop', 0.5]], { count: WILD_COUNT });
+roam('rymdkryp', 'mane', 30, 4, [['star_crystal', 0.2], ['moon_rock', 0.4]], { count: WILD_COUNT });
+/** Roaming monsters out in the world (hero mode's targets; everyone gets experience for them). */
+export const ROAMING: readonly string[] = [
+  'vandrardraug',
+  'mosspoke',
+  'gruvtroll',
+  'sjodraug',
+  'skuggalv',
+  'isvarg',
+  'eldimp',
+  'bergatroll',
+  'kustjatte',
+  'angsvatte',
+  'trollunge',
+  'snotroll',
+  'sandande',
+  'djungelimp',
+  'benodla',
+  'sockerspoke',
+  'rymdkryp',
+];
+// The fifteenth hero level's mount: a pale, glowing cousin of the Jättehjort
+ANIMALS.ljushjort = { species: 'ljushjort', house: '', growDays: 0, speed: 30, mount: { speed: 1.75 } };
 
 // ---------- Recipes ----------
 

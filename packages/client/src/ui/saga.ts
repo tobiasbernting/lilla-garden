@@ -15,6 +15,8 @@ import {
   DUNGEONS,
   DUNGEON_IDS,
   GEAR_SLOTS,
+  LEVEL_REWARDS,
+  MAX_LEVEL,
   MAX_HEARTS,
   NPCS,
   RARITY_COLORS,
@@ -36,6 +38,7 @@ import {
   gearOf,
   gearSlotOf,
   gearStats,
+  heroLevel,
   isBathKey,
   isHallKey,
   isSagaKey,
@@ -69,6 +72,7 @@ import {
   getTarget,
   heroOn,
   inSaga,
+  levelOf,
   liveTarget,
   myClass,
   posOf,
@@ -79,6 +83,7 @@ import {
   sagaStarted,
   sagaTick,
   setTarget,
+  showsLevel,
   titleOf,
   webbed,
 } from '../saga.ts';
@@ -183,8 +188,37 @@ const itemIcon = (id: string, fallback?: string): HTMLElement => {
   const url = getArt().iconUrl[id];
   return url && hasIcon(id) ? h('img', { src: url, alt: '', draggable: 'false' }) : h('span', { class: 'em' }, fallback ?? KIND_EMOJI[sagaItem(id)?.kind ?? ''] ?? '🎁');
 };
+/** A level-up banner's golden line: what the new level gives, with its picture. */
+function levelSub(c: BannerChange): HTMLElement {
+  const n = Number(/\d+/.exec(c.text)?.[0] ?? heroLevel(myPlayer()?.saga));
+  const r = LEVEL_REWARDS[n];
+  const pic = r?.item ? itemIcon(r.item) : r?.title ? h('span', { class: 'em' }, '👑') : r?.aura ? h('span', { class: 'em' }, r.aura === 2 ? '🌈' : '✨') : null;
+  return h('div', { class: 'sub reward' }, pic ? h('span', { class: 'pic' }, pic) : null, h('span', null, c.sub ?? ''));
+}
 const rewardText = (r: { coins: number; stars: number; item?: string; count?: number; title?: string }): string =>
   [`+${r.coins} ${T.coins}`, `+${r.stars} ⭐`, r.item ? `${itemName(r.item)}${(r.count ?? 1) > 1 ? ` × ${r.count}` : ''}` : '', r.title ? `👑 ${r.title}` : ''].filter(Boolean).join(' · ');
+
+/** The experience bar: how far into this level, and the experience needed for the next. */
+function xpMeter(xp: number): HTMLElement {
+  const span = levelSpan(xp);
+  const k = span.next === null ? 1 : (xp - span.from) / Math.max(1, span.next - span.from);
+  return h('div', { class: 'saga-meter xp' }, h('i', { style: { width: `${Math.max(0, Math.min(1, k)) * 100}%` } }), h('span', null, span.next === null ? T.sagaXpMax : fmt(T.sagaXpOf, { xp, next: span.next })));
+}
+/** What a level gives, as small pieces: a picture and a name for each item, title and glow. */
+function rewardParts(level: number): HTMLElement[] {
+  const r = LEVEL_REWARDS[level];
+  if (!r) return [];
+  const parts: HTMLElement[] = [];
+  if (r.item) {
+    const d = sagaItem(r.item);
+    const el = h('span', { class: `rw${d ? ` rar-${d.rarity}` : ''}` }, itemIcon(r.item), h('b', null, itemName(r.item)));
+    if (d) vars(el, { '--r': RARITY_COLORS[d.rarity] });
+    parts.push(el);
+  }
+  if (r.title) parts.push(h('span', { class: 'rw title' }, h('span', { class: 'em' }, '👑'), h('b', null, fmt(T.sagaRewardTitle, { title: r.title }))));
+  if (r.aura) parts.push(h('span', { class: `rw aura a${r.aura}` }, h('span', { class: 'em' }, r.aura === 2 ? '🌈' : '✨'), h('b', null, r.aura === 2 ? T.sagaRewardAura2 : T.sagaRewardAura1)));
+  return parts;
+}
 
 /** A fraction as "+12 %". */
 const pct = (k: number): string => `+${Math.round(k * 100)} %`;
@@ -354,6 +388,8 @@ export class SagaUi {
     document.addEventListener('lilla:gear', () => {
       if (myClass()) this.open('gear');
     });
+    // the journal's level page: the HUD's level chip asks for it
+    document.addEventListener('lilla:journal', () => this.open('journal'));
     bus.on('open', (c) => {
       if (c.ui === 'sagaClass') this.open('class');
       else if (c.ui === 'saga') this.open('volva');
@@ -407,7 +443,7 @@ export class SagaUi {
       return true;
     }
     if (this.menus.isOpen()) return false;
-    if ((e.key === 'j' || e.key === 'J') && sagaStarted(myPlayer())) {
+    if ((e.key === 'j' || e.key === 'J') && (sagaStarted(myPlayer()) || showsLevel(myPlayer()))) {
       this.open('journal');
       return true;
     }
@@ -750,7 +786,7 @@ export class SagaUi {
     this.bannerBusy = true;
     document.body.classList.add('saga-banner-on');
     const kind = c.kind ?? 'enter';
-    const el = h('div', { class: `saga-banner ${kind}` }, h('div', { class: 'big' }, c.text), c.sub ? h('div', { class: 'sub' }, c.sub) : null);
+    const el = h('div', { class: `saga-banner ${kind}` }, h('div', { class: 'big' }, c.text), c.sub ? (kind === 'level' ? levelSub(c) : h('div', { class: 'sub' }, c.sub)) : null);
     this.banners.append(el);
     if (kind === 'boss' || kind === 'cleared') {
       this.confetti(kind === 'cleared' ? 90 : 55, true);
@@ -1065,6 +1101,7 @@ export class SagaUi {
   // The saga so far: chapters, the dungeons and how to beat their bosses, titles
   private renderJournal(body: HTMLElement): void {
     const prog = readProgress(myPlayer());
+    this.renderLevels(body);
     body.append(h('div', { class: 'saga-head' }, T.sagaChapters));
     const chapters = h('div', { class: 'saga-list' });
     SAGA_CHAPTERS.forEach((ch, i) => {
@@ -1106,6 +1143,24 @@ export class SagaUi {
     body.append(prog.titles.length ? h('div', { class: 'saga-titles' }, ...prog.titles.map((t) => h('span', null, `👑 ${t}`))) : h('div', { class: 'hint' }, T.sagaNoTitles));
   }
 
+  // The hero level: where you are, the experience bar, and what every level gives (the ones reached shine)
+  private renderLevels(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const xp = me.saga?.xp ?? 0;
+    const level = levelOf(me);
+    body.append(h('div', { class: 'saga-head' }, `⭐ ${T.sagaHeroLevelHead}`));
+    body.append(h('div', { class: 'saga-level' }, h('b', { class: 'lvl' }, `⭐ ${fmt(T.sagaLevelOf, { n: level, max: MAX_LEVEL })}`), xpMeter(xp), h('p', { class: 'tx' }, T.sagaLevelIntro)));
+    const list = h('div', { class: 'saga-levels' });
+    let next = true;
+    for (const n of Object.keys(LEVEL_REWARDS).map(Number).sort((a, b) => a - b)) {
+      const got = level >= n;
+      const row = h('div', { class: `lv${got ? ' got' : ''}${!got && next ? ' next' : ''}` }, h('span', { class: 'n' }, got ? `✓ ${n}` : fmt(T.sagaRewardLocked, { n })), h('span', { class: 'rws' }, ...rewardParts(n)));
+      if (!got) next = false;
+      list.append(row);
+    }
+    body.append(list);
+  }
+
   // The gear window: the hero, their level and what they carry; tap a piece in the bag to put it on, tap a worn one to
   // take it off again. Clothes are changed in the wardrobe.
   private renderGear(body: HTMLElement): void {
@@ -1120,7 +1175,7 @@ export class SagaUi {
     const title = titleOf(me);
 
     // the hero: portrait, level, experience, what it all adds up to
-    const meter = h('div', { class: 'saga-meter xp' }, h('i', { style: { width: `${span.next === null ? 100 : ((xp - span.from) / Math.max(1, span.next - span.from)) * 100}%` } }), h('span', null, span.next === null ? T.sagaXpMax : fmt(T.sagaXpOf, { xp, next: span.next })));
+    const meter = xpMeter(xp);
     const totals = h(
       'div',
       { class: 'totals' },
@@ -1145,7 +1200,7 @@ export class SagaUi {
           h('b', { class: 'nm' }, me.name),
           title ? h('span', { class: 'ttl' }, `👑 ${title}`) : null,
           h('span', { class: 'cls' }, `${cls.emoji} ${cls.name} · ${cls.roleName}`),
-          h('span', { class: 'lvl' }, `⭐ ${fmt(T.sagaLevelName, { n: span.level })}`),
+          h('span', { class: 'lvl' }, `⭐ ${fmt(T.sagaLevelOf, { n: span.level, max: MAX_LEVEL })}`),
           meter,
           totals,
           h('div', { class: 'q-act' }, heroBtn),
