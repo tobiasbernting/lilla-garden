@@ -44,6 +44,16 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
   (natt). Alla som kör i mål får kr, snabba tider ger medaljer och tidskörning har ett spöke av ditt rekord. Bucklor
   gör bilen långsammare men aldrig obrukbar; laga dem i garaget för kr (lite läker av sig självt varje morgon).
   Åk fritt i 3D över gårdslandskapet med andra som kör samtidigt: mynt att hitta, hopp, sladdzoner och halmbalar.
+- Sagan om Världsträdet: välj klass vid Kämpastenen (Väktare, Helare, Krigare eller Magiker) och lyssna på Völvan
+  Sigrun, som berättar sagan i tio kapitel. Del I är Draugkryptan, Frostjättens borg och Surts smedja; del II, Lokes
+  list, tar er vidare till Helheim, Svartalfheims gruvor, Havsormens tempel, Alvernas lund, Fenrisklyftan och
+  Bifrost – nio fängelsehålor för hela familjen, med monster som slåss ihop, bossar vars stora attacker
+  syns på marken innan de träffar (rader, drag mot bossen, läkning som man avbryter), vilostenar, runplattor som
+  öppnar dörrar och skattkistor med egen skatt åt var och en. Bytet mellan bonde och hjälte (🧑‍🌾 → din klass) tar
+  hjälten ut i världen: besvärjelser mot Lokes tjänare som vandrar i varje sorts plats, två jättemonster och
+  uppgifter i varje kapitel. Skatterna har färger efter hur sällsynta de är, passar i tre platser (vapen, sköld,
+  amulett) och ger kraft, hälsa och skydd; hjälten stiger i nivå 1–10. Husdjur, riddjur, dräkter och pynt till
+  gården kan hittas. Ingen förlorar något när man faller.
 
 ## Develop
 
@@ -156,6 +166,11 @@ There is still no text chat: players can only use emotes.
 - Fängelsehålorna (Sagan om Världsträdet): klicka eller tryck på ett monster för att sikta och slå på det; `E`/mellanslag
   och ✋ slår på det närmaste monstret inom räckhåll; `1`–`4` är klassens besvärjelser, `5` läkedryck, Tab (🎯 på
   surfplatta) byter monster. En nedtryckt knapp slår direkt, hålls den kvar visas vad besvärjelsen gör.
+- Hjälteläget (Sagan om Världsträdet, när du har valt klass): hjälteknappen (🧑‍🌾, och din klass när den är på) byter
+  mellan bonde och hjälte ute i världen. Som hjälte gäller samma knappar som i en fängelsehåla utomhus: `1`–`4`
+  besvärjelser, `5` läkedryck, Tab/🎯 byter monster, och `E`/mellanslag slår med klassens vapen på monster inom
+  räckhåll. `G` (⚔️) öppnar utrustningsfönstret, där du tar på vapen, sköld och amulett från ryggsäcken, och `J`
+  dagboken med sagans kapitel. På handkontrollen öppnar Select utrustningen utomhus.
 - Handkontroll (Xbox, PlayStation, Switch): vänster spak går, `A`/`X`/`RT` använder, `B`/`LT` springer, `LB`/`RB` eller
   styrkorset vänster/höger väljer verktyg, `Y` ryggsäck, styrkorset upp emotes och ner minikarta, Start hjälp, Select bok.
   I en fängelsehåla är `X`/`Y`/`B`/`RB` besvärjelserna, `LB` läkedryck, styrkorset vänster/höger byter monster och
