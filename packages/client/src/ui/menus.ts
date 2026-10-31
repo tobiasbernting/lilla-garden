@@ -1,4 +1,4 @@
-// All in-game menus as HTML overlays: ryggsäck, kista, katalog, sälj, snickra, garderob, emotes, namn.
+// All in-game menus as HTML overlays: ryggsäck, kista, gårdsbutik, sälj, snickra, garderob, emotes, namn.
 import {
   ACHIEVEMENTS,
   isVehicle,
@@ -24,7 +24,9 @@ import {
   isHallKey,
   isIndoorKey,
   COOKING,
+  FILTER_NAMES,
   HELP,
+  INVENTORY_FILTERS,
   NPCS,
   openQuests,
   HOTBAR_SIZE,
@@ -39,8 +41,12 @@ import {
   fmt,
   item as itemDef,
   itemName,
+  filterOf,
+  itemMatches,
+  normalizeQuery,
   type ClothingSlot,
   type ItemDef,
+  type ItemStack,
   type RecipeDef,
   type SlotRef,
   transportDestinations,
@@ -68,6 +74,23 @@ import { RALLY_HELP_LINE } from './rally.ts';
 export type MenuKind = 'inventory' | 'chest' | 'catalogue' | 'sell' | 'workbench' | 'wardrobe' | 'emotes' | 'nameAnimal' | 'help' | 'npc' | 'cook' | 'book' | 'map' | 'paint' | 'pizzeria' | 'travel' | 'prizes' | 'scores';
 
 const TAB_NAMES: Record<string, string> = { seeds: T.tabSeeds, animals: T.tabAnimals, feed: T.tabFeed, materials: T.tabMaterials, furniture: T.tabFurniture, clothes: T.tabClothes, season: T.tabSeason, stars: `⭐ ${T.tabStars}`, vehicles: T.tabVehicles };
+const SEARCH_KINDS: readonly MenuKind[] = ['inventory', 'chest', 'catalogue', 'sell'];
+
+/** The parts of a search menu that outlive a rerender. */
+interface SearchFrame {
+  kind: MenuKind;
+  panel: HTMLElement;
+  body: HTMLElement;
+  search: HTMLInputElement;
+  /** Filter chips by filter id ('all' included). */
+  chips: Map<string, HTMLElement>;
+  clearBtn: HTMLButtonElement;
+  /** Shop tab row (catalogue only). */
+  tabs: HTMLElement | null;
+  /** "No match" line between toolbar and body (backpack/chest). */
+  hint: HTMLElement;
+  coins: HTMLElement | null;
+}
 const TABS = ['seeds', 'animals', 'vehicles', 'feed', 'materials', 'furniture', 'clothes', 'season', 'stars'] as const;
 
 export class Menus {
@@ -85,10 +108,23 @@ export class Menus {
   private talk: Talk | null = null;
   /** What you said last, shown above the villager's answer. */
   private said = '';
+  /** Search text and item filter shared by backpack/chest/shop/sell. Survives rerenders, cleared on close. */
+  private query = '';
+  private filter = 'all';
+  /**
+   * Backpack/chest/shop/sell keep one long-lived frame (header, search input, chips, tabs) per open();
+   * only its body is rebuilt on search, filter and server updates, so the focused <input> is never
+   * removed from the DOM (soft keyboards would dismiss, IME composition would be cancelled).
+   */
+  private frame: SearchFrame | null = null;
   onChange: (open: boolean) => void = () => {};
 
   constructor(private ui: HTMLElement) {
     bus.on('me', () => this.rerender());
+    // the shop's "on the way tomorrow" list shows everybody's orders
+    bus.on('player', (id) => {
+      if (this.kind === 'catalogue' && id !== client.me) this.rerender();
+    });
     bus.on('change', (c) => {
       if (c.t === 'object' && this.kind === 'chest' && c.id === this.chestId) {
         if (!c.obj) this.close();
@@ -132,6 +168,8 @@ export class Menus {
     this.close();
     this.kind = kind;
     this.picked = null;
+    this.query = '';
+    this.filter = 'all';
     if (kind === 'chest') this.chestId = id ?? null;
     if (kind === 'nameAnimal') this.animalId = id ?? null;
     if (kind === 'travel') this.travelId = id ?? null;
@@ -148,23 +186,33 @@ export class Menus {
     if (!this.modal) return;
     this.modal.remove();
     this.modal = null;
+    this.frame = null;
     this.kind = null;
     this.chestId = null;
     this.animalId = null;
     this.talk = null;
     this.said = '';
+    this.query = '';
+    this.filter = 'all';
     this.onChange(false);
   }
 
-  private rerender(): void {
+  private rerender(resetScroll = false): void {
     if (!this.modal || !this.kind) return;
     const me = myPlayer();
     if (!me) return;
+    // Search menus keep their frame (and the focused input) and only rebuild the body.
+    if (this.frame && this.frame.kind === this.kind && this.frame.panel.parentElement === this.modal) {
+      this.renderBody(resetScroll);
+      return;
+    }
+    this.frame = null;
+    const scrollTop = resetScroll ? 0 : (this.modal.querySelector<HTMLElement>('.body')?.scrollTop ?? 0);
     clear(this.modal);
     const title = {
       inventory: `🎒 ${T.inventory}`,
       chest: `📦 ${T.chest}`,
-      catalogue: `📖 ${T.catalogue}`,
+      catalogue: `🏪 ${T.catalogue}`,
       sell: `💰 ${T.sell}`,
       workbench: `🔨 ${T.craft}`,
       wardrobe: `👕 ${T.wardrobe}`,
@@ -188,19 +236,13 @@ export class Menus {
     const head = h('h2', null, title, h('span', { class: 'spacer' }), this.kind === 'catalogue' || this.kind === 'sell' || this.kind === 'pizzeria' || this.kind === 'travel' ? coins : this.kind === 'prizes' ? tickets : null, closeBtn);
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: 'panel' }, head, body);
+    if (SEARCH_KINDS.includes(this.kind)) {
+      this.frame = this.buildFrame(panel, head, body, this.kind === 'catalogue' || this.kind === 'sell' ? coins : null);
+      this.modal.append(panel);
+      this.renderBody(true);
+      return;
+    }
     switch (this.kind) {
-      case 'inventory':
-        this.renderInventory(body, null);
-        break;
-      case 'chest':
-        this.renderInventory(body, this.chestId);
-        break;
-      case 'catalogue':
-        this.renderCatalogue(panel, body);
-        break;
-      case 'sell':
-        this.renderSell(body);
-        break;
       case 'pizzeria':
         this.renderPizzeria(body);
         break;
@@ -253,18 +295,140 @@ export class Menus {
         break;
     }
     this.modal.append(panel);
+    if (scrollTop) body.scrollTop = scrollTop;
+  }
+
+  // ---- search & filter toolbar (backpack, chest, shop, sell) ----
+
+  private hasFilter(): boolean {
+    return this.filter !== 'all' || normalizeQuery(this.query) !== '';
+  }
+
+  /** A stack passes the active filter chip and search text. */
+  private stackMatches(itemId: string): boolean {
+    return (this.filter === 'all' || filterOf(itemId) === this.filter) && itemMatches(itemId, this.query);
+  }
+
+  private searchInput(): HTMLInputElement {
+    const input = h('input', { type: 'text', class: 'search', placeholder: T.search, value: this.query, maxlength: '20', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'search' });
+    // keep the game's and the global shortcuts' hands off typed characters (same as renderName).
+    // keyup must still reach the game, or a key held while clicking here would never be released.
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        input.blur();
+        this.close();
+      } else if (e.key === 'Enter') input.blur();
+    });
+    input.addEventListener('input', (e) => {
+      this.query = input.value;
+      if ((e as InputEvent).isComposing) return; // settled on compositionend
+      this.renderBody(true);
+    });
+    input.addEventListener('compositionend', () => {
+      this.query = input.value;
+      this.renderBody(true);
+    });
+    return input;
+  }
+
+  /** A chip/clear button: acts on tap without stealing focus from the search input. */
+  private chipButton(attrs: Record<string, unknown>, text: string, fn: () => void): HTMLButtonElement {
+    const b = h('button', attrs, text);
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    onTap(b, fn);
+    return b;
+  }
+
+  private buildFrame(panel: HTMLElement, head: HTMLElement, body: HTMLElement, coins: HTMLElement | null): SearchFrame {
+    const kind = this.kind!;
+    const search = this.searchInput();
+    const chips = new Map<string, HTMLElement>();
+    const mk = (id: string, text: string, name: string) => {
+      chips.set(
+        id,
+        this.chipButton({ class: 'chip', title: name, 'aria-label': name }, text, () => {
+          this.filter = this.filter === id ? 'all' : id;
+          this.renderBody(true);
+        }),
+      );
+    };
+    mk('all', T.filterAll, T.filterAll);
+    for (const f of INVENTORY_FILTERS) mk(f.id, f.emoji, FILTER_NAMES[f.id] ?? f.id);
+    // always present (disabled when empty) so the toolbar doesn't change width while typing
+    const clearBtn = this.chipButton({ class: 'chip', title: T.paintClear, 'aria-label': T.paintClear, disabled: true }, '✕', () => {
+      if (this.query === '') return;
+      this.query = '';
+      this.renderBody(true);
+    });
+    const hint = h('div', { class: 'hint' });
+    let tabs: HTMLElement | null = null;
+    if (kind === 'catalogue') {
+      // the search box lives in the header row, between the title and the coins
+      head.insertBefore(search, head.querySelector('.spacer'));
+      tabs = h('div', { class: 'tabs' });
+      panel.insertBefore(tabs, body);
+    } else {
+      const extra: (HTMLElement | null)[] = [];
+      if (kind === 'inventory' || kind === 'chest') {
+        extra.push(this.sortButton(kind === 'chest' ? `${T.sort} ${T.inventory.toLowerCase()}` : T.sort));
+        if (kind === 'chest' && this.chestId !== null) {
+          const chestId = this.chestId;
+          const stackBtn = h('button', { class: 'alt' }, `📥 ${T.quickStack}`);
+          onTap(stackBtn, () => {
+            net.send({ t: 'quickStack', chest: chestId });
+            this.picked = null;
+          });
+          extra.push(stackBtn);
+        }
+      }
+      panel.insertBefore(h('div', { class: 'toolbar' }, search, ...chips.values(), clearBtn, ...extra), body);
+    }
+    return { kind, panel, body, search, chips, clearBtn, tabs, hint, coins };
+  }
+
+  private sortButton(label: string, chest?: number): HTMLElement {
+    const b = h('button', { class: 'alt', title: label }, `↕ ${label}`);
+    onTap(b, () => {
+      net.send(chest === undefined ? { t: 'sort' } : { t: 'sort', chest });
+      this.picked = null;
+    });
+    return b;
+  }
+
+  /** Rebuild only what depends on state: coins, chip highlight, tabs, hint and body. The input is never touched. */
+  private renderBody(resetScroll = false): void {
+    const f = this.frame;
+    const me = myPlayer();
+    if (!f || !this.modal || !me) return;
+    const scrollTop = resetScroll ? 0 : f.body.scrollTop;
+    if (f.coins) f.coins.textContent = `${me.coins} ${T.coins}${f.kind === 'catalogue' ? ` · ⭐ ${me.stars}` : ''}`;
+    if (f.search.value !== this.query) f.search.value = this.query;
+    for (const [id, el] of f.chips) el.classList.toggle('on', this.filter === id);
+    f.clearBtn.disabled = this.query === '';
+    f.hint.remove();
+    clear(f.body);
+    if (f.kind === 'inventory') this.renderInventory(f, null);
+    else if (f.kind === 'chest') this.renderInventory(f, this.chestId);
+    else if (f.kind === 'catalogue') this.renderCatalogue(f);
+    else this.renderSell(f);
+    if (scrollTop) f.body.scrollTop = scrollTop;
   }
 
   // ---- inventory & chest (tap one slot, then another to move) ----
 
-  private renderInventory(body: HTMLElement, chestId: number | null): void {
+  private renderInventory(f: SearchFrame, chestId: number | null): void {
+    const { panel, body } = f;
     const me = myPlayer()!;
     const world = client.world!;
     const sameRef = (a: SlotRef, b: SlotRef) => a.slot === b.slot && a.chest === b.chest;
+    const stackAt = (ref: SlotRef): ItemStack | null | undefined => (ref.chest === undefined ? me.inventory : world.objects[ref.chest]?.items)?.[ref.slot];
+    const filtering = this.hasFilter();
+    const dims = (s: ItemStack | null) => filtering && !!s && !this.stackMatches(s.item);
     const tap = (ref: SlotRef) => {
       if (!this.picked) {
-        const inv = ref.chest === undefined ? me.inventory : world.objects[ref.chest]?.items;
-        if (!inv?.[ref.slot]) return;
+        const s = stackAt(ref);
+        if (!s || dims(s)) return;
         this.picked = ref;
       } else if (sameRef(this.picked, ref)) {
         this.picked = null;
@@ -274,14 +438,18 @@ export class Menus {
       }
       this.rerender();
     };
-    const grid = (inv: (import('@lilla-garden/shared').ItemStack | null)[], chest: number | undefined, from: number, to: number, keys: boolean) => {
+    let anyMatch = false;
+    const grid = (inv: (ItemStack | null)[], chest: number | undefined, from: number, to: number, keys: boolean) => {
       const g = h('div', { class: 'grid' });
       for (let i = from; i < to; i++) {
         const ref: SlotRef = chest === undefined ? { slot: i } : { chest, slot: i };
+        const s = inv[i] ?? null;
+        if (s && !dims(s)) anyMatch = true;
         g.append(
-          slotEl(inv[i] ?? null, {
+          slotEl(s, {
             selected: chest === undefined && me.selected === i,
             picked: !!this.picked && sameRef(this.picked, ref),
+            dim: dims(s),
             key: keys ? String(i + 1) : undefined,
             onTap: () => tap(ref),
           }),
@@ -289,63 +457,90 @@ export class Menus {
       }
       return g;
     };
+    const sortBtn = (label: string, chest?: number) => this.sortButton(label, chest);
+    const hint = f.hint;
     if (chestId !== null) {
       const chest = world.objects[chestId];
       const items = chest?.items ?? [];
-      body.append(h('div', { class: 'hint' }, T.chest), grid(items, chestId, 0, CHEST_SIZE, false));
+      body.append(h('div', { class: 'hint title-row' }, T.chest, sortBtn(`${T.sort} ${T.chest.toLowerCase()}`, chestId)), grid(items, chestId, 0, CHEST_SIZE, false));
     }
-    body.append(h('div', { class: 'hint' }, T.inventory), grid(me.inventory, undefined, 0, HOTBAR_SIZE, true), grid(me.inventory, undefined, HOTBAR_SIZE, INVENTORY_SIZE, false));
+    body.append(h('div', { class: 'hint' }, this.filter === 'all' ? T.inventory : `${T.inventory} · ${FILTER_NAMES[this.filter] ?? ''}`), grid(me.inventory, undefined, 0, HOTBAR_SIZE, true), grid(me.inventory, undefined, HOTBAR_SIZE, INVENTORY_SIZE, false));
+    if (filtering && !anyMatch) {
+      hint.textContent = T.noMatch;
+      panel.insertBefore(hint, body);
+    }
     const actions = h('div', { class: 'tabs' });
-    if (this.picked && this.picked.chest === undefined) {
+    const picked = this.picked ? stackAt(this.picked) : null;
+    if (this.picked && picked) {
+      actions.append(h('span', { class: 'picked-name' }, `${itemName(picked.item)}${picked.count > 1 ? ` × ${picked.count}` : ''}`));
+    }
+    if (this.picked && picked && this.picked.chest === undefined) {
       const slot = this.picked.slot;
-      const s = me.inventory[slot];
-      if (s) {
-        const useBtn = h('button', null, `Håll ${itemName(s.item)}`);
-        onTap(useBtn, () => {
-          me.selected = slot;
-          net.send({ t: 'select', slot });
-          this.picked = null;
-          this.close();
-        });
-        const drop1 = h('button', { class: 'alt' }, 'Lägg ner 1');
-        onTap(drop1, () => {
-          net.send({ t: 'drop', slot, qty: 1 });
-          this.picked = null;
-        });
-        const dropAll = h('button', { class: 'alt' }, 'Lägg ner alla');
-        onTap(dropAll, () => {
-          net.send({ t: 'drop', slot, qty: 99 });
-          this.picked = null;
-        });
-        actions.append(useBtn, drop1, s.count > 1 ? dropAll : null!);
-      }
-    } else actions.append(h('span', { class: 'hint' }, 'Tryck på en sak, sedan på en ruta för att flytta den.'));
+      const s = picked;
+      const useBtn = h('button', null, fmt(T.hold, { item: itemName(s.item) }));
+      onTap(useBtn, () => {
+        me.selected = slot;
+        net.send({ t: 'select', slot });
+        this.picked = null;
+        this.close();
+      });
+      const drop1 = h('button', { class: 'alt' }, T.dropOne);
+      onTap(drop1, () => {
+        net.send({ t: 'drop', slot, qty: 1 });
+        this.picked = null;
+      });
+      const dropAll = h('button', { class: 'alt' }, T.dropAll);
+      onTap(dropAll, () => {
+        net.send({ t: 'drop', slot, qty: 99 });
+        this.picked = null;
+      });
+      actions.append(useBtn, drop1);
+      if (s.count > 1) actions.append(dropAll);
+    } else if (!picked) actions.append(h('span', { class: 'hint' }, T.moveHint));
     body.append(actions);
   }
 
   // ---- catalogue ----
 
-  private renderCatalogue(panel: HTMLElement, body: HTMLElement): void {
+  private renderCatalogue(f: SearchFrame): void {
+    const { body } = f;
     const me = myPlayer()!;
-    const tabs = h('div', { class: 'tabs' });
+    const searching = normalizeQuery(this.query) !== '';
+    const tabs = f.tabs!;
+    clear(tabs);
     for (const t of TABS) {
       if (t === 'season' && client.season === 'none') continue;
-      const b = h('button', { class: this.tab === t ? 'on' : '' }, TAB_NAMES[t]!);
+      const b = h('button', { class: this.tab === t && !searching ? 'on' : '' }, TAB_NAMES[t]!);
       onTap(b, () => {
         this.tab = t;
-        this.rerender();
+        this.query = '';
+        this.renderBody(true);
       });
       tabs.append(b);
     }
-    panel.insertBefore(tabs, body);
     const rows = h('div', { class: 'rows' });
-    const items = Object.values(ITEMS).filter((d) => d.tab === this.tab && catalogueAvailable(d.id, client.season));
-    if (items.length === 0) rows.append(h('div', { class: 'hint' }, 'Inget här just nu.'));
+    // a search looks in every tab, so kids find things without knowing where they live
+    const items = Object.values(ITEMS)
+      .filter((d) => (searching ? d.tab !== undefined && (TABS as readonly string[]).includes(d.tab) && itemMatches(d.id, this.query) : d.tab === this.tab) && catalogueAvailable(d.id, client.season))
+      .sort((a, b) => (searching ? TABS.indexOf(a.tab as (typeof TABS)[number]) - TABS.indexOf(b.tab as (typeof TABS)[number]) : 0));
+    const orders = this.tab === 'animals' || searching ? this.pendingOrders(searching ? this.query : '') : [];
+    if (orders.length) {
+      rows.append(h('div', { class: 'hint section' }, `🚚 ${T.onTheWay}`));
+      for (const o of orders) {
+        const itemId = `animal_${o.species}`;
+        rows.append(h('div', { class: 'row' }, icon(getArt().iconUrl[itemId] ?? ''), h('span', { class: 'name' }, SPECIES_NAMES[o.species] ?? o.species), h('span', { class: 'have' }, o.owner)));
+      }
+    }
+    if (items.length === 0 && orders.length === 0) rows.append(h('div', { class: 'hint' }, searching ? T.noMatch : T.nothingHere));
     for (const d of items) {
       const owned = d.category === 'clothing' && me.wardrobe.includes(d.id);
       const price = d.stars !== undefined ? `⭐ ${d.stars}` : `${d.buy} ${T.coins}`;
-      const row = h('div', { class: `row${owned ? ' off' : ''}` }, icon(getArt().iconUrl[d.id] ?? ''), h('span', { class: 'name' }, this.catalogueName(d)), h('span', { class: 'price' }, price));
-      if (owned) row.append(h('span', { class: 'hint' }, 'Har redan'));
+      const have = d.category === 'clothing' ? 0 : countItem(me.inventory, d.id);
+      const name = h('span', { class: 'name' }, this.catalogueName(d));
+      if (searching && d.tab) name.append(h('span', { class: 'tag' }, TAB_NAMES[d.tab] ?? d.tab));
+      if (have > 0) name.append(h('br'), h('span', { class: 'have' }, fmt(T.youHave, { n: have })));
+      const row = h('div', { class: `row${owned ? ' off' : ''}` }, icon(getArt().iconUrl[d.id] ?? ''), name, h('span', { class: 'price' }, price));
+      if (owned) row.append(h('span', { class: 'hint' }, T.alreadyOwn));
       else if (d.stars !== undefined) {
         const b = h('button', { disabled: me.stars < d.stars }, T.buy);
         onTap(b, () => net.send({ t: 'buy', item: d.id, qty: 1 }));
@@ -361,6 +556,19 @@ export class Menus {
       rows.append(row);
     }
     body.append(rows);
+  }
+
+  /** Animals ordered by anyone in the world, arriving tomorrow. A query keeps only the matching species. */
+  private pendingOrders(query: string): { species: string; owner: string }[] {
+    const out: { species: string; owner: string }[] = [];
+    const q = normalizeQuery(query);
+    for (const p of Object.values(client.world?.players ?? {})) {
+      for (const o of p.orders ?? []) {
+        if (q !== '' && !itemMatches(`animal_${o.species}`, q) && !normalizeQuery(SPECIES_NAMES[o.species] ?? o.species).includes(q)) continue;
+        out.push({ species: o.species, owner: p.name });
+      }
+    }
+    return out;
   }
 
   // ---- pizzeria ----
@@ -447,21 +655,25 @@ export class Menus {
   private catalogueName(d: ItemDef): string {
     if (d.category === 'animal' && d.species && !ANIMALS[d.species]?.vehicle) {
       const house = ANIMALS[d.species]?.house;
-      return `${SPECIES_NAMES[d.species] ?? d.id}${house ? ` (behöver ${itemName(house)})` : ''}`;
+      return `${SPECIES_NAMES[d.species] ?? d.id}${house ? ` (${T.needs} ${itemName(house)})` : ''}`;
     }
     return itemName(d.id);
   }
 
   // ---- sell ----
 
-  private renderSell(body: HTMLElement): void {
+  private renderSell(f: SearchFrame): void {
+    const { body } = f;
     const me = myPlayer()!;
     const rows = h('div', { class: 'rows' });
     let any = false;
+    let sellable = false;
     me.inventory.forEach((s, slot) => {
       if (!s) return;
       const d = itemDef(s.item);
       if (d.sell === undefined) return;
+      sellable = true;
+      if (!this.stackMatches(s.item)) return;
       any = true;
       const price = s.data !== undefined ? PAINTED_SELL : d.sell;
       const one = h('button', null, `${T.sellOne} (${price} ${T.coins})`);
@@ -470,7 +682,7 @@ export class Menus {
       onTap(all, () => net.send({ t: 'sell', slot, qty: s.count }));
       rows.append(h('div', { class: 'row' }, icon(stackIconUrl(s)), h('span', { class: 'name' }, `${itemName(s.item)} × ${s.count}`), one, s.count > 1 ? all : null!));
     });
-    if (!any) rows.append(h('div', { class: 'hint' }, 'Du har inget att sälja just nu. Odla något!'));
+    if (!any) rows.append(h('div', { class: 'hint' }, sellable && this.hasFilter() ? T.noMatch : T.nothingToSell));
     body.append(rows);
   }
 
@@ -501,7 +713,7 @@ export class Menus {
   private renderWardrobe(panel: HTMLElement, body: HTMLElement): void {
     const me = myPlayer()!;
     const slots: ClothingSlot[] = ['hat', 'shirt', 'pants', 'shoes'];
-    const names: Record<ClothingSlot, string> = { hat: 'Hattar', shirt: 'Tröjor', pants: 'Byxor', shoes: 'Skor' };
+    const names: Record<ClothingSlot, string> = { hat: T.tabHats, shirt: T.tabShirts, pants: T.tabPants, shoes: T.tabShoes };
     const tabs = h('div', { class: 'tabs' });
     for (const s of slots) {
       const b = h('button', { class: this.wardrobeTab === s ? 'on' : '' }, names[s]);
@@ -602,7 +814,7 @@ export class Menus {
       });
       buttons.push(moon);
     }
-    const mini = h('button', { class: 'alt' }, '🧭 Minikarta av/på');
+    const mini = h('button', { class: 'alt' }, `🧭 ${T.minimapToggle}`);
     onTap(mini, () => document.dispatchEvent(new CustomEvent('lilla:minimap')));
     buttons.push(mini);
     const place = me.area === 'farm' ? 'farm' : me.area === 'dungeon' ? 'dungeon' : client.areas[me.area]?.biome;
@@ -615,7 +827,7 @@ export class Menus {
   private renderBook(body: HTMLElement): void {
     const me = myPlayer()!;
     const done = ACHIEVEMENTS.filter((a) => me.achievements?.includes(a.id)).length;
-    body.append(h('p', { class: 'help-intro' }, `⭐ ${me.stars} ${T.stars} · ${done} av ${ACHIEVEMENTS.length} bragder`));
+    body.append(h('p', { class: 'help-intro' }, `⭐ ${me.stars} ${T.stars} · ${fmt(T.achievementsDone, { done, total: ACHIEVEMENTS.length })}`));
     const rows = h('div', { class: 'rows' });
     for (const a of ACHIEVEMENTS) {
       const have = Math.min(a.goal, me.stats?.[a.stat] ?? 0);

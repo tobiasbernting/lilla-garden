@@ -17,9 +17,9 @@ export interface HudTarget {
   tap?(clientX: number, clientY: number): void;
 }
 
-export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; picked?: boolean; key?: string; onTap?: () => void } = {}): HTMLDivElement {
+export function slotEl(stack: ItemStack | null, opts: { selected?: boolean; picked?: boolean; dim?: boolean; key?: string; onTap?: () => void } = {}): HTMLDivElement {
   const art = getArt();
-  const el = h('div', { class: `slot${opts.selected ? ' selected' : ''}${opts.picked ? ' picked' : ''}` });
+  const el = h('div', { class: `slot${opts.selected ? ' selected' : ''}${opts.picked ? ' picked' : ''}${opts.dim ? ' dim' : ''}` });
   if (opts.key) el.append(h('span', { class: 'key' }, opts.key));
   if (stack) {
     el.append(icon(stackIconUrl(stack), itemName(stack.item)));

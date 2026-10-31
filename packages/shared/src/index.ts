@@ -4,6 +4,7 @@ export * from './sv.ts';
 export * from './season.ts';
 export * from './rng.ts';
 export * from './inventory.ts';
+export * from './filters.ts';
 export * from './map.ts';
 export * from './protocol.ts';
 export * from './sim.ts';
