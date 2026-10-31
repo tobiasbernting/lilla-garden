@@ -43,6 +43,8 @@ export class VoiceUi {
   private iceReady = false;
   private mic: MediaStream | null = null;
   private micPending: Promise<MediaStream | null> | null = null;
+  /** No microphone on this device: it still plays the other rooms. */
+  private listenOnly = false;
   private muted = false;
   private peers = new Map<string, Peer>();
   /** Signals that came before the peer existed (the other side saw the state first). */
@@ -143,7 +145,7 @@ export class VoiceUi {
   }
 
   private amSpeaker(): boolean {
-    return !!this.state && this.state.joined && mySpeaker(this.state) === client.me;
+    return this.wanted && !!this.state && this.state.joined && mySpeaker(this.state) === client.me;
   }
 
   /** Brings the microphone and the connections in line with the state: open them as speaker, close them otherwise. */
@@ -155,7 +157,7 @@ export class VoiceUi {
       return;
     }
     const mic = await this.ensureMic();
-    if (!mic || !this.amSpeaker() || !this.iceReady) return;
+    if ((!mic && !this.listenOnly) || !this.amSpeaker() || !this.iceReady) return;
     const want = new Set(voicePeers(this.state!));
     for (const [id, p] of this.peers) if (!want.has(id)) this.closePeer(p);
     for (const id of want) if (!this.peers.has(id)) this.newPeer(id);
@@ -175,10 +177,14 @@ export class VoiceUi {
     return this.audioCtx;
   }
 
+  /**
+   * Opens the microphone once. A device without one stays in the call as a listener; a browser that refuses (not
+   * allowed, or a plain http address, where browsers never give out microphones) hangs up with a word about why.
+   */
   private ensureMic(): Promise<MediaStream | null> {
-    if (this.mic) return Promise.resolve(this.mic);
+    if (this.mic || this.listenOnly) return Promise.resolve(this.mic);
     if (this.micPending) return this.micPending;
-    if (!navigator.mediaDevices?.getUserMedia) {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       bus.emit('toast', T.voiceNeedsHttps);
       this.hangUp();
       return Promise.resolve(null);
@@ -187,7 +193,7 @@ export class VoiceUi {
       .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
       .then((stream) => {
         this.micPending = null;
-        if (!this.amSpeaker()) {
+        if (!this.wanted) {
           for (const t of stream.getTracks()) t.stop();
           return null;
         }
@@ -196,9 +202,16 @@ export class VoiceUi {
         this.watchLevel(stream);
         return stream;
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         this.micPending = null;
-        bus.emit('toast', T.voiceNoMic);
+        const name = e instanceof Error ? e.name : String(e);
+        if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') {
+          // no microphone here (a desktop computer, often): listen all the same
+          this.listenOnly = true;
+          bus.emit('toast', T.voiceListenOnly);
+          return null;
+        }
+        bus.emit('toast', name === 'NotReadableError' || name === 'AbortError' ? T.voiceMicBusy : name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError' ? T.voiceNoMic : `${T.voiceNoMic} (${name})`);
         this.hangUp();
         return null;
       });
@@ -263,6 +276,7 @@ export class VoiceUi {
     const peer: Peer = { id, pc, audio, polite: !offers(client.me, id), makingOffer: false, ignoreOffer: false, status: 'connecting' };
     this.peers.set(id, peer);
     if (this.mic) for (const t of this.mic.getAudioTracks()) pc.addTrack(t, this.mic);
+    else pc.addTransceiver('audio', { direction: 'recvonly' }); // no microphone: still an audio line to hear them on
     pc.ontrack = (ev) => {
       audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track]);
       audio.play().catch(() => {});
@@ -366,7 +380,11 @@ export class VoiceUi {
 
   private pickUp(): void {
     this.wanted = true;
+    this.listenOnly = false;
     this.ensureAudioContext();
+    // nobody speaks for the room yet, so this device is about to: ask for the microphone now, on the tap (some
+    // browsers only give it out on a user's action), and the server's answer finds it ready
+    if (this.state && !mySpeaker(this.state)) void this.ensureMic();
     net.send({ t: 'voice', a: 'join' });
   }
 
@@ -375,6 +393,7 @@ export class VoiceUi {
     net.send({ t: 'voice', a: 'leave' });
     this.closePeers();
     this.stopMic();
+    this.listenOnly = false;
     this.iceReady = false;
     this.render();
   }
@@ -427,10 +446,14 @@ export class VoiceUi {
     actions.append(call);
     if (st.joined && !speaking) {
       const take = h('button', { class: 'alt' }, T.voiceBeSpeaker);
-      onTap(take, () => net.send({ t: 'voice', a: 'speaker' }));
+      onTap(take, () => {
+        void this.ensureMic(); // on the tap, see pickUp
+        net.send({ t: 'voice', a: 'speaker' });
+      });
       actions.append(take);
     }
-    if (speaking) {
+    if (speaking && this.listenOnly) my.append(h('div', { class: 'voice-status' }, T.voiceListenOnlyStatus));
+    if (speaking && !this.listenOnly) {
       const mute = h('button', { class: 'alt' }, this.muted ? T.voiceUnmute : T.voiceMute);
       onTap(mute, () => this.setMuted(!this.muted));
       actions.append(mute);

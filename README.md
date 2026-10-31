@@ -54,7 +54,11 @@ cp .env.example .env
 pnpm dev            # server on :8080, the game on :5173, also on your LAN IP
 ```
 
-Open `http://<your-computer-ip>:5173` on the tablet. The parent page is at `/admin`
+Open `http://<your-computer-ip>:5173` on the tablet. Röstprat (voice) needs https, which browsers demand before they
+hand out a microphone: `VITE_HTTPS=1 pnpm dev` serves the game over https with a self-signed certificate (accept the
+warning once per device) and the server then wants `PUBLIC_URL=https://<your-computer-ip>:5173` in `.env`, so the
+socket's origin check passes (or `ACCESS=open`). Two browsers on one computer land in the same room; use
+"Jag sitter i ett annat rum" in the 📞 window to hear yourself. The parent page is at `/admin`
 (log in with `PARENT_PASSWORD`; make join codes, manage devices, force a season, save, skip to the next day,
 make it evening/morning).
 

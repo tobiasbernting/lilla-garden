@@ -60,6 +60,9 @@ describe('the gate', () => {
     expect(await openSocket('')).toEqual({ refused: 403 });
     const page = await get('/access');
     expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    // röstprat needs the microphone on our own pages (a `microphone=()` blocks it whatever the player allowed)
+    expect(page.headers.get('permissions-policy')).toContain('microphone=(self)');
+    expect(page.headers.get('permissions-policy')).toContain('camera=()');
     expect(await page.text()).toContain('privat gård');
   });
 

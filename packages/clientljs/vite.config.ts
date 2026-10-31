@@ -1,6 +1,11 @@
 import { fileURLToPath } from 'node:url';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// VITE_HTTPS=1: the dev server over https with a self-signed certificate (accept the warning once per device).
+// Browsers only hand out microphones on https, so this is how röstprat is tried on a tablet over the LAN.
+const https = process.env.VITE_HTTPS === '1';
 
 export default defineConfig({
   // The HUD, menus, networking, sounds and pixel art come from packages/client; the view is LittleJS
@@ -19,6 +24,7 @@ export default defineConfig({
   },
   build: { target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 1500 },
   plugins: [
+    ...(https ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
