@@ -8,7 +8,7 @@
 import { isCliff, type Terrain } from '@lilla-garden/shared';
 import { Px, hash2, hexToRgb, rgbToHex, shade } from './px.js';
 import { CARPET_TILES, carpetTiles } from './arcade.ts';
-import { cryptTiles, forgeTiles } from './saga.ts';
+import { bifrostTiles, cryptTiles, forgeTiles } from './saga.ts';
 
 export interface BiomeTerrain {
   /** Tile index for one of the wider world's grounds, or null for any other ground. */
@@ -994,6 +994,7 @@ export function addBiomeTerrain(add: (p: Px) => number): BiomeTerrain {
   const carpet = carpetTiles().map(add);
   const crypt = cryptTiles().map(add);
   const forge = forgeTiles().map(add);
+  const bifrost = bifrostTiles().map(add);
   // how often each variant shows: the eye-catching ones (embers, puddles, nebulae, big craters) only now and then
   const W = {
     cliff: [5, 3, 1],
@@ -1008,6 +1009,7 @@ export function addBiomeTerrain(add: (p: Px) => number): BiomeTerrain {
     space: [6, 2, 6, 2, 1, 1],
     crypt: [3, 2, 3, 2, 2, 3, 1, 1],
     forge: [4, 1, 3, 2, 3, 1],
+    bifrost: [6, 1, 2, 2, 2, 1],
   };
   return {
     index(t, x, y, snowy, mask, frame) {
@@ -1047,6 +1049,8 @@ export function addBiomeTerrain(add: (p: Px) => number): BiomeTerrain {
           return weighted(crypt, W.crypt, h);
         case 'forge':
           return weighted(forge, W.forge, h);
+        case 'bifrost':
+          return weighted(bifrost, W.bifrost, h);
         default:
           return null;
       }
