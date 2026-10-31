@@ -4,9 +4,11 @@
 // health and your target's, the party, the boss's health and the attack it is getting ready, its shouts, big
 // banners (with fireworks for a beaten boss), the loot window, and what happens while you are fallen or frozen.
 import {
+  ATTACK_KINDS,
   CLASSES,
   CLASS_IDS,
   DOWN_MS,
+  FRIEND_KINDS,
   DUNGEONS,
   DUNGEON_IDS,
   NPCS,
@@ -72,8 +74,8 @@ import './saga.css';
 /** Spells that stop a boss's big attack (Sköldslag, Stormsteg, Isspjut). */
 const INTERRUPTS = new Set(['bash', 'charge', 'lance']);
 /** Spells aimed at a monster, and at a friend: out of reach shows on their button. */
-const AT_MONSTER = new Set(['melee', 'bolt', 'lance', 'bash', 'charge', 'storm']);
-const AT_FRIEND = new Set(['heal', 'revive']);
+const AT_MONSTER = ATTACK_KINDS;
+const AT_FRIEND = FRIEND_KINDS;
 const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 const KIND_EMOJI: Record<string, string> = { weapon: '⚔️', hat: '🪖', shirt: '👕', pet: '🐾', mount: '🐎', potion: '🧪', decor: '✨', quest: '📦' };
 const FLAG_ICONS: [number, string][] = [
@@ -418,42 +420,40 @@ export class SagaUi {
     });
     add('potion', itemIcon('healing_potion', '🧪'), '5', T.sagaPotionKey, sagaItem('healing_potion')?.text ?? '', drinkPotion, ' potion');
     // touch screens have no Tab key: a button for the next monster
-    add('aim', h('span', null, '🎯'), '', T.sagaAimName, T.sagaTargetHintTouch, cycleTarget, ' aim');
+    add('aim', h('span', null, '🎯'), '', T.sagaAimName, T.sagaAimText, cycleTarget, ' aim');
   }
 
-  /** A spell button: a click (or a short tap) uses it; hovering (or holding a finger on it) shows what it does. */
+  /**
+   * A spell button: it fires the moment it is pressed, like the ✋ button (a small finger that holds the button or
+   * slides off it must still get its spell). Hovering, or holding a finger on it, shows what the spell does.
+   */
   private pressable(el: HTMLElement, act: () => void, tip: () => void): void {
     let timer = 0;
     let held = false;
-    let tipped = false;
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       if (e.pointerType === 'mouse') {
         if (e.button === 0) act();
         return;
       }
+      act();
       held = true;
-      tipped = false;
-      timer = window.setTimeout(() => {
-        tipped = true;
-        tip();
-      }, 420);
+      timer = window.setTimeout(tip, 420);
     });
-    const release = (fire: boolean): void => {
+    const release = (): void => {
       if (!held) return;
       held = false;
       clearTimeout(timer);
-      if (tipped) this.tip.classList.remove('on');
-      else if (fire) act();
+      this.tip.classList.remove('on');
     };
-    el.addEventListener('pointerup', () => release(true));
-    el.addEventListener('pointercancel', () => release(false));
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
     el.addEventListener('pointerenter', (e) => {
       if (e.pointerType === 'mouse') tip();
     });
     el.addEventListener('pointerleave', (e) => {
       if (e.pointerType === 'mouse') this.tip.classList.remove('on');
-      else release(false);
+      else release();
     });
   }
 

@@ -13,6 +13,7 @@ import {
   CALM_MS,
   CLASSES,
   DOWN_MS,
+  attackSpellOf,
   DUNGEONS,
   GCD_MS,
   LEASH_TILES,
@@ -422,6 +423,10 @@ export function sagaAct(world: WorldState, p: PlayerState, tx: number, ty: numbe
   if (obj?.kind === 'saga_chest') return openChest(h, p, obj, ctx);
   if (obj?.kind === 'saga_rest') return [toast(p.id, T.sagaRestHint)];
   if (p.inventory[p.selected]?.item === 'healing_potion') return drinkPotion(world, p.id, ctx);
+  // nothing to use: the use key (E, space, the ✋ button, a tap next to you) swings your everyday attack at the
+  // nearest monster in reach, quietly when there is none (the key is pressed a lot while walking about)
+  const f = h.inst.fighters[p.id];
+  if (f) return castSpell(world, p.id, attackSpellOf(f.cls), undefined, ctx, { quiet: true });
   return [];
 }
 
@@ -572,8 +577,11 @@ function pickFriend(h: Here, p: PlayerState, range: number, wanted: string | und
   return best;
 }
 
-/** Casts one of the class's spells. `target`: a monster's animal id or a player's id; the server picks one if it is left out. */
-export function castSpell(world: WorldState, playerId: string, spellId: string, target: number | string | undefined, ctx: SimCtx): Change[] {
+/**
+ * Casts one of the player's spells at `target` (a monster's animal id or a friend's player id; left out, the server
+ * picks). `quiet`: no toast when nothing is in reach.
+ */
+export function castSpell(world: WorldState, playerId: string, spellId: string, target: number | string | undefined, ctx: SimCtx, opts: { quiet?: boolean } = {}): Change[] {
   const p = farmOf(world).players[playerId];
   const h = p ? hereOf(world, p) : null;
   const f = h && p ? h.inst.fighters[p.id] : undefined;
@@ -594,6 +602,7 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
     if (raging) heal(h, p, f, pw.n * RAGE_LEECH, out);
   };
   const mobAt = (m: SagaMob): { x: number; y: number } => h.area.animals[m.id] ?? m.home;
+  const noTarget = (): Change[] => (opts.quiet ? [] : [toast(p.id, T.sagaNoTarget)]);
   const wantMob = typeof target === 'number' ? target : undefined;
   const wantFriend = typeof target === 'string' ? target : undefined;
   switch (sp.kind) {
@@ -602,7 +611,7 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
     case 'lance':
     case 'bash': {
       const m = pickMob(h, p, f, sp.range, wantMob, sp.kind === 'bolt' || sp.kind === 'lance');
-      if (!m) return [toast(p.id, T.sagaNoTarget)];
+      if (!m) return noTarget();
       f.target = m.id;
       out.push(spellFx(h, p.id, sp.id, p, mobAt(m), m.id));
       strike(m, sp.power);
@@ -616,7 +625,7 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
     }
     case 'charge': {
       const m = pickMob(h, p, f, sp.range, wantMob, true);
-      if (!m) return [toast(p.id, T.sagaNoTarget)];
+      if (!m) return noTarget();
       f.target = m.id;
       const a = mobAt(m);
       const d = Math.max(1, Math.hypot(p.x - a.x, p.y - a.y));
@@ -630,7 +639,7 @@ export function castSpell(world: WorldState, playerId: string, spellId: string, 
     }
     case 'storm': {
       const m = pickMob(h, p, f, sp.range, wantMob, true);
-      if (!m) return [toast(p.id, T.sagaNoTarget)];
+      if (!m) return noTarget();
       f.target = m.id;
       const at = { ...mobAt(m) };
       out.push(spellFx(h, p.id, sp.id, p, at));

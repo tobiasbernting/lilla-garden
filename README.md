@@ -143,6 +143,9 @@ There is still no text chat: players can only use emotes.
 
 - Dator: WASD/piltangenter, `E`/mellanslag för att använda, klick på en ruta, `1–8` väljer verktyg, `Q` ryggsäck, `F` emotes, `H` hjälp, `Enter`/`T` chatt, `X` husdjuren stannar, `V` vissla, `Esc` stänger.
 - Surfplatta: styrspak till vänster, stor handknapp till höger, tryck på en ruta bredvid dig.
+- Fängelsehålorna (Sagan om Världsträdet): klicka eller tryck på ett monster för att sikta och slå på det; `E`/mellanslag
+  och ✋ slår på det närmaste monstret inom räckhåll; `1`–`4` är klassens besvärjelser, `5` läkedryck, Tab (🎯 på
+  surfplatta) byter monster. En nedtryckt knapp slår direkt, hålls den kvar visas vad besvärjelsen gör.
 - Handkontroll (Xbox, PlayStation, Switch): vänster spak går, `A`/`X`/`RT` använder, `B`/`LT` springer, `LB`/`RB` eller
   styrkorset vänster/höger väljer verktyg, `Y` ryggsäck, styrkorset upp emotes och ner minikarta, Start hjälp, Select bok.
   I en fängelsehåla är `X`/`Y`/`B`/`RB` besvärjelserna, `LB` läkedryck, styrkorset vänster/höger byter monster och
