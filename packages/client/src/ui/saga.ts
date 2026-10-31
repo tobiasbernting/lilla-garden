@@ -3,17 +3,23 @@
 // to jump to someone. Inside a dungeon: the spell bar (keys 1–4 and a potion on 5) instead of the hotbar, your
 // health and your target's, the party, the boss's health and the attack it is getting ready, its shouts, big
 // banners (with fireworks for a beaten boss), the loot window, and what happens while you are fallen or frozen.
+// Out in the world with hero mode on, the spell bar and your frame (hearts for health) and your target's come along,
+// and the gear window puts a weapon, an offhand and an amulet on the hero.
 import {
   ATTACK_KINDS,
+  BLOCK_SPECIES,
   CLASSES,
   CLASS_IDS,
   DOWN_MS,
   FRIEND_KINDS,
   DUNGEONS,
   DUNGEON_IDS,
+  GEAR_SLOTS,
+  MAX_HEARTS,
   NPCS,
   RARITY_COLORS,
   RARITY_NAMES,
+  RARITY_POWER,
   SAGA_BOSSES,
   SAGA_CHAPTERS,
   SAGA_QUESTS,
@@ -23,11 +29,18 @@ import {
   VOLVA_ID,
   areaName,
   chapterDone,
+  combatDef,
+  fieldCount,
+  fighterMax,
   fmt,
+  gearOf,
+  gearSlotOf,
+  gearStats,
   isBathKey,
   isHallKey,
   isSagaKey,
   itemName,
+  levelSpan,
   placeEmoji,
   placeName,
   previousDungeon,
@@ -37,7 +50,9 @@ import {
   sagaItem,
   type Change,
   type ClassId,
+  type GearSlot,
   type Rarity,
+  type SagaItemDef,
   type SagaQuest,
 } from '@lilla-garden/shared';
 import { getArt, portraitUrl } from '../art/textures.ts';
@@ -49,8 +64,10 @@ import {
   cooldown,
   cycleTarget,
   drinkPotion,
+  fightMode,
   flagsOf,
   getTarget,
+  heroOn,
   inSaga,
   liveTarget,
   myClass,
@@ -63,6 +80,7 @@ import {
   sagaTick,
   setTarget,
   titleOf,
+  webbed,
 } from '../saga.ts';
 import { SAGA_SFX } from '../sagasfx.ts';
 import { SFX } from '../sound.ts';
@@ -77,7 +95,7 @@ const INTERRUPTS = new Set(['bash', 'charge', 'lance']);
 const AT_MONSTER = ATTACK_KINDS;
 const AT_FRIEND = FRIEND_KINDS;
 const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
-const KIND_EMOJI: Record<string, string> = { weapon: '⚔️', hat: '🪖', shirt: '👕', pet: '🐾', mount: '🐎', potion: '🧪', decor: '✨', quest: '📦' };
+const KIND_EMOJI: Record<string, string> = { weapon: '⚔️', offhand: '🛡️', amulet: '📿', hat: '🪖', shirt: '👕', pet: '🐾', mount: '🐎', potion: '🧪', decor: '✨', quest: '📦' };
 const FLAG_ICONS: [number, string][] = [
   [FLAG.down, '💀'],
   [FLAG.frozen, '🧊'],
@@ -87,7 +105,7 @@ const FLAG_ICONS: [number, string][] = [
   [FLAG.slow, '🐌'],
 ];
 
-type Win = 'class' | 'volva' | 'journal' | 'family' | 'loot';
+type Win = 'class' | 'volva' | 'journal' | 'family' | 'loot' | 'gear';
 type LootChange = Extract<Change, { t: 'loot' }>;
 type BannerChange = Extract<Change, { t: 'banner' }>;
 
@@ -168,6 +186,21 @@ const itemIcon = (id: string, fallback?: string): HTMLElement => {
 const rewardText = (r: { coins: number; stars: number; item?: string; count?: number; title?: string }): string =>
   [`+${r.coins} ${T.coins}`, `+${r.stars} ⭐`, r.item ? `${itemName(r.item)}${(r.count ?? 1) > 1 ? ` × ${r.count}` : ''}` : '', r.title ? `👑 ${r.title}` : ''].filter(Boolean).join(' · ');
 
+/** A fraction as "+12 %". */
+const pct = (k: number): string => `+${Math.round(k * 100)} %`;
+const SLOT_NAMES: Record<GearSlot, () => string> = { weapon: () => T.sagaSlotWeapon, offhand: () => T.sagaSlotOffhand, amulet: () => T.sagaSlotAmulet };
+const SLOT_HINTS: Record<GearSlot, () => string> = { weapon: () => T.sagaSlotWeaponHint, offhand: () => T.sagaSlotOffhandHint, amulet: () => T.sagaSlotAmuletHint };
+const SLOT_EMOJI: Record<GearSlot, string> = { weapon: '⚔️', offhand: '🛡️', amulet: '📿' };
+/** What a piece of gear gives: "Kraft +10 % · Hälsa +15 · Skydd 6 %" (a weapon's power comes from its rarity). */
+function statLine(d: SagaItemDef): string {
+  const power = (d.kind === 'weapon' ? RARITY_POWER[d.rarity] - 1 : 0) + (d.stats?.power ?? 0);
+  const parts: string[] = [];
+  if (power > 0) parts.push(fmt(T.sagaStatPower, { n: pct(power) }));
+  if (d.stats?.hp) parts.push(fmt(T.sagaStatHp, { n: d.stats.hp }));
+  if (d.stats?.armor) parts.push(fmt(T.sagaStatArmor, { n: Math.round(d.stats.armor * 100) }));
+  return parts.join(' · ');
+}
+
 /** Where someone is, for the family list. */
 function placeOf(area: string): string {
   if (area === 'farm' || area === 'dungeon' || isBathKey(area) || isHallKey(area)) return areaName(area);
@@ -176,9 +209,33 @@ function placeOf(area: string): string {
   return `${placeEmoji(biome)} ${placeName(biome)}`;
 }
 
+/**
+ * A chapter of Act II in its parts, for the tracker and the journal: the task out in the world ("🗡️ Jaga bort 6
+ * mosspökar…: 2/6") and the dungeon. Empty for a chapter with only one part (its goal line says it all).
+ */
+function chapterParts(index: number): { text: string; done: boolean }[] {
+  const ch = SAGA_CHAPTERS[index];
+  const prog = readProgress(myPlayer());
+  if (!ch?.field) return [];
+  const parts: { text: string; done: boolean }[] = [];
+  const n = Math.min(ch.field.count, index === prog.chapter ? fieldCount(prog) : ch.field.count);
+  const fieldDone = n >= ch.field.count;
+  parts.push({ text: fieldDone ? fmt(T.sagaFieldDone, { text: ch.field.text }) : `🗡️ ${fmt(T.sagaFieldProgress, { text: ch.field.text, n, count: ch.field.count })}`, done: fieldDone });
+  if (ch.dungeon) {
+    const d = DUNGEONS[ch.dungeon];
+    const done = prog.cleared.includes(ch.dungeon);
+    const boss = SAGA_BOSSES[d.boss]?.name ?? d.boss;
+    parts.push({ text: `${done ? '✅' : '⚔️'} ${fmt(T.sagaDungeonLine, { boss, dungeon: d.name })}`, done });
+  }
+  return parts;
+}
+
 // ---------------------------------------------------------------------------
 // The villagers' saga quests (in their window: ui/menus.ts)
 // ---------------------------------------------------------------------------
+
+/** The first chapter of Act II, Lokes list (a heading over it in the journal). */
+const ACT_TWO = 4;
 
 const questsOf = (npcId: string): SagaQuest[] => SAGA_QUESTS.filter((q) => q.npc === npcId);
 
@@ -293,6 +350,10 @@ export class SagaUi {
     onTap(fam, () => this.open('family'));
     social.append(fam);
 
+    // the gear window: the HUD's ⚔️ button and the gamepad's Select ask for it
+    document.addEventListener('lilla:gear', () => {
+      if (myClass()) this.open('gear');
+    });
     bus.on('open', (c) => {
       if (c.ui === 'sagaClass') this.open('class');
       else if (c.ui === 'saga') this.open('volva');
@@ -302,6 +363,7 @@ export class SagaUi {
       this.sync();
       this.renderTracker();
       if (this.modal && this.win !== 'loot') this.render();
+      this.renderUnits();
     });
     bus.on('area', () => this.sync());
     bus.on('welcome', () => {
@@ -328,14 +390,17 @@ export class SagaUi {
     return this.modal !== null;
   }
 
-  /** Keys: 1–4 spells and 5 a potion inside a dungeon, Tab the next monster, J the saga's journal. True if used. */
+  /**
+   * Keys: 1–4 spells and 5 a potion in a fight (a dungeon, or hero mode out in the world), Tab the next monster,
+   * J the saga's journal, G the gear window. True if used.
+   */
   key(e: KeyboardEvent): boolean {
     if (this.modal) {
-      if (e.key === 'Escape') this.close();
+      if (e.key === 'Escape' || (this.win === 'gear' && (e.key === 'g' || e.key === 'G'))) this.close();
       return true;
     }
-    // no hotbar in a dungeon: the number keys are spells, even with the backpack open
-    if (inSaga() && /^[1-8]$/.test(e.key)) {
+    // no hotbar in a fight: the number keys are spells, even with the backpack open
+    if (fightMode() && /^[1-8]$/.test(e.key)) {
       if (this.menus.isOpen()) return true;
       if (e.key <= '4') castSlot(Number(e.key) - 1);
       else if (e.key === '5') drinkPotion();
@@ -346,7 +411,11 @@ export class SagaUi {
       this.open('journal');
       return true;
     }
-    if (!inSaga()) return false;
+    if ((e.key === 'g' || e.key === 'G') && myClass()) {
+      this.open('gear');
+      return true;
+    }
+    if (!fightMode()) return false;
     if (e.key === 'Tab') {
       e.preventDefault();
       cycleTarget();
@@ -365,22 +434,30 @@ export class SagaUi {
     else if (c.t === 'yell') this.yell(c.name, c.text);
   }
 
-  /** Inside or outside a dungeon: the spell bar instead of the hotbar, and the class's own buttons. */
+  /** In a fight or not: the spell bar instead of the hotbar, and the class's own buttons. */
   private sync(): void {
     const here = inSaga();
+    const fight = fightMode();
     document.body.classList.toggle('in-saga', here);
+    document.body.classList.toggle('saga-fight', fight);
     const cls = myClass();
-    const want = here && cls ? cls.id : '';
+    const want = fight && cls ? cls.id : '';
     if (want !== this.barFor) this.buildBar();
+    this.renderUnits();
     if (!here) {
       this.party.hidden = true;
-      this.units.hidden = true;
       this.boss.hidden = true;
       this.castBar.hidden = true;
       this.down.hidden = true;
-      this.hint.hidden = true;
       this.wasDown = false;
-      this.hintFor = '';
+      // out in the world: the aiming hint once when hero mode goes on
+      if (!fight) {
+        this.hint.hidden = true;
+        this.hintFor = '';
+      } else if (this.hintFor !== 'hero') {
+        this.hintFor = 'hero';
+        this.showHint();
+      }
       // out of a boss fight too (the tracker shows again)
       if (document.body.classList.contains('saga-bossfight')) {
         document.body.classList.remove('saga-bossfight');
@@ -389,12 +466,16 @@ export class SagaUi {
     } else if (this.hintFor !== myPlayer()?.area) {
       // a hint about aiming when you come in, fading after a while
       this.hintFor = myPlayer()?.area ?? '';
-      this.hint.hidden = false;
-      this.hint.textContent = document.body.classList.contains('touch') ? T.sagaTargetHintTouch : T.sagaTargetHint;
-      this.hint.classList.remove('fade');
-      void this.hint.offsetWidth;
-      this.hint.classList.add('fade');
+      this.showHint();
     }
+  }
+
+  private showHint(): void {
+    this.hint.hidden = false;
+    this.hint.textContent = document.body.classList.contains('touch') ? T.sagaTargetHintTouch : T.sagaTargetHint;
+    this.hint.classList.remove('fade');
+    void this.hint.offsetWidth;
+    this.hint.classList.add('fade');
   }
 
   // ---- the spell bar ----
@@ -403,7 +484,7 @@ export class SagaUi {
     for (const s of this.slots) s.el.remove();
     this.slots = [];
     const cls = myClass();
-    this.barFor = inSaga() && cls ? cls.id : '';
+    this.barFor = fightMode() && cls ? cls.id : '';
     this.bar.hidden = !this.barFor;
     if (!cls || !this.barFor) return;
     const add = (id: string, icon: HTMLElement, key: string, name: string, text: string, act: () => void, extra = ''): void => {
@@ -478,9 +559,9 @@ export class SagaUi {
     return !!at && Math.hypot(at.x - me.x, at.y - me.y) / TILE > sp.range + 0.6;
   }
 
-  /** Every frame inside a dungeon: cooldown sweeps, the boss's attack filling up, being fallen or frozen. */
+  /** Every frame in a fight: cooldown sweeps, the boss's attack filling up, being fallen or frozen. */
   private frame(): void {
-    if (!inSaga()) return;
+    if (!fightMode()) return;
     sagaTick();
     const fl = flagsOf(client.me);
     const off = !!(fl & (FLAG.down | FLAG.frozen));
@@ -526,10 +607,22 @@ export class SagaUi {
 
   private renderUnits(): void {
     const snap = sagaSnap();
-    this.units.hidden = !snap;
-    if (!snap) return;
     const me = myPlayer();
     const cls = myClass();
+    if (!snap) {
+      // out in the world: your hearts, and the monster you aim at with its hearts
+      this.units.hidden = !fightMode() || inSaga();
+      if (this.units.hidden || !me) return;
+      this.meFrame.set(cls?.emoji ?? '🙂', me.name, [Math.max(0, me.hearts), MAX_HEARTS, 0], cls?.color ?? '#ffe98a');
+      const t = liveTarget();
+      const a = typeof t === 'number' ? activeWorld()?.animals[t] : undefined;
+      this.targetFrame.el.hidden = !a;
+      if (!a) return;
+      const max = combatDef(a)?.hp;
+      this.targetFrame.set(combatDef(a)?.boss ? '💀' : '👹', a.name, max ? [Math.max(0, a.hp ?? max), max, 0] : null, '#ff8a70');
+      return;
+    }
+    this.units.hidden = false;
     this.meFrame.set(cls?.emoji ?? '🙂', me?.name ?? T.sagaYou, snap.f[client.me] ?? null, cls?.color ?? '#ffe98a');
     const t = liveTarget();
     // the boss has its own bar at the top
@@ -543,7 +636,7 @@ export class SagaUi {
       const a = activeWorld()?.animals[t];
       const m = snap.m[t];
       // a monster still waiting has its full health (the server only sends those that are fighting or hurt)
-      this.targetFrame.set(a?.species === 'isblock' ? '🧊' : a && SAGA_BOSSES[a.species] ? '💀' : '👹', a?.name ?? '', m ? [m[0], m[1], 0] : null, '#ff8a70', !!m);
+      this.targetFrame.set(a?.species === 'spindelnat' ? '🕸️' : a && BLOCK_SPECIES.has(a.species) ? '🧊' : a && SAGA_BOSSES[a.species] ? '💀' : '👹', a?.name ?? '', m ? [m[0], m[1], 0] : null, '#ff8a70', !!m);
     }
   }
 
@@ -619,8 +712,9 @@ export class SagaUi {
   }
 
   private onState(): void {
-    if (!inSaga()) return;
+    if (!fightMode()) return;
     this.renderUnits();
+    if (!inSaga()) return;
     this.renderParty();
     this.renderBoss();
     this.tracker.hidden = this.trackerHidden();
@@ -664,15 +758,31 @@ export class SagaUi {
     } else if (kind === 'reward') {
       this.confetti(45, false);
       SAGA_SFX.fanfare(false);
+    } else if (kind === 'level') {
+      this.confetti(50, false);
+      SAGA_SFX.fanfare(false);
     } else if (kind === 'wipe') SAGA_SFX.sombre();
-    else if (kind === 'rest') SAGA_SFX.calm();
+    else if (kind === 'rest' && c.text === T.sagaPuzzleOpen) {
+      // the rune plates all lit: a chime and a shower of golden sparkles
+      SAGA_SFX.chime();
+      this.sparkles(30);
+    } else if (kind === 'rest') SAGA_SFX.calm();
     else SAGA_SFX.banner();
-    const ms = kind === 'cleared' ? 5200 : kind === 'boss' || kind === 'reward' || kind === 'enter' || kind === 'chapter' ? 4300 : 3200;
+    const ms = kind === 'cleared' ? 5200 : kind === 'boss' || kind === 'reward' || kind === 'enter' || kind === 'chapter' || kind === 'level' ? 4300 : 3200;
     setTimeout(() => el.classList.add('out'), ms - 600);
     setTimeout(() => {
       el.remove();
       this.nextBanner();
     }, ms);
+  }
+
+  /** Golden sparkles drifting down (a puzzle solved). */
+  private sparkles(n: number): void {
+    const layer = h('div', { class: 'saga-confetti sparkle' });
+    for (let i = 0; i < n; i++)
+      layer.append(h('i', { style: { left: `${10 + Math.random() * 80}%`, animationDelay: `${Math.random() * 0.8}s`, animationDuration: `${1.8 + Math.random() * 1.4}s` } }));
+    this.ui.append(layer);
+    setTimeout(() => layer.remove(), 4000);
   }
 
   /** Confetti raining down, and fireworks bursting for a beaten boss. */
@@ -717,10 +827,13 @@ export class SagaUi {
     if (!isDown && this.wasDown) SAGA_SFX.rise();
     this.wasDown = isDown;
     this.down.hidden = !isDown && !frozen;
-    this.down.classList.toggle('ice', frozen && !isDown);
+    // a spider's web holds you like the ice does
+    const web = frozen && !isDown && webbed(client.me);
+    this.down.classList.toggle('ice', frozen && !isDown && !web);
+    this.down.classList.toggle('web', web);
     if (this.down.hidden) return;
-    let title = T.sagaFrozenTitle;
-    let sub = T.sagaFrozenSub;
+    let title = web ? T.sagaWebbedTitle : T.sagaFrozenTitle;
+    let sub = web ? T.sagaWebbedSub : T.sagaFrozenSub;
     if (isDown) {
       title = T.sagaFallenTitle;
       const all = Object.values(sagaSnap()?.f ?? {}).every((f) => f[2] & FLAG.down);
@@ -730,7 +843,7 @@ export class SagaUi {
     if (this.down.dataset.text !== text) {
       this.down.dataset.text = text;
       clear(this.down);
-      this.down.append(h('div', { class: 'box' }, h('b', null, `${isDown ? '💀' : '🧊'} ${title}`), h('span', null, sub)));
+      this.down.append(h('div', { class: 'box' }, h('b', null, `${isDown ? '💀' : web ? '🕸️' : '🧊'} ${title}`), h('span', null, sub)));
     }
   }
 
@@ -750,8 +863,12 @@ export class SagaUi {
     if (!this.trackerOpen) return;
     const ch = SAGA_CHAPTERS[prog.chapter];
     if (ch) {
-      const line = !prog.heard ? T.sagaVisitVolva : chapterDone(prog) ? T.sagaBackToVolva : ch.goal;
-      this.tracker.append(h('div', { class: `line${prog.heard && chapterDone(prog) ? ' done' : ''}` }, `${prog.heard ? '🎯' : '❗'} ${line}`));
+      const parts = prog.heard && !chapterDone(prog) ? chapterParts(prog.chapter) : [];
+      if (parts.length) for (const p of parts) this.tracker.append(h('div', { class: `line${p.done ? ' done' : ''}` }, p.text));
+      else {
+        const line = !prog.heard ? T.sagaVisitVolva : chapterDone(prog) ? T.sagaBackToVolva : ch.goal;
+        this.tracker.append(h('div', { class: `line${prog.heard && chapterDone(prog) ? ' done' : ''}` }, `${prog.heard ? '🎯' : '❗'} ${line}`));
+      }
     }
     for (const q of SAGA_QUESTS) {
       const st = questState(me, q);
@@ -801,6 +918,7 @@ export class SagaUi {
       journal: `📖 ${T.sagaJournalTitle}`,
       family: `👪 ${T.familyTitle}`,
       loot: '',
+      gear: `⚔️ ${T.sagaGearTitle}`,
     };
     const body = h('div', { class: 'body' });
     const panel = h('div', { class: `panel saga-panel ${this.win}` });
@@ -808,8 +926,28 @@ export class SagaUi {
     panel.append(body);
     if (this.win === 'class') this.renderClass(body);
     else if (this.win === 'volva') this.renderVolva(panel, body);
-    else if (this.win === 'journal') this.renderJournal(body);
-    else if (this.win === 'family') this.renderFamily(body);
+    else if (this.win === 'journal' || this.win === 'gear') {
+      // the journal and the gear window are two tabs of one book (the gear one only with a class)
+      if (myClass()) {
+        const tabs = h('div', { class: 'tabs' });
+        for (const [w, label] of [
+          ['journal', T.sagaJournalTab],
+          ['gear', `⚔️ ${T.sagaGearTitle}`],
+        ] as const) {
+          const b = h('button', { class: this.win === w ? 'on' : '' }, label);
+          onTap(b, () => {
+            if (this.win === w) return;
+            this.win = w;
+            SFX.talk();
+            this.render();
+          });
+          tabs.append(b);
+        }
+        panel.insertBefore(tabs, body);
+      }
+      if (this.win === 'gear') this.renderGear(body);
+      else this.renderJournal(body);
+    } else if (this.win === 'family') this.renderFamily(body);
     else this.renderLoot(panel, body);
     this.modal.append(panel);
   }
@@ -931,9 +1069,21 @@ export class SagaUi {
     const chapters = h('div', { class: 'saga-list' });
     SAGA_CHAPTERS.forEach((ch, i) => {
       if (i > prog.chapter) return;
+      // the second part of the saga begins after Surt
+      if (i === ACT_TWO) chapters.append(h('div', { class: 'act' }, `🌀 ${T.sagaActTwo}`));
       const done = i < prog.chapter;
       const name = i === 0 ? ch.title : fmt(T.sagaChapter, { n: i, title: ch.title });
-      chapters.append(h('div', { class: `row${done ? ' done' : ''}` }, h('span', { class: 'badge' }, done ? '✅' : '📜'), h('span', { class: 'name' }, name, h('br'), h('span', { class: 'need' }, done ? ch.done[0]! : prog.heard ? ch.goal : T.sagaVisitVolva)), done ? null : h('span', { class: 'price' }, T.sagaChapterNow)));
+      const parts = !done && prog.heard ? chapterParts(i) : [];
+      const need = h('span', { class: 'need' }, done ? ch.done[0]! : prog.heard ? ch.goal : T.sagaVisitVolva);
+      chapters.append(
+        h(
+          'div',
+          { class: `row${done ? ' done' : ''}` },
+          h('span', { class: 'badge' }, done ? '✅' : '📜'),
+          h('span', { class: 'name' }, name, h('br'), need, ...parts.map((p) => h('span', { class: `part${p.done ? ' done' : ''}` }, p.text))),
+          done ? null : h('span', { class: 'price' }, T.sagaChapterNow),
+        ),
+      );
     });
     body.append(chapters, h('div', { class: 'saga-head' }, T.sagaDungeons));
     for (const id of DUNGEON_IDS) {
@@ -954,6 +1104,128 @@ export class SagaUi {
     }
     body.append(h('div', { class: 'saga-head' }, T.sagaTitles));
     body.append(prog.titles.length ? h('div', { class: 'saga-titles' }, ...prog.titles.map((t) => h('span', null, `👑 ${t}`))) : h('div', { class: 'hint' }, T.sagaNoTitles));
+  }
+
+  // The gear window: the hero, their level and what they carry; tap a piece in the bag to put it on, tap a worn one to
+  // take it off again. Clothes are changed in the wardrobe.
+  private renderGear(body: HTMLElement): void {
+    const me = myPlayer()!;
+    const prog = readProgress(me);
+    const cls = myClass();
+    if (!cls) return;
+    const worn = gearOf(me);
+    const gs = gearStats(me);
+    const span = levelSpan(prog.xp ?? 0);
+    const xp = prog.xp ?? 0;
+    const title = titleOf(me);
+
+    // the hero: portrait, level, experience, what it all adds up to
+    const meter = h('div', { class: 'saga-meter xp' }, h('i', { style: { width: `${span.next === null ? 100 : ((xp - span.from) / Math.max(1, span.next - span.from)) * 100}%` } }), h('span', null, span.next === null ? T.sagaXpMax : fmt(T.sagaXpOf, { xp, next: span.next })));
+    const totals = h(
+      'div',
+      { class: 'totals' },
+      h('span', { class: 'pow' }, `💪 ${fmt(T.sagaStatPower, { n: pct(gs.power - 1) })}`),
+      h('span', { class: 'hp' }, `❤️ ${fmt(T.sagaHealth, { hp: fighterMax(me, cls.id) })}`),
+      h('span', { class: 'arm' }, `🛡️ ${fmt(T.sagaStatArmor, { n: Math.round(gs.armor * 100) })}`),
+    );
+    const heroBtn = h('button', { class: `hero-toggle${heroOn(me) ? ' on' : ''}`, disabled: inSaga() }, heroOn(me) ? `🧑‍🌾 ${T.sagaFarmerMode}` : `${cls.emoji} ${T.sagaHeroMode}`);
+    onTap(heroBtn, () => {
+      if (inSaga()) return;
+      net.send({ t: 'saga', a: 'hero', on: !heroOn(me) });
+      SAGA_SFX.hero(!heroOn(me));
+    });
+    const card = vars(
+      h(
+        'div',
+        { class: 'hero' },
+        h('img', { class: 'portrait', src: portraitUrl(me.appearance, me.outfit, 4), alt: '' }),
+        h(
+          'div',
+          { class: 'who' },
+          h('b', { class: 'nm' }, me.name),
+          title ? h('span', { class: 'ttl' }, `👑 ${title}`) : null,
+          h('span', { class: 'cls' }, `${cls.emoji} ${cls.name} · ${cls.roleName}`),
+          h('span', { class: 'lvl' }, `⭐ ${fmt(T.sagaLevelName, { n: span.level })}`),
+          meter,
+          totals,
+          h('div', { class: 'q-act' }, heroBtn),
+        ),
+      ),
+      { '--c': cls.color },
+    );
+
+    // the three slots
+    const slots = h('div', { class: 'slots' });
+    for (const slot of GEAR_SLOTS) {
+      const id = worn[slot];
+      const d = id ? sagaItem(id) : undefined;
+      const el = h('div', { class: `gslot${d ? ` rar-${d.rarity}` : ' empty'}` }, h('span', { class: 'slot-name' }, SLOT_NAMES[slot]()));
+      if (d && id) {
+        el.append(h('span', { class: 'pic' }, itemIcon(id)), h('b', { class: 'nm' }, d.name), h('span', { class: 'st' }, statLine(d)), h('span', { class: 'off' }, `✋ ${T.sagaTapOff}`));
+        vars(el, { '--r': RARITY_COLORS[d.rarity] });
+        onTap(el, () => {
+          net.send({ t: 'saga', a: 'equip', slot, item: null });
+          SFX.talk();
+        });
+      } else el.append(h('span', { class: 'pic' }, h('span', { class: 'em' }, SLOT_EMOJI[slot])), h('span', { class: 'tx' }, SLOT_HINTS[slot]()));
+      slots.append(el);
+    }
+    // clothes: shown here, changed in the wardrobe
+    const clothes = h('div', { class: 'clothes' }, h('span', { class: 'slot-name' }, T.sagaClothes));
+    for (const part of ['hat', 'shirt'] as const) {
+      const id = me.outfit[part];
+      clothes.append(id ? h('span', { class: 'cl', title: itemName(id) }, itemIcon(id, part === 'hat' ? '🎩' : '👕')) : h('span', { class: 'cl none' }, part === 'hat' ? '🎩' : '👕'));
+    }
+    const wardrobe = h('button', null, `👕 ${T.wardrobe}`);
+    onTap(wardrobe, () => {
+      this.close();
+      this.menus.open('wardrobe');
+    });
+    clothes.append(wardrobe);
+    slots.append(clothes);
+    body.append(h('div', { class: 'saga-gear' }, card, slots));
+
+    // the gear in the bag
+    body.append(h('div', { class: 'saga-head' }, `🎒 ${T.sagaGearBag}`));
+    const grid = h('div', { class: 'saga-gearbag' });
+    // a save from before gear wears its best weapon from the bag: that one shows above, not here too
+    let skip = me.saga?.gear ? null : (worn.weapon ?? null);
+    for (const st of me.inventory) {
+      if (!st) continue;
+      const slot = gearSlotOf(st.item);
+      const d = sagaItem(st.item);
+      if (!slot || !d) continue;
+      if (st.item === skip) {
+        skip = null;
+        continue;
+      }
+      const fits = !!d.classes?.includes(cls.id);
+      const el = vars(
+        h(
+          'div',
+          { class: `gitem rar-${d.rarity}${fits ? ' fits' : ''}` },
+          h('span', { class: 'pic' }, itemIcon(st.item)),
+          h(
+            'div',
+            { class: 'col' },
+            h('b', { class: 'nm' }, d.name),
+            h('span', { class: 'rar' }, `${RARITY_NAMES[d.rarity]} · ${SLOT_NAMES[slot]()}`),
+            h('span', { class: 'st' }, statLine(d)),
+            d.classes?.length ? h('span', { class: 'fit' }, `${fits ? '✓ ' : ''}${fmt(T.sagaFits, { classes: d.classes.map((c) => CLASSES[c].name).join(', ') })}`) : null,
+            d.text ? h('span', { class: 'tx' }, d.text) : null,
+          ),
+          h('span', { class: 'put' }, worn[slot] ? '⇄' : '＋'),
+        ),
+        { '--r': RARITY_COLORS[d.rarity] },
+      );
+      el.title = T.sagaTapOn;
+      onTap(el, () => {
+        net.send({ t: 'saga', a: 'equip', slot, item: st.item });
+        SAGA_SFX.loot(RARITY_ORDER.indexOf(d.rarity) >= 3 ? 3 : 0);
+      });
+      grid.append(el);
+    }
+    body.append(grid.children.length ? grid : h('div', { class: 'hint' }, T.sagaGearBagEmpty));
   }
 
   // Everyone in the family: where they are, and a jump to their side

@@ -6,6 +6,9 @@ import {
   callPets,
   castSpell,
   chooseClass,
+  equipGear,
+  setHero,
+  shownHeld,
   drinkPotion,
   isSagaKey,
   jumpTo,
@@ -198,7 +201,7 @@ export class Game {
     const players: PlayerSnap[] = [];
     for (const p of Object.values(this.world.players)) {
       if (!p.online) continue;
-      const snap: PlayerSnap = { id: p.id, x: p.x, y: p.y, facing: p.facing, moving: p.moving, held: p.inventory[p.selected]?.item ?? null };
+      const snap: PlayerSnap = { id: p.id, x: p.x, y: p.y, facing: p.facing, moving: p.moving, held: shownHeld(p) };
       if (p.emote) snap.emote = p.emote;
       if (p.area !== 'farm') snap.area = p.area;
       players.push(snap);
@@ -501,6 +504,8 @@ export class Game {
         if (msg.a === 'class') changes = chooseClass(this.world, pid, String(msg.cls ?? ''));
         else if (msg.a === 'chapter') changes = sagaChapter(this.world, pid);
         else if (msg.a === 'quest') changes = sagaQuestAct(this.world, pid, String(msg.id ?? ''));
+        else if (msg.a === 'equip') changes = equipGear(this.world, pid, String(msg.slot ?? ''), typeof msg.item === 'string' ? msg.item : null);
+        else if (msg.a === 'hero') changes = setHero(this.world, pid, msg.on === true);
         break;
       case 'jump':
         changes = jumpTo(this.world, pid, String(msg.to ?? ''));

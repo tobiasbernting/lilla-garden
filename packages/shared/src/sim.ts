@@ -14,7 +14,7 @@ import { driveVehicle, isVehicle, vehicleBlocks } from './city.ts';
 import { DUNGEONS, VOLVA_ID, dungeonOfKey, isSagaKey, sagaItem } from './saga.ts';
 import { generateSaga } from './sagamap.ts';
 import { garageOf, healCars } from './rallysim.ts';
-import { enterSaga, ensureSagaPlaces, idleSaga, isSagaMob, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
+import { enterSaga, ensureSagaPlaces, heroAction, idleSaga, isSagaMob, roamingDown, sagaAct, sagaRooted, tickSaga } from './sagasim.ts';
 import { addItem, countItem, hasSpace, makeInventory, makeStack, moveStack, quickStack, removeItem, sortInventory, takeFromSlot } from './inventory.ts';
 import { PORTALS, SPAWN, addObject, generateWorld, inBounds, inInterior, objectAt, portalAt, removeObject, tileIndex } from './map.ts';
 import { randInt } from './rng.ts';
@@ -459,7 +459,7 @@ const TERRAIN_ITEM: Partial<Record<Terrain, string>> = {
   floor_stone: 'floor_stone',
 };
 
-const animalAt = (world: WorldState, tx: number, ty: number): AnimalState | undefined => {
+export const animalAt = (world: WorldState, tx: number, ty: number): AnimalState | undefined => {
   for (const a of Object.values(world.animals)) if (tileOf(a.x) === tx && tileOf(a.y) === ty) return a;
   return undefined;
 };
@@ -482,6 +482,11 @@ export function performAction(world: WorldState, playerId: string, tx: number, t
     return out;
   }
   if (isSagaKey(world.area)) return sagaAct(world, p, tx, ty, ctx);
+  // hero mode out in the world: a monster in reach gets the class's attack spell instead of the farm tool
+  if (p.saga?.hero) {
+    const hero = heroAction(world, p, tx, ty, ctx);
+    if (hero) return hero;
+  }
   const held = heldItem(p);
   const heldDef = held ? item(held.item) : null;
   const tool = heldDef?.tool;
@@ -2099,7 +2104,8 @@ export function leaveCave(world: WorldState, playerId: string, knockedOut: boole
   return out;
 }
 
-function attackMob(d: WorldState, p: PlayerState, mob: AnimalState, dmg: number, ctx: SimCtx, out: Change[]): void {
+/** Hits a cave monster, a wild predator or one of Loke's roaming servants (the sword, arrows, rockets, hero spells). */
+export function attackMob(d: WorldState, p: PlayerState, mob: AnimalState, dmg: number, ctx: SimCtx, out: Change[]): void {
   const def = combatDef(mob);
   if (!def) return;
   const predator = !ANIMALS[mob.species]?.mob;
@@ -2124,6 +2130,8 @@ function attackMob(d: WorldState, p: PlayerState, mob: AnimalState, dmg: number,
     out.push(toast(p.id, fmt(T.predatorDown, { name: mob.name })), playerChange(p));
     return;
   }
+  // Loke's servants out in the world: the saga's field tasks, quests and experience, and a world boss's chest
+  if (d.area !== 'dungeon' && roamingDown(d, p, mob, ctx, out)) return;
   if (def.boss) {
     bump(p, 'boss', 1, out);
     const chest = addObject(d, 'treasure', mtx, mty) ?? addObject(d, 'treasure', mtx + 1, mty) ?? addObject(d, 'treasure', mtx, mty + 1);
@@ -2497,6 +2505,10 @@ function throwLasso(world: WorldState, p: PlayerState, ctx: SimCtx, out: Change[
       out.push(toast(p.id, T.lassoNoTarget));
       return;
     }
+    if (def.mob) {
+      out.push(toast(p.id, T.lassoMonster));
+      return;
+    }
     const name = animalDisplayName(a);
     if (ctx.rnd() < (def.tame ?? 0.6)) {
       a.owner = p.id;
@@ -2636,6 +2648,12 @@ function tickFlee(world: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx):
 }
 
 const MOB_SIGHT = 7 * TILE;
+/** Loke's roaming servants notice you this close (they are meant to be found, not to ambush). */
+const ROAM_SIGHT = 4.5 * TILE;
+/** A taunted monster keeps after its hero this far. */
+const HUNT_RANGE = 14 * TILE;
+/** The longest pause between two bites; a later attackAt means the monster is dazed. */
+export const ATTACK_GAP = 1500;
 
 /** True when no wall or rock lies on the straight tile line between two points. */
 export function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y1: number): boolean {
@@ -2653,22 +2671,40 @@ export function lineOfSight(d: WorldState, x0: number, y0: number, x1: number, y
 
 /** Monsters (cave) and wild predators (outdoors) chase and bite players; everything else wanders. */
 function tickMob(d: WorldState, a: AnimalState, dtMs: number, ctx: SimCtx, out: Change[]): boolean {
-  const predator = ANIMALS[a.species]?.predator;
-  // predators notice you closer than cave monsters do, and keep chasing a bit further than that
-  const sight = predator ? predator.aggroRange * TILE : MOB_SIGHT;
-  const keep = predator ? (a.moving ? sight * 1.5 : sight) : MOB_SIGHT;
+  const def = ANIMALS[a.species];
+  const predator = def?.predator;
+  // predators and Loke's roaming servants notice you closer than cave monsters do, and keep chasing a bit further
+  const roaming = !!def?.mob && !!def.wild;
+  const sight = predator ? predator.aggroRange * TILE : roaming ? ROAM_SIGHT : MOB_SIGHT;
+  const keep = predator || roaming ? (a.moving ? sight * 1.5 : sight) : MOB_SIGHT;
   const areaKeyStr = d.area ?? 'farm';
   let target: PlayerState | null = null;
   let best = keep;
-  for (const p of Object.values(d.players)) {
-    if (!p.online || p.area !== areaKeyStr) continue;
-    const dist = Math.hypot(p.x - a.x, p.y - a.y);
-    if (dist < best) {
-      best = dist;
-      target = p;
+  // taunted by a hero (Utmana! out in the world): it goes for them while it lasts
+  const hunter = a.hunt && ctx.now < (a.huntUntil ?? 0) ? d.players[a.hunt] : undefined;
+  if (hunter && hunter.online && hunter.area === areaKeyStr && Math.hypot(hunter.x - a.x, hunter.y - a.y) < HUNT_RANGE) {
+    target = hunter;
+    best = Math.hypot(hunter.x - a.x, hunter.y - a.y);
+  } else {
+    if (a.hunt) {
+      delete a.hunt;
+      delete a.huntUntil;
+    }
+    for (const p of Object.values(d.players)) {
+      if (!p.online || p.area !== areaKeyStr) continue;
+      const dist = Math.hypot(p.x - a.x, p.y - a.y);
+      if (dist < best) {
+        best = dist;
+        target = p;
+      }
     }
   }
-  if (!target || !lineOfSight(d, a.x, a.y, target.x, target.y)) return false;
+  if (!target || (!hunter && !lineOfSight(d, a.x, a.y, target.x, target.y))) return false;
+  // dazed by a hero's shield bash: it stands still a moment
+  if (ctx.now < (a.attackAt ?? 0) - ATTACK_GAP) {
+    a.moving = false;
+    return true;
+  }
   const dx = target.x - a.x;
   const dy = target.y - a.y;
   a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';

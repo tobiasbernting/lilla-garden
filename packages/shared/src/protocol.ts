@@ -49,7 +49,7 @@ export type Change =
   /** Dungeons: a boss says something to everyone inside. */
   | { t: 'yell'; area: string; name: string; text: string }
   /** Big words across the screen: a dungeon's name, a boss beaten (celebrate!), a new chapter, a rest stone, everyone fallen. */
-  | { t: 'banner'; to: string | null; area?: string; text: string; sub?: string; kind?: 'enter' | 'boss' | 'cleared' | 'chapter' | 'reward' | 'rest' | 'wipe' }
+  | { t: 'banner'; to: string | null; area?: string; text: string; sub?: string; kind?: 'enter' | 'boss' | 'cleared' | 'chapter' | 'reward' | 'rest' | 'wipe' | 'level' }
   /** What a dungeon chest gave you (a loot window in rarity colours). */
   | { t: 'loot'; to: string; from: string; items: { item: string; count: number }[]; coins: number; stars: number };
 
@@ -97,6 +97,10 @@ export type ClientMsg =
   | { t: 'saga'; a: 'class'; cls: string }
   | { t: 'saga'; a: 'chapter' }
   | { t: 'saga'; a: 'quest'; id: string }
+  /** Gear: put a weapon, an offhand or an amulet from the bag on (null takes it off again, back into the bag). */
+  | { t: 'saga'; a: 'equip'; slot: 'weapon' | 'offhand' | 'amulet'; item: string | null }
+  /** Hero mode: walk the world as your class (spells, weapon drawn, hero outfit), or as a farmer again. */
+  | { t: 'saga'; a: 'hero'; on: boolean }
   /** Jump to a family member, wherever they are. */
   | { t: 'jump'; to: string }
   /** Rallyvärlden, the garage: buy a car, pick the one you drive, buy the next level of a part, change the style (the server charges for what changed), repair, rename, sell. */

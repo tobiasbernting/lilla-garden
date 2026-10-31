@@ -1,8 +1,10 @@
 // Sagan om Världsträdet on the client: the dungeon you are in, everyone's health and state from the server's
 // snapshots, the monster or friend you aim at, your spells' cooldowns (they start when the server says a spell
-// went off, like the short pause after every spell) and the markers over the villagers' heads.
+// went off, like the short pause after every spell) and the markers over the villagers' heads. Out in the world
+// a hero (hero mode on) fights the roaming monsters and wild predators with the same spells.
 import {
   ATTACK_KINDS,
+  BLOCK_SPECIES,
   CLASSES,
   GCD_MS,
   POTION_CD,
@@ -18,6 +20,8 @@ import {
   attackSpellOf,
   chapterDone,
   countItem,
+  isHostile,
+  isIndoorKey,
   isSagaKey,
   questState,
   readProgress,
@@ -33,6 +37,18 @@ import { activeWorld, bus, client, myPlayer, serverNow } from './state.ts';
 export const FLAG = { down: 1, wall: 2, rage: 4, hot: 8, slow: 16, frozen: 32 } as const;
 
 export const inSaga = (): boolean => isSagaKey(myPlayer()?.area);
+
+/** Is hero mode on (a class, and walking the world as it)? */
+export const heroOn = (p: PlayerState | undefined = myPlayer()): boolean => !!p?.saga?.hero && !!p.saga.cls;
+
+/** Out in the world (not the old dungeon, a saga dungeon, the bath house or the arcade hall)? */
+const outdoors = (area: string | undefined): boolean => !!area && area !== 'dungeon' && !isSagaKey(area) && !isIndoorKey(area);
+
+/** Fighting with spells: always in a saga dungeon, and out in the world while hero mode is on. */
+export const fightMode = (): boolean => {
+  const me = myPlayer();
+  return isSagaKey(me?.area) || (heroOn(me) && outdoors(me?.area));
+};
 
 /** The snapshot of the dungeon you are in (null outside, or before the first one). */
 export function sagaSnap(): SagaSnap | null {
@@ -66,6 +82,27 @@ export function sagaSpeed(): number {
 
 /** Is this animal one of the dungeon's monsters (a boss, a helper or an ice block too)? */
 export const isSagaMonster = (a: AnimalState | undefined): a is AnimalState => !!a && (!!SAGA_MOBS[a.species] || !!SAGA_BOSSES[a.species]);
+/** Something to fight: a dungeon's monster, or out in the world a roaming monster or a wild predator. */
+export const isFoe = (a: AnimalState | undefined): a is AnimalState => !!a && (isSagaMonster(a) || (!inSaga() && isHostile(a)));
+
+/** The ice block or web holding a frozen friend: the block animal nearest to them (null if none is close). */
+export function blockOf(id: string): AnimalState | null {
+  const p = posOf(id);
+  if (!p) return null;
+  let best: AnimalState | null = null;
+  let bestD = 2 * TILE;
+  for (const a of Object.values(activeWorld()?.animals ?? {})) {
+    if (!BLOCK_SPECIES.has(a.species)) continue;
+    const d = Math.hypot(a.x - p.x, a.y - p.y);
+    if (d < bestD) {
+      bestD = d;
+      best = a;
+    }
+  }
+  return best;
+}
+/** Is a frozen friend held by a spider's web (not ice)? */
+export const webbed = (id: string): boolean => blockOf(id)?.species === 'spindelnat';
 export const isBossSpecies = (species: string): boolean => !!SAGA_BOSSES[species];
 
 // ---------------------------------------------------------------------------
@@ -85,7 +122,7 @@ export function setTarget(t: number | string | null): void {
 /** The target if it is still there: a monster on this map, or a friend in this dungeon. */
 export function liveTarget(): number | string | null {
   if (target === null) return null;
-  if (typeof target === 'number') return isSagaMonster(activeWorld()?.animals[target]) ? target : null;
+  if (typeof target === 'number') return isFoe(activeWorld()?.animals[target]) ? target : null;
   return fighterOf(target) ? target : null;
 }
 
@@ -104,11 +141,11 @@ export function nearbyMonsters(maxTiles = 12): number[] {
   const snap = sagaSnap();
   const list: { id: number; d: number }[] = [];
   for (const a of Object.values(world.animals)) {
-    if (!isSagaMonster(a)) continue;
+    if (!isFoe(a)) continue;
     const at = posOf(a.id) ?? a;
     const d = Math.hypot(at.x - me.x, at.y - me.y) / TILE;
     if (d > maxTiles) continue;
-    const ice = a.species === 'isblock';
+    const ice = BLOCK_SPECIES.has(a.species);
     const fighting = !!snap?.m[a.id];
     list.push({ id: a.id, d: d - (ice ? 200 : 0) - (fighting ? 100 : 0) });
   }
@@ -154,7 +191,7 @@ export const potionCooldown = (): { left: number; total: number } => ({ left: Ma
 export const potionCount = (): number => countItem(myPlayer()?.inventory ?? [], 'healing_potion');
 
 function canAct(): boolean {
-  return inSaga() && !(flagsOf(client.me) & (FLAG.down | FLAG.frozen));
+  return fightMode() && !(flagsOf(client.me) & (FLAG.down | FLAG.frozen));
 }
 
 /** Presses spell button `slot` (0–3) of your class. */

@@ -1370,14 +1370,16 @@ describe('pizzerian', () => {
 describe('vilda djur', () => {
   it('each biome has its own animal and petting them counts', () => {
     const ice = generateArea(0, -2);
-    const kinds = new Set(Object.values(ice.animals).map((a) => a.species));
+    // (Loke's servants roam there too since Act II of the saga: they are monsters, not wild animals to pet)
+    const tame = Object.values(ice.animals).filter((a) => !ANIMALS[a.species]?.mob);
+    const kinds = new Set(tame.map((a) => a.species));
     expect([...kinds]).toEqual(['penguin']);
-    expect(Object.values(ice.animals).length).toBeGreaterThanOrEqual(3);
+    expect(tame.length).toBeGreaterThanOrEqual(3);
     const { world, p } = setup();
     standAt(world, p, 32, 0);
     travel(world, p.id, 'n');
     const north = areaOf(world, p);
-    const wild = Object.values(north.animals)[0];
+    const wild = Object.values(north.animals).find((a) => !ANIMALS[a.species]?.mob);
     if (wild) {
       p.x = wild.x - 16;
       p.y = wild.y;

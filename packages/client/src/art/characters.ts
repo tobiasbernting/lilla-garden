@@ -582,6 +582,59 @@ function drawNorseHat(p: Px, style: string, C: string, dir: Dir, hx: number, hy:
       if (side) p.rect(hx + 7, hy, 2, 1, '#9cff8a').px(hx + 8, hy, '#e8ffd8');
       break;
     }
+    case 'seacrown':
+    case 'crown_sea': {
+      // Sjökrona: a band of sea-green with coral branching up from it, a pearl at the front
+      const coral = '#f07a8a';
+      const coralL = '#ffc0c0';
+      p.rect(hx - 1, hy, 10, 2, C).rect(hx - 1, hy + 1, 10, 1, Cd).px(hx - 1, hy, Cl);
+      const points: [number, number][] = side ? [[hx, 3], [hx + 3, 4], [hx + 6, 3]] : [[hx - 1, 3], [hx + 2, 4], [hx + 5, 4], [hx + 8, 3]];
+      for (const [x, h] of points) {
+        p.rect(x, hy - h, 1, h, coral).px(x, hy - h, coralL);
+        p.px(x + (x < hx + 4 ? -1 : 1), hy - h + 1, coral);
+      }
+      if (dir === 'down') p.rect(hx + 3, hy - 1, 2, 2, '#ffffff').px(hx + 4, hy, '#d8d0e8');
+      if (side) p.rect(hx + 7, hy - 1, 2, 2, '#ffffff').px(hx + 8, hy, '#d8d0e8');
+      for (const x of [hx, hx + 6]) p.px(x, hy + 1, '#ffffff');
+      break;
+    }
+    case 'elfcrown': {
+      // Alvkrona: a thin silver circlet whose points grow into leaves, the middle ones tallest, a violet stone in front
+      const leaf = '#9ae0a0';
+      p.rect(hx - 1, hy, 10, 1, C).px(hx - 1, hy, Cl).rect(hx - 1, hy + 1, 10, 1, Cd);
+      const points: [number, number][] = side ? [[hx + 1, 2], [hx + 4, 4], [hx + 7, 2]] : [[hx, 2], [hx + 3, 4], [hx + 4, 4], [hx + 7, 2]];
+      for (const [x, h] of points) p.rect(x, hy - h, 1, h, C).px(x, hy - h, leaf).px(x + (x < hx + 4 ? -1 : 1), hy - h, leaf);
+      if (dir === 'down') p.rect(hx + 3, hy, 2, 1, '#b06ef0').px(hx + 3, hy, '#e8c8ff');
+      if (side) p.rect(hx + 7, hy, 2, 1, '#b06ef0');
+      break;
+    }
+    case 'wolfhood': {
+      // Ulvhuva: a grey wolf's head worn as a hood, its ears up, its snout over your brow, the pelt down your back
+      const pal = { G: C, D: Cd, S: Cl, E: shade(C, 0.55), K: '#14121a', N: '#14121a', W: '#ffffff', P: '#e8a0a8' };
+      if (dir === 'down')
+        p.tpl(0, hy - 4, ['...EE......EE...', '..EPGGGGGGGGPE..', '..GGGGGGGGGGGG..', '..GGKGGSSGGKGG..', '..GGDGSSSSGDGG..', '..GG..WNNW..GG..', '..GG........GG..', '..GG........GG..', '..GG........GG..', '..DG........GD..', '..DD........DD..'], pal);
+      else if (dir === 'up')
+        p.tpl(0, hy - 4, ['...EE......EE...', '..EGGGGGGGGGGE..', '..GGGGGGGGGGGG..', '..GGGGGSSGGGGG..', '..GGGGGGGGGGGG..', '..GGGGGSGGGGGG..', '..GGGGGGGGGGGG..', '..GGGGGGSGGGGG..', '..GGGGGGGGGGGG..', '..DGGGGGGGGGGD..', '..DDDDDDDDDDDD..'], pal);
+      else
+        p.tpl(0, hy - 4, ['.....E..........', '....EPGG........', '...GGGGGGGG.....', '..GGGGGKGGGG....', '..GGGGGGGSSSSN..', '..GGGG...WW.....', '..GGGG..........', '..GGGG..........', '..GGGG..........', '..DGGD..........', '..DDDD..........'], pal);
+      break;
+    }
+    case 'horns': {
+      // Lokes horn: a dark green cap with a gold band and two great horns curling up and out, trickster-style
+      dome('#2e7a3a', '#5fd38d', '#1e5a2a');
+      p.rect(hx - 1, hy + 1, 10, 1, '#d8a830').px(hx + 3, hy + 1, '#fff2b0');
+      const horn = (x0: number, dx: number) => {
+        const pts: [number, number][] = [[0, 0], [1, 0], [1, -1], [2, -1], [2, -2], [2, -3], [2, -4], [1, -5], [1, -6]];
+        pts.forEach(([ox, oy], i) => p.px(x0 + dx * ox, hy - 1 + oy, i > 6 ? Cl : i % 2 ? C : Cd));
+        p.px(x0 + dx * 3, hy - 3, Cd).px(x0 + dx * 3, hy - 2, Cd);
+      };
+      if (side) horn(hx + 2, -1);
+      else {
+        horn(hx - 1, -1);
+        horn(hx + 8, 1);
+      }
+      break;
+    }
     default: {
       // a hat style this drawing does not know: a plain cap, so it never shows as nothing
       p.rect(hx - 1, hy - 2, 10, 3, C).rect(hx, hy - 3, 8, 1, C).rect(hx - 1, hy + 1, 10, 1, Cd);

@@ -7,8 +7,8 @@ import { mulberry32, randInt } from './rng.ts';
 import { DUNGEONS, SAGA_BOSSES, SAGA_MOBS, sagaKey, type DungeonId, type SagaInstance, type SagaMob, type SagaRoom } from './saga.ts';
 import { MAP_H, MAP_W, TILE, type AnimalState, type Terrain, type WorldState } from './types.ts';
 
-/** What is outside the rooms: rock nobody walks on. */
-const SOLID: Record<DungeonId, Terrain> = { draug: 'rock', frost: 'rock', surt: 'basalt' };
+/** What is outside the rooms: rock nobody walks on (the sea around the temple, the starry sky under Bifrost). */
+const SOLID: Record<DungeonId, Terrain> = { draug: 'rock', frost: 'rock', surt: 'basalt', hel: 'rock', dvarg: 'rock', orm: 'water', alv: 'rock', fenrir: 'rock', loke: 'space' };
 /** Members of a monster group stand around its middle like this. */
 const PACK_SPOTS: [number, number][] = [
   [0, 0],
@@ -130,6 +130,8 @@ export function spawnSagaMob(world: WorldState, inst: SagaInstance, species: str
     homeId: 0,
     waitMs: 0,
   };
+  // in Loke's dungeon the monsters are illusions (drawn ghostly); Loke and his shadow are real enough
+  if (DUNGEONS[inst.id].illusions && !boss && kind !== 'ice') a.variant = 1;
   world.animals[a.id] = a;
   const hp = boss?.hp ?? def?.hp ?? 1;
   inst.mobs[a.id] = { id: a.id, species, kind, hp, max: hp, home: { x, y }, pack, state: 'idle', threat: {}, atkAt: 0 };
@@ -236,14 +238,15 @@ export function generateSaga(id: DungeonId): WorldState {
     miniDown: false,
     bossDown: false,
     looted: {},
+    plates: [],
+    puzzleGate: [],
+    puzzleOpen: !def.rooms.some((r) => r.kind === 'puzzle'),
     seq: 1,
   };
   world.saga = inst;
 
-  // The gate: the corridor tiles right outside the gated room, on the way in.
-  def.links.forEach(([, ib], li) => {
-    const r = def.rooms[ib]!;
-    if (!r.gated) return;
+  /** Closes corridor `li` with a gate where it meets room `ri`. */
+  const gateAt = (li: number, ri: number, into: { x: number; y: number }[]): void => {
     for (const k of corridorTiles[li]!) {
       const x = k % MAP_W;
       const y = Math.floor(k / MAP_W);
@@ -255,10 +258,16 @@ export function generateSaga(id: DungeonId): WorldState {
       ].some(([dx, dy]) => {
         const nx = x + dx!;
         const ny = y + dy!;
-        return inBounds(nx, ny) && roomOf[tileIndex(nx, ny)] === ib;
+        return inBounds(nx, ny) && roomOf[tileIndex(nx, ny)] === ri;
       });
-      if (touches && addObject(world, 'saga_gate', x, y, { variant: def.wall })) inst.gate.push({ x, y });
+      if (touches && addObject(world, 'saga_gate', x, y, { variant: def.wall })) into.push({ x, y });
     }
+  };
+  // The gate: the corridor tiles right outside the gated room, on the way in. A puzzle room's gate closes the
+  // corridor that leaves it on the way on (towards the boss), until its plates are all lit.
+  def.links.forEach(([ia, ib], li) => {
+    if (def.rooms[ib]!.gated) gateAt(li, ib, inst.gate);
+    if (def.rooms[ia]!.kind === 'puzzle') gateAt(li, ia, inst.puzzleGate);
   });
 
   /** Tiles next to a corridor mouth stay clear, so nothing blocks the way through a room. */
@@ -276,6 +285,25 @@ export function generateSaga(id: DungeonId): WorldState {
 
   def.rooms.forEach((r, ri) => {
     const c = centre(r);
+    // a puzzle room's three plates: two near the top corners and one near the bottom, clear of the corridor mouths
+    if (r.kind === 'puzzle')
+      for (const want of [
+        { x: r.x + 2, y: r.y + 2 },
+        { x: r.x + r.w - 3, y: r.y + 2 },
+        { x: c.x, y: r.y + r.h - 3 },
+      ]) {
+        let best: { x: number; y: number } | null = null;
+        let bestD = Infinity;
+        for (let y = r.y + 1; y < r.y + r.h - 1; y++)
+          for (let x = r.x + 1; x < r.x + r.w - 1; x++) {
+            const d = Math.hypot(x - want.x, y - want.y);
+            if (d < bestD && free(x, y) && !nearMouth(x, y) && Math.abs(x - c.x) + Math.abs(y - c.y) > 2) {
+              bestD = d;
+              best = { x, y };
+            }
+          }
+        if (best && addObject(world, 'saga_plate', best.x, best.y, { variant: 0 })) inst.plates.push({ ...best, lit: false });
+      }
     // torches on the top wall, every few tiles
     for (let x = r.x + 1; x < r.x + r.w - 1; x += 4) if (free(x, r.y) && !nearMouth(x, r.y)) addObject(world, 'saga_torch', x, r.y, { variant: def.wall });
     // things along the walls

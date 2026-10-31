@@ -126,6 +126,12 @@ const DUNGEON_LIGHT: Record<DungeonId, { dark: number; lamps: number }> = {
   draug: { dark: 0.6, lamps: 1 },
   frost: { dark: 0.48, lamps: 0.58 },
   surt: { dark: 0.6, lamps: 0.95 },
+  hel: { dark: 0.55, lamps: 0.9 },
+  dvarg: { dark: 0.55, lamps: 1 },
+  orm: { dark: 0.52, lamps: 0.8 },
+  alv: { dark: 0.52, lamps: 0.85 },
+  fenrir: { dark: 0.48, lamps: 0.6 },
+  loke: { dark: 0.55, lamps: 0.75 },
 };
 /** A saga dungeon's darkness: its own colour of light, turned down to about a cave's, so torches pool light. */
 export const dungeonAmbient = (id: DungeonId): [number, number, number] => {
@@ -139,12 +145,28 @@ const SAGA_TORCH: LampSpec[] = [
   { color: [0.62, 1, 0.55], radius: 3.8, strength: 0.9, flicker: 0.8, glow: 1.4 },
   { color: [0.6, 0.86, 1], radius: 3.8, strength: 0.9, flicker: 0.15, glow: 1.4 },
   { color: FIRE, radius: 4, strength: 0.95, flicker: 1, glow: 1.6 },
+  // Act II: Helheim's ghost-lights, the mines' lanterns, the temple's pearls, the elves' fairy lights, Fenrir's cold
+  // fire, Bifrost's rainbow
+  { color: [0.61, 1.0, 0.82], radius: 3.8, strength: 0.9, flicker: 0.3, glow: 1.4 },
+  { color: [1.0, 0.8, 0.4], radius: 4, strength: 0.9, flicker: 1, glow: 1.4 },
+  { color: [0.54, 0.94, 1.0], radius: 3.8, strength: 0.9, flicker: 0.15, glow: 1.4 },
+  { color: [0.82, 0.63, 1.0], radius: 3.8, strength: 0.9, flicker: 0.2, glow: 1.4 },
+  { color: [0.74, 0.85, 1.0], radius: 4, strength: 0.9, flicker: 1, glow: 1.4 },
+  { color: [0.94, 0.82, 1.0], radius: 3.8, strength: 0.9, flicker: 0.1, glow: 1.4, twinkle: true },
 ];
 const SAGA_PORTAL: LampSpec[] = [
   { color: [0.5, 1, 0.5], radius: 3.4, strength: 0.75, flicker: 0.3, glow: 2.2 },
   { color: [0.55, 0.85, 1], radius: 3.4, strength: 0.75, flicker: 0.1, glow: 2.2 },
   { color: FIRE, radius: 4, strength: 0.85, flicker: 0.8, glow: 2.4 },
+  { color: [0.61, 1.0, 0.82], radius: 3.6, strength: 0.8, flicker: 0.3, glow: 2.2 },
+  { color: [1.0, 0.8, 0.4], radius: 3.6, strength: 0.8, flicker: 0.8, glow: 2.2 },
+  { color: [0.54, 0.94, 1.0], radius: 3.6, strength: 0.8, flicker: 0.15, glow: 2.2 },
+  { color: [0.82, 0.63, 1.0], radius: 3.6, strength: 0.8, flicker: 0.2, glow: 2.2 },
+  { color: [0.74, 0.85, 1.0], radius: 3.6, strength: 0.8, flicker: 0.8, glow: 2.2 },
+  { color: [0.94, 0.82, 1.0], radius: 3.6, strength: 0.8, flicker: 0.1, glow: 2.2, twinkle: true },
 ];
+/** The dungeons' looks (saga_wall/gate/torch/portal variants). */
+const LOOKS = 9;
 
 /** The light a creature gives off, if any: the dungeons' fire monsters and frost spirits, the draug king's sword. */
 export function lampForAnimal(species: string): LampSpec | null {
@@ -165,6 +187,39 @@ export function lampForAnimal(species: string): LampSpec | null {
       return { color: [0.6, 1, 0.55], radius: 3, strength: 0.5, flicker: 0.3, glow: 1.2 };
     case 'gullinbursti':
       return { color: [1, 0.85, 0.4], radius: 2.6, strength: 0.6, flicker: 0.2, glow: 1.2, sparkle: 0.3 };
+    // Act II: jellyfish, will-o'-wisps, fairies, ghosts and Loke himself glow in their own colours (small ones softly)
+    case 'manet':
+    case 'manet_tam':
+      return { color: [0.94, 0.63, 1.0], radius: 1.6, strength: 0.5, flicker: 0.3, glow: 0.7 };
+    case 'mosspoke':
+      return { color: [0.35, 0.94, 0.82], radius: 1.6, strength: 0.45, flicker: 0.3, glow: 0.6 };
+    case 'alvljus_fe':
+      return { color: [1.0, 0.95, 0.66], radius: 1.4, strength: 0.5, flicker: 0.4, glow: 0.6, sparkle: 0.3 };
+    case 'loke':
+      return { color: [0.48, 1.0, 0.42], radius: 4, strength: 0.7, flicker: 0.3, glow: 1.8 };
+    case 'lokesskugga':
+      return { color: [0.48, 0.29, 0.85], radius: 3, strength: 0.6, flicker: 0.3, glow: 1.4 };
+    case 'jattehjort':
+      return { color: [0.66, 0.91, 1.0], radius: 2.4, strength: 0.55, flicker: 0.15, glow: 1 };
+    case 'gengangare':
+      return { color: [0.61, 1.0, 0.54], radius: 2.2, strength: 0.5, flicker: 0.35, glow: 0.9 };
+    case 'hel':
+      return { color: [0.61, 1.0, 0.54], radius: 4, strength: 0.7, flicker: 0.3, glow: 1.8 };
+    case 'jarnvakten':
+      return { color: [1.0, 0.54, 0.23], radius: 3, strength: 0.65, flicker: 0.5, glow: 1.2 };
+    case 'stengolem':
+      return { color: [0.42, 0.85, 1.0], radius: 2.2, strength: 0.5, flicker: 0.2, glow: 0.8 };
+    case 'skoll':
+      return { color: [1.0, 0.82, 0.38], radius: 3, strength: 0.6, flicker: 0.3, glow: 1.2 };
+    case 'spindeldrottning':
+      return { color: [1.0, 0.48, 0.85], radius: 2.6, strength: 0.55, flicker: 0.2, glow: 1 };
+    case 'nattmara':
+      return { color: [0.72, 0.66, 1.0], radius: 3.4, strength: 0.6, flicker: 0.25, glow: 1.4 };
+    case 'fafner':
+      return { color: [1.0, 0.89, 0.48], radius: 4, strength: 0.7, flicker: 0.4, glow: 1.8, sparkle: 0.3 };
+    case 'guldbagge':
+    case 'guldbagge_tam':
+      return { color: [1.0, 0.89, 0.48], radius: 1.2, strength: 0.45, flicker: 0.2, glow: 0.5, sparkle: 0.3 };
     default:
       return null;
   }
@@ -271,13 +326,13 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
     // Sagan om Världsträdet: each dungeon's torches, the daylight down the stairs out, a rest stone once it is lit,
     // candles, ice crystals, braziers and lava cracks; out in the world the arches, Kämpastenen and the keepsakes
     case 'saga_torch':
-      return SAGA_TORCH[(variant ?? 0) % 3]!;
+      return SAGA_TORCH[(variant ?? 0) % LOOKS]!;
     case 'saga_exit':
       return { color: [1, 0.95, 0.82], radius: 3.6, strength: 0.75, glow: 0.7 };
     case 'saga_rest':
       return variant === 1 ? { color: [0.35, 0.92, 1], radius: 4.2, strength: 0.9, flicker: 0.1, glow: 1.1 } : null;
     case 'saga_portal':
-      return SAGA_PORTAL[(variant ?? 0) % 3]!;
+      return SAGA_PORTAL[(variant ?? 0) % LOOKS]!;
     case 'saga_stone':
       return { color: [1, 0.9, 0.62], radius: 2.8, strength: 0.6, flicker: 0.1, glow: 1.2 };
     case 'saga_candles':
@@ -288,6 +343,38 @@ export function lampFor(kind: string, variant: number | undefined): LampSpec | n
       return { color: FIRE, radius: 3.8, strength: 0.95, flicker: 1, glow: 1.6 };
     case 'saga_lavacrack':
       return { color: [1, 0.45, 0.15], radius: 2.4, strength: 0.75, flicker: 0.4, glow: 1 };
+    // Act II: a rune plate once lit, and the new dungeons' glowing things
+    case 'saga_plate':
+      return variant === 1 ? { color: [1, 0.9, 0.5], radius: 2.2, strength: 0.7, flicker: 0.15, glow: 0.9 } : null;
+    case 'saga_ghostlight':
+      return { color: [0.6, 1, 0.82], radius: 2.8, strength: 0.75, flicker: 0.35, glow: 1.1 };
+    case 'saga_goldpile':
+      return { color: [1, 0.85, 0.4], radius: 2.2, strength: 0.55, flicker: 0.1, glow: 0.9, sparkle: 0.4 };
+    case 'saga_minelamp':
+      return { color: [1, 0.8, 0.4], radius: 3.4, strength: 0.85, flicker: 0.6, glow: 1.2 };
+    case 'saga_pearl':
+      return { color: [0.75, 0.95, 1], radius: 2.6, strength: 0.65, flicker: 0.1, glow: 1 };
+    case 'saga_glowshroom':
+      return { color: [0.8, 0.6, 1], radius: 2.8, strength: 0.7, flicker: 0.15, glow: 1.1 };
+    case 'saga_fairylight':
+      return { color: [1, 0.95, 0.66], radius: 2.4, strength: 0.65, flicker: 0.4, glow: 0.9, sparkle: 0.5 };
+    case 'saga_rainbowshard':
+      return { color: [0.95, 0.8, 1], radius: 2.6, strength: 0.65, glow: 1, twinkle: true };
+    case 'saga_starlamp':
+      return { color: [0.95, 0.85, 1], radius: 3.4, strength: 0.8, flicker: 0.1, glow: 1.2, sparkle: 0.3 };
+    // the keepsakes the saga gives for home
+    case 'hels_lykta':
+      return { color: [0.6, 1, 0.78], radius: 3, strength: 0.75, flicker: 0.3, glow: 1.4, always: true };
+    case 'dvargstaty':
+      return { color: [1, 0.8, 0.42], radius: 2.8, strength: 0.65, flicker: 0.1, glow: 1.2, always: true };
+    case 'ormtand':
+      return { color: [0.5, 0.85, 1], radius: 2.8, strength: 0.65, flicker: 0.15, glow: 1.2, always: true };
+    case 'alvlykta':
+      return { color: [0.84, 0.66, 1], radius: 3, strength: 0.75, flicker: 0.2, glow: 1.4, always: true };
+    case 'fenrislanka':
+      return { color: [0.8, 0.9, 1], radius: 2.8, strength: 0.65, flicker: 0.1, glow: 1.2, always: true };
+    case 'bifrostbit':
+      return { color: [0.95, 0.85, 1], radius: 3.2, strength: 0.75, glow: 1.6, twinkle: true, always: true };
     case 'solruna':
       return { color: [1, 0.86, 0.45], radius: 3.4, strength: 0.85, flicker: 0.1, glow: 1.8, always: true };
     case 'yggdrasil':

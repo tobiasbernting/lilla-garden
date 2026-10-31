@@ -37,6 +37,7 @@ const COLORS: Record<string, string> = {
   carpet: '#2a2152',
   crypt: '#6a6e62',
   forge: '#3a2226',
+  bifrost: '#e8e5f4',
 };
 
 export class Minimap {

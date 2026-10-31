@@ -261,9 +261,9 @@ const entryOf = (world: WorldState): { x: number; y: number } => (world.area ===
  * count fell below their minimum (predators that were chased off, animals that were tamed).
  * Returns the animals that were added.
  */
-export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => number, restock = false): AnimalState[] {
+export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => number, restock = false, only?: (def: AnimalDef) => boolean): AnimalState[] {
   const added: AnimalState[] = [];
-  const species = wildSpeciesOf(biome);
+  const species = wildSpeciesOf(biome).filter((d) => !only || only(d));
   if (!species.length) return added;
   const T = world.terrain;
   const reach = reachableFrom(world, entryOf(world));
@@ -302,8 +302,9 @@ export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => nu
         waitMs: randInt(rnd, 500, 3000),
       };
       if (def.variants) a.variant = randInt(rnd, 0, def.variants - 1);
-      if (def.predator) {
-        a.hp = def.predator.hp;
+      if (def.predator || def.mob) {
+        // predators, and Loke's servants roaming the world (Act II of the saga)
+        a.hp = def.predator?.hp ?? def.mob!.hp;
         a.attackAt = 0;
       }
       world.animals[id] = a;
@@ -312,6 +313,15 @@ export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => nu
     }
   }
   return added;
+}
+
+/**
+ * Maps saved before Loke's servants roamed the world (Sagan om Världsträdet II) get their monsters now. Tops up
+ * only the roaming monsters of the map's biome; returns true if any were added.
+ */
+export function ensureRoaming(world: WorldState, rnd: () => number = Math.random): boolean {
+  if (!world.biome) return false;
+  return spawnWildAnimals(world, world.biome, rnd, true, (d) => !!d.mob).length > 0;
 }
 
 /** Opens paths out of the farm at the middle of each edge (idempotent). */

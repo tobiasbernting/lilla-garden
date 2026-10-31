@@ -3,10 +3,11 @@
 // shield walls, whirlwinds…), numbers floating up from hits, health bars over monsters and friends, a ring under
 // your target, and friends lying down when fallen or standing in ice when frozen. Drawn in four layers: on the
 // ground (lit with the scene), into the light map (so magic lights up a dark dungeon), in the y-sorted queue, and
-// glowing on top.
+// glowing on top. Out in the world a hero's spells and hits are drawn the same way (the telegraphs, bars and the
+// fallen and frozen are the dungeons' only).
 import { cameraShake, drawEllipse, drawLine, drawLineList, drawPoly, rgb, setAdditiveBlendMode, vec2, type Color, type Vector2 } from 'littlejsengine';
-import { SAGA_BOSSES, SAGA_MOBS, SPELLS, T, TILE, isSagaKey, type Change, type SagaZone } from '@lilla-garden/shared';
-import { FLAG, flagsOf, isSagaMonster, liveTarget, sagaSnap, setTarget } from '@v1/saga.ts';
+import { BLOCK_SPECIES, SAGA_BOSSES, SAGA_MOBS, SPELLS, T, TILE, isSagaKey, type Change, type SagaZone } from '@lilla-garden/shared';
+import { FLAG, fightMode, flagsOf, isFoe, liveTarget, sagaSnap, setTarget, webbed } from '@v1/saga.ts';
 import { SAGA_SFX, bossWindup } from '@v1/sagasfx.ts';
 import { activeWorld, bus, client, myPlayer, serverNow } from '@v1/state.ts';
 import { zoomPx } from '@v1/ui/hud.ts';
@@ -69,12 +70,24 @@ const MOVE_COLOUR: Record<string, [number, number, number]> = {
   pools: [1, 0.4, 0.1],
   nova: [0.85, 0.3, 1],
   summon: [0.5, 1, 0.5],
+  line: [1, 0.85, 0.55],
+  pull: [0.55, 0.45, 1],
+  mend: [0.45, 1, 0.55],
 };
 /** Some bosses' moves look like where they live: the frost giant's breath and snowstorm are icy, Surt's wrath is fire. */
 const BOSS_MOVE_COLOUR: Record<string, Record<string, [number, number, number]>> = {
   rimturs: { cleave: [0.55, 0.88, 1], nova: [0.75, 0.92, 1] },
   surt: { nova: [1, 0.45, 0.12] },
+  hel: { nova: [0.6, 1, 0.8], pull: [0.55, 1, 0.75] },
+  jarnvakten: { line: [1, 1, 1] },
+  blackis: { line: [0.6, 0.5, 0.9] },
+  jormungand: { line: [0.4, 0.9, 1], pull: [0.35, 0.75, 1], nova: [0.5, 1, 0.3] },
+  fafner: { cleave: [1, 0.6, 0.15], mend: [1, 0.85, 0.35] },
+  nattmara: { nova: [0.6, 0.45, 1], mend: [0.75, 0.6, 1] },
+  loke: { line: [0.4, 0.9, 1], pull: [0.55, 1, 0.75], mend: [0.5, 1, 0.4] },
 };
+/** Telegraphs of these moves are drawn in their own way (a sucking whirl, a soft glow), not as danger. */
+const SOFT_ZONES = new Set(['pull', 'mend']);
 const moveColour = (move: string, by: string | number | undefined): [number, number, number] => {
   const species = typeof by === 'number' ? activeWorld()?.animals[by]?.species : undefined;
   return (species ? BOSS_MOVE_COLOUR[species]?.[move] : undefined) ?? MOVE_COLOUR[move] ?? [1, 0.4, 0.2];
@@ -96,8 +109,13 @@ const BOLTS: Record<string, { speed: number; c: [number, number, number]; size: 
 const MOB_BOLT = { speed: 190, c: [0.55, 1, 0.55] as [number, number, number], size: 7 };
 
 export class SagaView {
+  /** In a saga dungeon (telegraphs, bars, the fallen and frozen), or just on a map (spells and numbers). */
   private on = false;
+  private live = false;
   private area = '';
+  /** The move each boss is winding up, and the move each telegraph belongs to (for pulls and mends). */
+  private castMove = new Map<number, string>();
+  private zoneMove = new Map<string, string>();
   private t = 0;
   private list: Fx[] = [];
   private floaters: Floater[] = [];
@@ -120,10 +138,11 @@ export class SagaView {
     bus.on('change', (c) => this.onChange(c));
   }
 
-  /** A new map: only dungeons have any of this. */
+  /** A new map: dungeons have all of this, the world a hero's spells. */
   load(area: string): void {
     this.clear();
     this.area = area;
+    this.live = true;
     this.on = isSagaKey(area);
     if (!this.on) return;
     const now = serverNow();
@@ -139,7 +158,10 @@ export class SagaView {
     this.windups.clear();
     this.born.clear();
     this.delay = null;
+    this.castMove.clear();
+    this.zoneMove.clear();
     this.on = false;
+    this.live = false;
   }
 
   /** Fallen (lying down) or frozen (in the ice), for drawing a player. */
@@ -156,7 +178,7 @@ export class SagaView {
 
   /** A click or tap on the world: a monster (or a friend) there becomes the target. True if something was picked. */
   pick(wx: number, wy: number): boolean {
-    if (!this.on) return false;
+    if (!this.on && !(this.live && fightMode())) return false;
     let best: string | number | null = null;
     let bestD = Infinity;
     const consider = (id: string | number): void => {
@@ -170,7 +192,7 @@ export class SagaView {
         best = id;
       }
     };
-    for (const a of Object.values(activeWorld()?.animals ?? {})) if (isSagaMonster(a)) consider(a.id);
+    for (const a of Object.values(activeWorld()?.animals ?? {})) if (isFoe(a)) consider(a.id);
     for (const id of Object.keys(sagaSnap()?.f ?? {})) if (id !== client.me) consider(id);
     if (best === null) return false;
     setTarget(best);
@@ -180,16 +202,49 @@ export class SagaView {
   // ------------------------------------------------------------------ from the server
 
   private onChange(c: Change): void {
+    if (!this.live) return;
+    if (c.t === 'spell' && c.area === this.area) return this.spell(c);
+    if (c.t === 'hit' && c.area === this.area) return this.hit(c);
     if (!this.on) return;
+    if (c.t === 'object' && c.obj?.kind === 'saga_plate' && c.obj.variant === 1 && (c.area ?? '') === this.area) return this.plateLit(c.obj.x, c.obj.y);
     if (c.t === 'zone') {
       if (c.zone && !this.born.has(c.id)) {
         this.born.set(c.id, serverNow());
+        const move = this.castMove.get(c.zone.by);
+        if (move && c.zone.at > serverNow()) this.zoneMove.set(c.id, move);
         const me = myPlayer();
         // something is about to land near you
         if (me && serverNow() < c.zone.at && Math.hypot(me.x - c.zone.x, me.y - c.zone.y) / TILE < c.zone.r + 2.5) SAGA_SFX.warn();
-      } else if (!c.zone) setTimeout(() => this.born.delete(c.id), 100);
-    } else if (c.t === 'spell' && c.area === this.area) this.spell(c);
-    else if (c.t === 'hit' && c.area === this.area) this.hit(c);
+      } else if (!c.zone)
+        setTimeout(() => {
+          this.born.delete(c.id);
+          this.zoneMove.delete(c.id);
+        }, 100);
+    }
+  }
+
+  /** A rune plate lights up under someone's feet: a chime and a fountain of sparkles. */
+  private plateLit(tx: number, ty: number): void {
+    const at = { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
+    SAGA_SFX.plate();
+    this.fx.spawn(at.x, at.y - 4, 'sparkle');
+    this.add(0.9, (layer, f, k) => {
+      if (layer === 'light') {
+        drawSprite(this.art.glow, at.x, at.y, 70, 70, 0, light(1, 0.9, 0.5, 0.8 * (1 - k)));
+        return;
+      }
+      if (layer === 'ground') {
+        this.runeCircle(at.x, at.y, 6 + 10 * easeOutCubic(k), this.t * 2, col(1, 0.9, 0.5, 1 - k), 4);
+        return;
+      }
+      drawSprite(this.art.glow, at.x, at.y - 10 * k, 10, 28 * (1 - k * 0.5), 0, rgba(1, 0.92, 0.55, 0.6 * (1 - k)));
+    }, at);
+  }
+
+  /** The move a telegraph belongs to (known for zones that came with a boss's wind-up). */
+  private moveOf(z: SagaZone): string | undefined {
+    // a mend's mark is a small harmless circle on the boss itself
+    return this.zoneMove.get(z.id) ?? (z.dmg === 0 && z.r <= 1 ? 'mend' : undefined);
   }
 
   private add(dur: number, draw: Fx['draw'], at: { x: number; y: number }, to?: { x: number; y: number }, on?: string | number, delay = 0): Fx {
@@ -227,7 +282,15 @@ export class SagaView {
       this.holdNumbers(c.on, Math.min(0.26, Math.hypot(end.x - from.x, end.y - from.y) * 0.0025));
       return;
     }
-    if (s.startsWith('cast_')) return this.windup(s.slice(5), c.by, from);
+    if (s.startsWith('cast_')) {
+      const move = s.slice(5);
+      if (typeof c.by === 'number') {
+        this.castMove.set(c.by, move);
+        // telegraphs that arrived before the wind-up's own message
+        for (const z of activeWorld()?.saga?.zones ?? []) if (z.by === c.by && z.at > serverNow() && !this.zoneMove.has(z.id)) this.zoneMove.set(z.id, move);
+      }
+      return this.windup(move, c.by, from);
+    }
     if (s.startsWith('land_')) return this.land(s.slice(5), from, c.by);
     switch (s) {
       case 'hugg':
@@ -383,7 +446,7 @@ export class SagaView {
   /** Utmana!: a shout ringing out, and every monster it reaches flashes. */
   private taunt(by: string | number, at: { x: number; y: number }): void {
     const reach = (SPELLS.utmana?.radius ?? 5) * TILE;
-    const hit = Object.values(activeWorld()?.animals ?? {}).filter((a) => isSagaMonster(a) && Math.hypot(a.x - at.x, a.y - at.y) <= reach + 6);
+    const hit = Object.values(activeWorld()?.animals ?? {}).filter((a) => isFoe(a) && Math.hypot(a.x - at.x, a.y - at.y) <= reach + 6);
     this.add(0.6, (layer, f, k) => {
       const m = this.body(by, at);
       if (layer === 'ground') {
@@ -626,6 +689,7 @@ export class SagaView {
     const a = typeof by === 'number' ? activeWorld()?.animals[by] : undefined;
     const warn = (SAGA_BOSSES[a?.species ?? '']?.moves.find((m) => m.move === move)?.warn ?? 1500) / 1000;
     const [r, g, b] = moveColour(move, by);
+    if (move === 'mend') return this.mendWindup(by, at, warn, [r, g, b]);
     const sparks = [...Array(10)].map((_, i) => ({ a: (i / 10) * TAU, d: Math.random() * 0.7 }));
     const fx = this.add(warn, (layer, f, k) => {
       const s = this.find(by);
@@ -643,6 +707,46 @@ export class SagaView {
         const u = (k * 2.2 + sp.d) % 1;
         const dist = (1 - u) * 34;
         drawSprite(this.art.glow, x + Math.cos(sp.a + u) * dist, y + Math.sin(sp.a + u) * dist * 0.7, 4, 4, 0, rgba(r, g, b, u));
+      }
+    }, at, undefined, by);
+    if (typeof by === 'number') this.windups.set(by, fx);
+  }
+
+  /** A boss curling up to heal: soft green pulses rising off it and little "z"s, until it is woken (or heals). */
+  private mendWindup(by: string | number, at: { x: number; y: number }, warn: number, c: [number, number, number]): void {
+    const [r, g, b] = c;
+    const fx = this.add(warn, (layer, f, k) => {
+      const s = this.find(by);
+      const x = s?.x ?? at.x;
+      const y = s ? s.y + 4 - s.h * 0.5 : at.y - 12;
+      const w = s?.w ?? 24;
+      const beat = (this.t * 1.4) % 1;
+      if (layer === 'light') {
+        drawSprite(this.art.glow, x, y, 70 + 30 * k, 70 + 30 * k, 0, light(r, g, b, 0.5 * (0.6 + 0.4 * Math.sin(this.t * 4))));
+        return;
+      }
+      if (layer === 'ground') {
+        // rings breathing out from under it, slow like sleep
+        for (let i = 0; i < 2; i++) {
+          const u = (beat + i * 0.5) % 1;
+          this.ring(x, (s?.y ?? at.y) + 4, w * (0.4 + u * 0.9), 1.2 * (1 - u) + 0.3, col(r, g, b, 0.7 * (1 - u)));
+        }
+        return;
+      }
+      drawSprite(this.art.glow, x, y, w * 1.8, w * 1.8, 0, rgba(r, g, b, 0.18 + 0.14 * Math.sin(this.t * 4)));
+      for (let i = 0; i < 6; i++) {
+        const u = (this.t * 0.6 + i / 6) % 1;
+        drawSprite(this.art.glow, x + Math.sin(i * 2.3 + u * 4) * w * 0.5, y + 6 - u * 30, 4 * (1 - u) + 1, 4 * (1 - u) + 1, 0, rgba(r, g, b, 1 - u));
+      }
+      // sleepy z's drifting up from the head
+      const top = s ? s.y + 4 - s.h : at.y - 24;
+      for (let i = 0; i < 3; i++) {
+        const u = (this.t * 0.5 + i / 3) % 1;
+        const zx = x + 6 + u * 10;
+        const zy = top - u * 16;
+        const sz = 2 + u * 2.5;
+        const cz = col(1, 1, 1, 0.9 * (1 - u));
+        drawLineList([P(zx - sz, zy - sz), P(zx + sz, zy - sz), P(zx - sz, zy + sz), P(zx + sz, zy + sz)], W(0.9), cz);
       }
     }, at, undefined, by);
     if (typeof by === 'number') this.windups.set(by, fx);
@@ -712,6 +816,15 @@ export class SagaView {
       this.fx.dust(at.x, at.y, 4);
       return;
     }
+    if (move === 'line') return this.landLine(at, zone, [cr, cg, cb]);
+    if (move === 'pull') return this.landPull(at, r, by, [cr, cg, cb]);
+    if (move === 'mend') {
+      // healed (unless it was stopped, then the wind-up ended in blue already): a green bloom
+      this.burstRing(by, at, [cr, cg, cb], 30, 0.7);
+      this.healRune(by, at, 26, 1);
+      return;
+    }
+    if (move === 'summon') return this.poofRing(by, at, [cr, cg, cb]);
     // slam, nova, charge, summon: a shockwave out to the edge of the mark
     const big = move === 'nova';
     this.add(big ? 0.8 : 0.55, (layer, f, k) => {
@@ -733,6 +846,81 @@ export class SagaView {
       this.fx.dust(at.x + Math.cos(a) * r * 0.8, at.y + Math.sin(a) * r * 0.8, 1);
     }
     cameraShake(big ? 0.7 : 0.45);
+  }
+
+  /** A line attack: steam, a tail or a tentacle sweeping down the whole strip from the boss outwards. */
+  private landLine(at: { x: number; y: number }, zone: SagaZone | undefined, c: [number, number, number]): void {
+    const [r, g, b] = c;
+    const dir = zone?.dir ?? 0;
+    const len = (zone?.r ?? 6) * TILE;
+    const wide = (zone?.w ?? 1.6) * TILE;
+    const ux = Math.cos(dir);
+    const uy = Math.sin(dir);
+    this.add(0.5, (layer, f, k) => {
+      const reach = easeOutCubic(Math.min(1, k * 2.2));
+      const fade = 1 - clamp01((k - 0.35) / 0.65);
+      if (layer === 'light') {
+        drawSprite(this.art.glow, at.x + ux * len * 0.5, at.y + uy * len * 0.5, len * 1.4, wide * 3, dir, light(r, g, b, 0.8 * fade));
+        return;
+      }
+      if (layer === 'ground') {
+        this.strip(at.x, at.y, dir, len * reach, wide, col(r, g, b, 0.3 * fade));
+        return;
+      }
+      if (layer !== 'bright') return;
+      for (let i = 0; i <= 12; i++) {
+        const u = i / 12;
+        if (u > reach) break;
+        const wob = Math.sin(u * 12 + this.t * 20) * wide * 0.15;
+        const x = at.x + ux * len * u - uy * wob;
+        const y = at.y + uy * len * u + ux * wob;
+        drawSprite(this.art.glow, x, y, wide * 1.3, wide * 1.3, 0, rgba(r, g, b, 0.6 * fade));
+        drawSprite(this.art.glow, x, y, wide * 0.5, wide * 0.5, 0, rgba(1, 1, 1, 0.7 * fade));
+      }
+    }, at);
+    for (let i = 1; i <= 5; i++) this.fx.dust(at.x + ux * len * (i / 5), at.y + uy * len * (i / 5), 1);
+    cameraShake(0.45);
+  }
+
+  /** A pull lands: streaks rushing in to the boss from all round the circle, and a thump in the middle. */
+  private landPull(at: { x: number; y: number }, r: number, by: string | number, c: [number, number, number]): void {
+    const [cr, cg, cb] = c;
+    const streaks = [...Array(14)].map((_, i) => ({ a: (i / 14) * TAU + Math.random() * 0.3, d: 0.6 + Math.random() * 0.4 }));
+    this.add(0.45, (layer, f, k) => {
+      const s = this.find(by);
+      const x = s?.x ?? at.x;
+      const y = s?.y ?? at.y;
+      const e = easeOutCubic(k);
+      if (layer === 'light') {
+        drawSprite(this.art.glow, x, y, r * 2 * (1 - e) + 40, r * 2 * (1 - e) + 40, 0, light(cr, cg, cb, 0.8 * (1 - k)));
+        return;
+      }
+      if (layer === 'ground') {
+        this.ring(x, y, r * (1 - e), 2.5 * (1 - k) + 0.4, col(cr, cg, cb, 0.9 * (1 - k)));
+        return;
+      }
+      for (const st of streaks) {
+        const d0 = r * st.d * (1 - e);
+        const d1 = d0 + r * 0.25 * (1 - k);
+        const a = st.a + e * 1.2;
+        drawLine(P(x + Math.cos(a) * d0, y + Math.sin(a) * d0), P(x + Math.cos(a - 0.15) * d1, y + Math.sin(a - 0.15) * d1), W(1.6), col(cr, cg, cb, 0.9 * (1 - k)));
+      }
+      if (k > 0.6) drawSprite(this.art.glow, x, y - 6, 40, 40, 0, rgba(cr, cg, cb, (1 - k) * 2));
+    }, at);
+    cameraShake(0.4);
+  }
+
+  /** Helpers summoned: a ring of smoke puffs round the boss, and a flash. */
+  private poofRing(by: string | number, at: { x: number; y: number }, c: [number, number, number]): void {
+    const s = this.find(by);
+    const x = s?.x ?? at.x;
+    const y = s?.y ?? at.y;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU;
+      this.fx.dust(x + Math.cos(a) * 26, y + Math.sin(a) * 18, 2);
+    }
+    this.fx.spawn(x, y, 'poof');
+    this.burstRing(by, at, c, 34, 0.6);
   }
 
   /** A boss rushing at someone: a trail of dust and a crash. */
@@ -799,7 +987,7 @@ export class SagaView {
   // ------------------------------------------------------------------ every frame
 
   update(dt: number): void {
-    if (!this.on) return;
+    if (!this.live) return;
     this.t += dt;
     for (const f of this.list) f.t += dt;
     if (this.list.some((f) => f.t >= f.dur)) this.list = this.list.filter((f) => f.t < f.dur);
@@ -819,25 +1007,30 @@ export class SagaView {
 
   /** Telegraphs and runes on the ground, under everyone (lit with the scene). */
   drawGround(): void {
-    if (!this.on) return;
+    if (!this.live) return;
     const now = serverNow();
-    for (const z of activeWorld()?.saga?.zones ?? []) this.drawZone(z, now);
+    if (this.on) for (const z of activeWorld()?.saga?.zones ?? []) this.drawZone(z, now);
     this.drawTargetRing();
     for (const f of this.list) if (f.t >= 0) f.draw('ground', f, clamp01(f.t / f.dur));
   }
 
   /** Into the light map: telegraphs glow red, magic lights up the dark. */
   paintLight(): void {
-    if (!this.on) return;
+    if (!this.live) return;
     const now = serverNow();
-    for (const z of activeWorld()?.saga?.zones ?? []) {
+    for (const z of this.on ? (activeWorld()?.saga?.zones ?? []) : []) {
       const burning = z.until !== undefined && now >= z.at;
       const k = burning ? 1 : this.fill(z, now);
       const r = z.r * TILE;
-      const cx = z.shape === 'cone' ? z.x + Math.cos(z.dir ?? 0) * r * 0.5 : z.x;
-      const cy = z.shape === 'cone' ? z.y + Math.sin(z.dir ?? 0) * r * 0.5 : z.y;
+      const move = this.moveOf(z);
+      if (move === 'mend') continue;
+      const reach = z.shape === 'cone' || z.shape === 'line' ? 0.5 : 0;
+      const cx = z.x + Math.cos(z.dir ?? 0) * r * reach;
+      const cy = z.y + Math.sin(z.dir ?? 0) * r * reach;
       const fl = burning ? 0.8 + 0.2 * Math.sin(this.t * 5 + z.x) : 0.5 + 0.5 * k;
-      drawSprite(this.art.glow, cx, cy, r * 2.6, r * 2.6, 0, burning ? light(1, 0.45, 0.12, 0.8 * fl) : light(1, 0.12, 0.08, 0.7 * fl));
+      if (z.shape === 'line') drawSprite(this.art.glow, cx, cy, r * 1.5, (z.w ?? 1.6) * TILE * 2.4, z.dir ?? 0, light(1, 0.12, 0.08, 0.7 * fl));
+      else if (move === 'pull') drawSprite(this.art.glow, cx, cy, r * 2.4, r * 2.4, 0, light(0.5, 0.35, 1, 0.5 * fl));
+      else drawSprite(this.art.glow, cx, cy, r * 2.6, r * 2.6, 0, burning ? light(1, 0.45, 0.12, 0.8 * fl) : light(1, 0.12, 0.08, 0.7 * fl));
     }
     for (const f of this.list) if (f.t >= 0) f.draw('light', f, clamp01(f.t / f.dur));
     // fallen friends lie in a little light so they can be found
@@ -856,6 +1049,14 @@ export class SagaView {
       if (!(flagsOf(id) & FLAG.frozen)) continue;
       const s = this.find(id);
       if (!s) continue;
+      if (webbed(id)) {
+        // a spider's web: white threads wound round and round, and a few strands across
+        q.push(s.y + 4.6, white, s.x, s.y - 10, 22, 30, 0, rgba(0.95, 0.95, 1, 0.22));
+        for (let i = 0; i < 5; i++) q.push(s.y + 4.61, white, s.x, s.y - 20 + i * 5.5, 20 - Math.abs(i - 2) * 3, 0.8, (i % 2 ? 0.25 : -0.25), rgba(1, 1, 1, 0.75));
+        q.push(s.y + 4.62, white, s.x - 3, s.y - 10, 0.8, 26, 0.35, rgba(1, 1, 1, 0.6));
+        q.push(s.y + 4.62, white, s.x + 3, s.y - 10, 0.8, 26, -0.35, rgba(1, 1, 1, 0.6));
+        continue;
+      }
       const shine = 0.5 + 0.5 * Math.sin(this.t * 2.5);
       // tall enough for a helmet in the frame's headroom too
       q.push(s.y + 4.6, white, s.x, s.y - 10, 22, 32, 0, rgba(0.65, 0.88, 1, 0.42));
@@ -866,10 +1067,10 @@ export class SagaView {
 
   /** On top of the lit scene: everything that glows by itself. */
   drawBright(): void {
-    if (!this.on) return;
+    if (!this.live) return;
     setAdditiveBlendMode(true);
     const now = serverNow();
-    for (const z of activeWorld()?.saga?.zones ?? []) this.drawZoneEdge(z, now);
+    if (this.on) for (const z of activeWorld()?.saga?.zones ?? []) this.drawZoneEdge(z, now);
     for (const f of this.list) if (f.t >= 0) f.draw('bright', f, clamp01(f.t / f.dur));
     this.drawAuras();
     setAdditiveBlendMode(false);
@@ -885,6 +1086,16 @@ export class SagaView {
 
   private drawZone(z: SagaZone, now: number): void {
     const r = z.r * TILE;
+    const move = this.moveOf(z);
+    if (move === 'pull' && now < z.at) {
+      // a whirlpool: a dark violet disc turning, darker as it gets ready
+      const k = this.fill(z, now);
+      const [cr, cg, cb] = moveColour('pull', z.by);
+      this.zoneShape(z, r, col(cr * 0.5, cg * 0.5, cb * 0.7, 0.16 + 0.12 * k));
+      for (let i = 0; i < 3; i++) this.ring(z.x, z.y, r * ((1 - ((this.t * 0.7 + i / 3) % 1)) * 0.95), 1, col(cr, cg, cb, 0.5));
+      return;
+    }
+    if (move === 'mend') return;
     if (z.until !== undefined && now >= z.at) {
       // burning ground: lava that pulses and bubbles until it cools
       const left = clamp01((z.until - now) / 2000);
@@ -903,6 +1114,9 @@ export class SagaView {
 
   private drawZoneEdge(z: SagaZone, now: number): void {
     const r = z.r * TILE;
+    const move = this.moveOf(z);
+    if (move === 'mend') return;
+    if (move === 'pull' && now < z.at) return this.pullArrows(z, r, now);
     if (z.until !== undefined && now >= z.at) {
       // embers rising from the pool
       for (let i = 0; i < 4; i++) {
@@ -916,12 +1130,55 @@ export class SagaView {
     const blink = 0.55 + 0.45 * Math.sin(this.t * (6 + k * 18));
     const c = col(1, 0.18, 0.1, 0.55 + 0.4 * blink);
     if (z.shape === 'cone') this.coneOutline(z, r, W(1.2), c);
+    else if (z.shape === 'line') this.stripOutline(z.x, z.y, z.dir ?? 0, r, (z.w ?? 1.6) * TILE, W(1.2), c);
     else this.ring(z.x, z.y, r, 1.2, c);
     if (z.shape === 'circle') this.ring(z.x, z.y, r * k, 0.8, col(1, 0.35, 0.15, 0.85));
   }
 
+  /** A pull getting ready: arrows all round the circle sliding in towards the boss, turning like water down a drain. */
+  private pullArrows(z: SagaZone, r: number, now: number): void {
+    const k = this.fill(z, now);
+    const [cr, cg, cb] = moveColour('pull', z.by);
+    this.ring(z.x, z.y, r, 1.2, col(cr, cg, cb, 0.6 + 0.3 * Math.sin(this.t * 8)));
+    const spokes = 8;
+    for (let i = 0; i < spokes; i++) {
+      for (let j = 0; j < 2; j++) {
+        const u = (this.t * (0.6 + k) + j / 2 + i * 0.13) % 1;
+        const d = r * (0.95 - u * 0.75);
+        const a = (i / spokes) * TAU + u * 1.4 + this.t * 0.4;
+        const x = z.x + Math.cos(a) * d;
+        const y = z.y + Math.sin(a) * d;
+        // a chevron pointing at the middle
+        const inA = a + Math.PI;
+        const s = 5;
+        const pts = [P(x + Math.cos(inA + 2.5) * s, y + Math.sin(inA + 2.5) * s), P(x, y), P(x + Math.cos(inA - 2.5) * s, y + Math.sin(inA - 2.5) * s)];
+        drawLineList(pts, W(1.3), col(cr, cg, cb, 0.85 * Math.sin(u * Math.PI)));
+      }
+    }
+  }
+
+  /** A strip from (x, y) along `dir`: `len` long and `wide` across (world pixels). */
+  private stripPoints(x: number, y: number, dir: number, len: number, wide: number): Vector2[] {
+    const ux = Math.cos(dir);
+    const uy = Math.sin(dir);
+    const nx = -uy * (wide / 2);
+    const ny = ux * (wide / 2);
+    return [P(x + nx, y + ny), P(x + ux * len + nx, y + uy * len + ny), P(x + ux * len - nx, y + uy * len - ny), P(x - nx, y - ny)];
+  }
+
+  private strip(x: number, y: number, dir: number, len: number, wide: number, c: Color): void {
+    if (len <= 0.5) return;
+    drawPoly(this.stripPoints(x, y, dir, len, wide), c);
+  }
+
+  private stripOutline(x: number, y: number, dir: number, len: number, wide: number, width: number, c: Color): void {
+    drawLineList(this.stripPoints(x, y, dir, len, wide), width, c, true);
+  }
+
   private zoneShape(z: SagaZone, r: number, c: Color): void {
     if (r <= 0.5) return;
+    // a line fills up from the boss outwards, its width staying the same
+    if (z.shape === 'line') return this.strip(z.x, z.y, z.dir ?? 0, r, (z.w ?? 1.6) * TILE, c);
     if (z.shape === 'cone') {
       const dir = z.dir ?? 0;
       const arc = ((z.arc ?? 90) * Math.PI) / 180;
@@ -1058,7 +1315,7 @@ export class SagaView {
   /** Floating numbers and health bars follow whoever they belong to. */
   /** `screenY`: where a world y is on the screen (px), to keep the numbers out from under the boss's bars. */
   placeLabels(place: (el: HTMLElement, x: number, y: number) => void, screenY: (y: number) => number): void {
-    if (!this.on) return;
+    if (!this.live) return;
     // the lowest world y a number may end at: its text just below the boss's bars
     const floor = this.floaters.length && sagaSnap()?.b ? hudFloor() : 0;
     const zoom = screenY(1) - screenY(0);
@@ -1073,7 +1330,8 @@ export class SagaView {
       }
       place(f.el, f.x + f.dx * (0.6 + 0.4 * k), Math.max(minY, f.y + f.dy - 4 - 16 * easeOutCubic(k)));
     }
-    this.placeBars(place);
+    // out in the world the monsters' own labels show their hearts
+    if (this.on) this.placeBars(place);
   }
 
   private placeBars(place: (el: HTMLElement, x: number, y: number) => void): void {
@@ -1106,7 +1364,7 @@ export class SagaView {
         const s = a ? this.find(id) : null;
         if (!a || !s || id === snap.b?.id) continue;
         const boss = SAGA_BOSSES[a.species];
-        bar(`m${id}`, s, m[0] / Math.max(1, m[1]), boss ? 'boss' : a.species === 'isblock' ? 'ice' : t === id ? 'target' : 'mob', boss || t === id || a.species === 'isblock' ? a.name : null);
+        bar(`m${id}`, s, m[0] / Math.max(1, m[1]), boss ? 'boss' : BLOCK_SPECIES.has(a.species) ? 'ice' : t === id ? 'target' : 'mob', boss || t === id || BLOCK_SPECIES.has(a.species) ? a.name : null);
       }
       for (const [id, f] of Object.entries(snap.f)) {
         const s = this.find(id);

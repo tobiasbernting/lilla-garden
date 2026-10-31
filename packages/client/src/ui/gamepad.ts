@@ -6,7 +6,7 @@
 // In a dungeon: X, Y, B and RB are spells 1–4, LB a potion, d-pad left/right the next monster, Select backpack,
 // LT/L3 runs.
 // Menus: stick/d-pad moves a highlight between buttons, A presses, B closes, right stick scrolls.
-import { castSlot, cycleTarget, drinkPotion, inSaga } from '../saga.ts';
+import { castSlot, cycleTarget, drinkPotion, fightMode, inSaga } from '../saga.ts';
 import { myPlayer } from '../state.ts';
 import type { Hud, HudTarget } from './hud.ts';
 import type { Menus } from './menus.ts';
@@ -149,18 +149,22 @@ export function initGamepad(opts: {
       moving = false;
     }
     // only while the pad moves you, so a touch run button isn't let go of
-    if (moving) t.runHeld = down(B.LT) || down(B.L3) || (!inSaga() && down(B.B));
+    if (moving) t.runHeld = down(B.LT) || down(B.L3) || (!fightMode() && down(B.B));
     if (hit(B.Up)) menus.toggle('emotes');
     if (hit(B.Down)) hud.minimap.toggle();
     if (hit(B.Start)) menus.toggle('help');
 
-    if (inSaga()) {
-      // no hotbar in a dungeon: the face buttons are the spells, like the keys 1–4
+    if (fightMode()) {
+      // no hotbar in a fight (a dungeon, or hero mode out in the world): the face buttons are the spells, like the keys 1–4
       if (hit(B.A) || hit(B.RT)) t.act();
       [B.X, B.Y, B.B, B.RB].forEach((b, i) => hit(b) && castSlot(i));
       if (hit(B.LB)) drinkPotion();
       if (hit(B.Left) || hit(B.Right)) cycleTarget();
-      if (hit(B.Back)) menus.toggle('inventory');
+      // Select: the backpack in a dungeon, the gear window out in the world
+      if (hit(B.Back)) {
+        if (inSaga()) menus.toggle('inventory');
+        else document.dispatchEvent(new Event('lilla:gear'));
+      }
       return;
     }
     if (hit(B.A) || hit(B.X) || hit(B.RT)) t.act();

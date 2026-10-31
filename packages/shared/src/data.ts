@@ -276,6 +276,8 @@ found('hat_dino', 'hat', 'dino', '#4f9a3a');
 // saga's keepsakes for home
 for (const s of SAGA_ITEMS) {
   if (s.kind === 'weapon') add(I(s.id, 'tool', { tool: s.tool }));
+  // offhands and amulets sit in the bag until they are put on in the gear window (they never place or swing)
+  else if (s.kind === 'offhand' || s.kind === 'amulet') add(I(s.id, 'decor', { stack: 1 }));
   else if (s.kind === 'hat' || s.kind === 'shirt') found(s.id, s.kind, s.style!, s.color!);
   else if (s.kind === 'pet' || s.kind === 'mount') add(I(s.id, 'animal', { species: s.species, stack: 1 }));
   else if (s.kind === 'potion') add(I(s.id, 'material', { food: { boostMs: 0 }, sell: 10, stack: 20 }));
@@ -478,6 +480,40 @@ addO(O('saga_brazier', { breakWith: undefined, light: true }));
 addO(O('saga_lavacrack', { solid: false, flat: true, breakWith: undefined, light: true }));
 built('solruna', { light: true });
 built('yggdrasil', { light: true });
+// Act II: the puzzle rooms' plates (variant 0 dark, 1 lit) and each new dungeon's things to see
+addO(O('saga_plate', { solid: false, flat: true, breakWith: undefined, light: true }));
+// Helheim
+addO(O('saga_gravestone', { breakWith: undefined }));
+addO(O('saga_skullpile', { solid: false, flat: true, breakWith: undefined }));
+addO(O('saga_ghostlight', { solid: false, breakWith: undefined, light: true }));
+addO(O('saga_deadtree', { breakWith: undefined }));
+// Svartalfheims gruvor
+addO(O('saga_minecart', { breakWith: undefined }));
+addO(O('saga_goldpile', { breakWith: undefined, light: true }));
+addO(O('saga_dwarfstatue', { breakWith: undefined }));
+addO(O('saga_minelamp', { solid: false, breakWith: undefined, light: true }));
+// Havsormens tempel
+addO(O('saga_coral', { breakWith: undefined }));
+addO(O('saga_anchor', { breakWith: undefined }));
+addO(O('saga_seaweed', { solid: false, flat: true, breakWith: undefined }));
+addO(O('saga_pearl', { breakWith: undefined, light: true }));
+// Alvernas lund
+addO(O('saga_glowshroom', { breakWith: undefined, light: true }));
+addO(O('saga_fairylight', { solid: false, breakWith: undefined, light: true }));
+addO(O('saga_cobweb', { solid: false, flat: true, breakWith: undefined }));
+addO(O('saga_elfstatue', { breakWith: undefined }));
+// Fenrisklyftan
+addO(O('saga_chain', { solid: false, flat: true, breakWith: undefined }));
+addO(O('saga_icefang', { breakWith: undefined }));
+addO(O('saga_wolfstatue', { breakWith: undefined }));
+addO(O('saga_bonepile', { solid: false, flat: true, breakWith: undefined }));
+// Bifrost
+addO(O('saga_rainbowshard', { breakWith: undefined, light: true }));
+addO(O('saga_mirror', { breakWith: undefined }));
+addO(O('saga_starlamp', { solid: false, breakWith: undefined, light: true }));
+addO(O('saga_runepillar', { breakWith: undefined }));
+// the Act II chapters' keepsakes for home (they all glow)
+for (const s of SAGA_ITEMS) if (s.kind === 'decor' && !OBJECTS[s.id]) built(s.id, { light: true });
 built('plush_cow');
 built('plush_hen');
 built('plush_dragon');
@@ -577,6 +613,40 @@ ANIMALS.korp = { species: 'korp', house: '', growDays: 0, speed: 72, pet: true }
 ANIMALS.fenrisvalp = { species: 'fenrisvalp', house: '', growDays: 0, speed: 70, pet: true };
 ANIMALS.sleipner = { species: 'sleipner', house: '', growDays: 0, speed: 30, mount: { speed: 1.75 } };
 ANIMALS.gullinbursti = { species: 'gullinbursti', house: '', growDays: 0, speed: 30, mount: { speed: 1.6 } };
+ANIMALS.garmvalp = { species: 'garmvalp', house: '', growDays: 0, speed: 70, pet: true };
+ANIMALS.guldbagge_tam = { species: 'guldbagge_tam', house: '', growDays: 0, speed: 66, pet: true };
+ANIMALS.manet_tam = { species: 'manet_tam', house: '', growDays: 0, speed: 60, pet: true };
+ANIMALS.alvljus_fe = { species: 'alvljus_fe', house: '', growDays: 0, speed: 74, pet: true };
+ANIMALS.ulvvalp = { species: 'ulvvalp', house: '', growDays: 0, speed: 70, pet: true };
+ANIMALS.havshast = { species: 'havshast', house: '', growDays: 0, speed: 30, mount: { speed: 1.7 } };
+ANIMALS.jattehjort = { species: 'jattehjort', house: '', growDays: 0, speed: 30, mount: { speed: 1.7 } };
+ANIMALS.fenrisulv_ridbar = { species: 'fenrisulv_ridbar', house: '', growDays: 0, speed: 30, mount: { speed: 1.8 } };
+ANIMALS.lokeshast = { species: 'lokeshast', house: '', growDays: 0, speed: 30, mount: { speed: 1.85 } };
+
+// Act II: Loke's servants roam the open world, one kind per biome, and a world boss in the mountains and on the
+// beach. They chase and bite like predators (hearts) and poof when beaten; hero mode's spells are made for them.
+// Some are dungeon monsters too: inside a dungeon its own fight record wins (world.saga.mobs).
+const roam = (species: string, wild: string, speed: number, hp: number, drops: [string, number][], boss = false, wildCount: [number, number] = [2, 4]): void => {
+  ANIMALS[species] = {
+    ...(ANIMALS[species] ?? { species, house: '', growDays: 0, speed }),
+    speed,
+    wild,
+    wildCount,
+    tame: 0,
+    mob: { hp, ...(boss ? { boss } : {}), drops: drops.map(([item, chance]) => ({ item, min: 1, max: 1, chance })) },
+  };
+};
+roam('vandrardraug', 'skog', 30, 6, [['old_coin', 0.3]]);
+roam('mosspoke', 'trask', 28, 5, [['crystal', 0.3]]);
+roam('gruvtroll', 'berg', 30, 8, [['glimmersten', 0.6], ['gold', 0.2]]);
+roam('sjodraug', 'strand', 32, 7, [['old_coin', 0.3], ['krabbklo', 0.4]]);
+roam('skuggalv', 'svamp', 34, 6, [['alvdagg', 0.5]]);
+roam('isvarg', 'is', 40, 6, [['ulvtand', 0.5]]);
+roam('eldimp', 'vulkan', 40, 5, [['glodkol', 0.4], ['bifrostskarva', 0.3]]);
+roam('bergatroll', 'berg', 22, 24, [], true, [1, 1]);
+roam('kustjatte', 'strand', 22, 24, [], true, [1, 1]);
+/** Roaming monsters out in the world (hero mode's targets). */
+export const ROAMING: readonly string[] = ['vandrardraug', 'mosspoke', 'gruvtroll', 'sjodraug', 'skuggalv', 'isvarg', 'eldimp', 'bergatroll', 'kustjatte'];
 
 // ---------- Recipes ----------
 
@@ -675,6 +745,8 @@ export const LOOT: Record<string, LootTable> = {
   dig: { picks: 1, pool: [L('old_coin', 1, 2, 40), L('gold', 1, 3, 50), L('gem', 1, 1, 10)] },
   fossil_rock: { picks: 1, pool: [L('fossil', 1, 1, 60), L('', 0, 0, 40)] },
   fairy: { picks: 1, pool: [L('fairy_dust', 1, 1, 70), L('fairy_dust', 2, 2, 20), L('gem', 1, 1, 10)] },
+  // the chest a world boss (Bergatrollet, Kustjätten) leaves behind
+  worldboss: { coins: [40, 70], stars: 2, picks: 2, pool: [L('healing_potion', 2, 3, 30), L('styrkedryck', 1, 2, 25), L('gold', 4, 8, 25), L('gem', 1, 1, 15), L('old_coin', 2, 3, 15)] },
 };
 /** Days before a loot chest has something for the same player again. */
 export const LOOT_REFILL_DAYS = 7;
@@ -950,6 +1022,16 @@ export const ACHIEVEMENTS: Achievement[] = [
   A('saga_surt', 'sagaSurt', 1, 5, 'surtsvard'),
   A('saga_mobs_50', 'sagaMobs', 50, 2, 'draugyxa'),
   A('saga_quests_6', 'sagaQuests', 6, 3, 'healing_potion'),
+  A('saga_hel', 'sagaHel', 1, 4, 'helsvard'),
+  A('saga_dvarg', 'sagaDvarg', 1, 4, 'fafnerstand'),
+  A('saga_orm', 'sagaOrm', 1, 5, 'korallspjut'),
+  A('saga_alv', 'sagaAlv', 1, 5, 'alvklinga'),
+  A('saga_fenrir', 'sagaFenrir', 1, 6, 'fenristand'),
+  A('saga_loke', 'sagaLoke', 1, 8, 'heimdallshorn'),
+  A('saga_act2', 'sagaAct2', 1, 10, 'bifrostbit'),
+  A('saga_level_5', 'sagaLevel', 5, 3, 'amulet_vegvisir'),
+  A('saga_level_10', 'sagaLevel', 10, 6, 'amulet_brisingamen'),
+  A('saga_gear_legendary', 'sagaLegendary', 1, 4, 'offhand_tyrshandske'),
   A('rally_1', 'rallyRaces', 1, 1, 'vehicle_car_red'),
   A('rally_wins_10', 'rallyWins', 10, 3, 'trophy'),
   A('rally_style', 'rallyStyle', 1, 1, 'brush'),

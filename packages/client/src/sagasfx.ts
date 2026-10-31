@@ -131,6 +131,30 @@ const SPELL_SOUNDS: Record<string, () => void> = {
 /** A boss gathering power before a big attack: a rising hum as long as the warning on the ground. */
 export function bossWindup(move: string, ms: number): void {
   const dur = Math.max(0.4, Math.min(3, ms / 1000));
+  if (move === 'line') {
+    // steam (or a tail) building up: a hiss that gets louder and higher
+    sweep(dur, 300, 2600, 0.045, 'highpass', 0.8);
+    swell(90, dur, 180, 0.04, 'sawtooth');
+    return;
+  }
+  if (move === 'pull') {
+    // a whirlpool: a low hum and wind turning round and round
+    swell(60, dur, 120, 0.05, 'triangle');
+    for (let i = 0; i < 3; i++) later((i * dur * 1000) / 3, () => sweep(dur / 3, 1800, 300, 0.04, 'bandpass', 2));
+    return;
+  }
+  if (move === 'mend') {
+    // falling asleep on the gold: a soft lullaby, slowly
+    notes([392, 330, 294, 262], (dur * 1000) / 5, 0.5, 'sine', 0.035);
+    swell(196, dur, 262, 0.02, 'sine');
+    return;
+  }
+  if (move === 'summon') {
+    // a howl calling for help
+    swell(220, dur * 0.7, 440, 0.045, 'sawtooth');
+    later(dur * 700, () => tone(440, 0.4, 'triangle', 0.035, -180));
+    return;
+  }
   const base = move === 'nova' ? 70 : move === 'freeze' || move === 'rain' ? 220 : move === 'pools' ? 90 : 110;
   swell(base, dur, base * 2.2, 0.05, 'triangle');
   swell(base * 1.5, dur, base * 3, 0.025, 'sine');
@@ -147,6 +171,17 @@ export function bossLand(move: string): void {
   } else if (move === 'cleave') {
     slash(0.5);
     boom(0.5);
+  } else if (move === 'line') {
+    sweep(0.45, 3000, 400, 0.08, 'bandpass', 0.8);
+    boom(0.6);
+  } else if (move === 'pull') {
+    // sucked in: a whoosh that falls, and a thump
+    sweep(0.35, 2500, 200, 0.07, 'lowpass', 0.7);
+    later(280, thud);
+  } else if (move === 'mend') notes([523, 659, 784], 70, 0.3, 'sine', 0.04);
+  else if (move === 'summon') {
+    noise(0.2, 0.06);
+    later(80, () => tone(660, 0.12, 'triangle', 0.035, 300));
   } else boom(move === 'nova' ? 1.4 : 1);
 }
 
@@ -203,6 +238,15 @@ export const SAGA_SFX = {
   },
   /** A rest stone lights up: soft and calm. */
   calm: () => notes([523, 784, 1047, 784], 180, 0.6, 'sine', 0.03),
+  /** A rune plate lights up, or all of them do: a bright little chime. */
+  chime: () => {
+    notes([1047, 1319, 1568, 2093], 70, 0.45, 'sine', 0.04);
+    later(320, () => tone(2637, 0.6, 'triangle', 0.02));
+  },
+  /** One rune plate lit. */
+  plate: () => notes([784, 1175], 90, 0.35, 'sine', 0.04),
+  /** Hero mode on (a short call to arms) or off. */
+  hero: (on: boolean) => (on ? notes([392, 523, 784], 80, 0.18, 'square', 0.03) : notes([523, 392], 90, 0.18, 'triangle', 0.035)),
   /** Something marked on the ground near you. */
   warn: () => {
     tone(880, 0.06, 'square', 0.025);
