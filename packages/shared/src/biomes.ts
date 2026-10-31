@@ -302,8 +302,9 @@ export function spawnWildAnimals(world: WorldState, biome: string, rnd: () => nu
         waitMs: randInt(rnd, 500, 3000),
       };
       if (def.variants) a.variant = randInt(rnd, 0, def.variants - 1);
-      if (def.predator) {
-        a.hp = def.predator.hp;
+      if (def.predator || def.mob) {
+        // predators, and Loke's servants roaming the world (Act II of the saga)
+        a.hp = def.predator?.hp ?? def.mob!.hp;
         a.attackAt = 0;
       }
       world.animals[id] = a;

@@ -57,7 +57,9 @@ export type Terrain =
   | 'carpet' // Spelhallen's patterned arcade carpet
   // Dungeons (2026-10-30)
   | 'crypt' // Draugkryptan's old flagstones
-  | 'forge'; // Surts smedja: black stone with glowing seams
+  | 'forge' // Surts smedja: black stone with glowing seams
+  // Sagan om Världsträdet II (2026-10-31)
+  | 'bifrost'; // the rainbow bridge: pale glass tiles with faint rainbow bands
 
 /** Ground nobody walks on or builds on: water and the like, cliffs, and the sky around the moon. */
 export const WALL_TERRAIN: ReadonlySet<Terrain> = new Set<Terrain>(['water', 'bog', 'lava', 'choco', 'rock', 'sandstone', 'basalt', 'space']);
@@ -407,6 +409,9 @@ export interface AnimalState {
   /** Traffic: when it may honk at the player in front of it / when it last stopped at a stop. */
   honkAt?: number;
   stoppedAt?: number;
+  /** Roaming monsters taunted by a hero out in the world: they go for this player until huntUntil (server ms). */
+  hunt?: string;
+  huntUntil?: number;
   waitMs: number;
 }
 

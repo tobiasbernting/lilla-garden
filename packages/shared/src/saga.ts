@@ -3,7 +3,7 @@
 // map of monster packs, rest stones, a gate, a mid-boss and a boss whose big attacks are telegraphed;
 // win loot in rarity colours. Völvan Sigrun in the city tells the saga, one chapter per dungeon.
 // Data only: the rules live in sagasim.ts, the maps are built by sagamap.ts.
-import type { Terrain } from './types.ts';
+import type { Outfit, PlayerState, Terrain } from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Classes and spells
@@ -143,10 +143,35 @@ export const SAGA_MOBS: Record<string, SagaMobDef> = {
   eldhund: { species: 'eldhund', name: 'Eldhund', hp: 190, dmg: 8, atkMs: 1300, reach: 1.3, speed: 3.4, aggro: 5 },
   // the ice that holds a frozen friend (break it to free them)
   isblock: { species: 'isblock', name: 'Isblock', hp: 60, dmg: 0, atkMs: 999999, reach: 0, speed: 0, aggro: 0 },
+  // Act II, Lokes list. Helheim: a sheet ghost with a lantern, a two-headed hound, a bone spider that spits webs
+  gengangare: { species: 'gengangare', name: 'Gengångare', hp: 190, dmg: 8, atkMs: 1600, reach: 1.4, speed: 2.4, aggro: 4.5 },
+  helhund: { species: 'helhund', name: 'Helhund', hp: 150, dmg: 7, atkMs: 1200, reach: 1.3, speed: 3.6, aggro: 5 },
+  benspindel: { species: 'benspindel', name: 'Benspindel', hp: 120, dmg: 6, atkMs: 2000, reach: 5, speed: 2.2, aggro: 6, slows: true },
+  // Svartalfheims gruvor: a troll in a miner's helmet, a golden beetle, a golem of stone
+  gruvtroll: { species: 'gruvtroll', name: 'Gruvtroll', hp: 230, dmg: 9, atkMs: 1700, reach: 1.5, speed: 2.3, aggro: 4.5 },
+  guldbagge: { species: 'guldbagge', name: 'Guldbagge', hp: 90, dmg: 5, atkMs: 1100, reach: 1.2, speed: 3.6, aggro: 5 },
+  stengolem: { species: 'stengolem', name: 'Stengolem', hp: 380, dmg: 13, atkMs: 2300, reach: 1.6, speed: 1.7, aggro: 4 },
+  // Havsormens tempel: a skeleton in seaweed with a trident, a giant crab, a glowing jellyfish that floats
+  sjodraug: { species: 'sjodraug', name: 'Sjödraug', hp: 200, dmg: 8, atkMs: 1600, reach: 1.4, speed: 2.4, aggro: 4.5 },
+  jattekrabba: { species: 'jattekrabba', name: 'Jättekrabba', hp: 260, dmg: 10, atkMs: 1900, reach: 1.5, speed: 2, aggro: 4.5 },
+  manet: { species: 'manet', name: 'Lysmanet', hp: 110, dmg: 6, atkMs: 2100, reach: 5, speed: 2, aggro: 6, slows: true },
+  // Alvernas lund: a dark elf archer, a giant spider, a walking mushroom guard
+  skuggalv: { species: 'skuggalv', name: 'Skuggalv', hp: 160, dmg: 8, atkMs: 1500, reach: 5, speed: 2.6, aggro: 6 },
+  jattespindel: { species: 'jattespindel', name: 'Jättespindel', hp: 210, dmg: 9, atkMs: 1700, reach: 1.4, speed: 3, aggro: 5 },
+  svampvakt: { species: 'svampvakt', name: 'Svampvakt', hp: 300, dmg: 11, atkMs: 2200, reach: 1.6, speed: 1.8, aggro: 4 },
+  // Fenrisklyftan: a grey wolf (bigger than an isvarg), a frost troll's big cousin, a smaller giant with boulders
+  ulv: { species: 'ulv', name: 'Ulv', hp: 170, dmg: 8, atkMs: 1200, reach: 1.3, speed: 3.8, aggro: 5.5 },
+  rimtroll: { species: 'rimtroll', name: 'Rimtroll', hp: 320, dmg: 12, atkMs: 2000, reach: 1.5, speed: 2.1, aggro: 4.5 },
+  bergsjatte: { species: 'bergsjatte', name: 'Bergsjätte', hp: 450, dmg: 15, atkMs: 2500, reach: 1.8, speed: 1.6, aggro: 4 },
+  // the web that holds a webbed friend (like the ice block: break it to free them)
+  spindelnat: { species: 'spindelnat', name: 'Spindelnät', hp: 60, dmg: 0, atkMs: 999999, reach: 0, speed: 0, aggro: 0 },
 };
 
+/** What holds a frozen (or webbed) friend: their fight record's `frozen` is one of these. */
+export const BLOCK_SPECIES: ReadonlySet<string> = new Set(['isblock', 'spindelnat']);
+
 /** A boss's big attacks. Every one is telegraphed on the ground (warn ms) before it lands. */
-export type BossMove = 'cleave' | 'slam' | 'rain' | 'charge' | 'freeze' | 'pools' | 'nova' | 'summon';
+export type BossMove = 'cleave' | 'slam' | 'rain' | 'charge' | 'freeze' | 'pools' | 'nova' | 'summon' | 'line' | 'pull' | 'mend';
 
 export interface BossAbility {
   move: BossMove;
@@ -170,6 +195,12 @@ export interface BossAbility {
   linger?: number;
   /** A tank's Sköldslag (any stun) during the warning cancels it. */
   interrupt?: boolean;
+  /** Mend: how much of its health the boss gets back (a fraction of max) unless it is interrupted. */
+  heal?: number;
+  /** Line: how wide the strip is (tiles); its length is `radius`. */
+  width?: number;
+  /** Freeze: what holds the friend ('isblock' when left out, 'spindelnat' for a web). */
+  block?: string;
   /** For the dungeon journal: what it does and what to do. */
   text: string;
 }
@@ -304,17 +335,262 @@ export const SAGA_BOSSES: Record<string, SagaBossDef> = {
     yells: { pull: 'Med det här svärdet ska jag bränna Världsträdet!', phase: ['Muspelheims eld brinner i mig!', 'NI KAN INTE STOPPA MIG!'], kill: 'Aska till aska!', death: 'Världsträdet… lever…', wipe: 'Ingen kan stå emot elden!' },
     lore: 'Surt är eldjätten från Muspelheim. I sin smedja under vulkanen smider han ett svärd av eld för att bränna Yggdrasil, Världsträdet som håller ihop alla världar.',
   },
+  // Act II, Lokes list
+  garm: {
+    species: 'garm',
+    name: 'Garm',
+    title: 'Hels hund',
+    hp: 1900,
+    dmg: 14,
+    atkMs: 1800,
+    reach: 1.9,
+    speed: 2.6,
+    phases: [0.5],
+    phaseAdds: { species: 'helhund', count: 2 },
+    moves: [
+      { move: 'charge', name: 'Helbett', every: 9000, first: 5000, warn: 1400, radius: 1.8, dmg: 34, text: 'Garm tar sats och hoppar på någon av er med gapet öppet. Hoppa undan från cirkeln!' },
+      { move: 'summon', name: 'Yla!', every: 14000, first: 7000, warn: 1500, radius: 0, count: 2, add: 'helhund', dmg: 0, text: 'Garm ylar och kallar på helhundarna. Ta hand om dem snabbt!' },
+    ],
+    yells: { pull: 'VOFF! VOFF! Ingen går förbi Garm!', phase: ['AOOOOO! Valpar, kom hit!'], kill: 'Voff!', death: 'Gnyy… ville bara… leka…', wipe: 'Voff voff! Garm vann!' },
+    mini: true,
+    lore: 'Garm är hunden som vaktar porten till Helheim. Han skäller på alla, men mest för att ingen vill leka med honom.',
+  },
+  hel: {
+    species: 'hel',
+    name: 'Hel',
+    title: 'Dödsrikets drottning',
+    hp: 3400,
+    dmg: 15,
+    atkMs: 2200,
+    reach: 2.2,
+    speed: 1.9,
+    phases: [0.66, 0.33],
+    phaseAdds: { species: 'gengangare', count: 2 },
+    moves: [
+      { move: 'pull', name: 'Dödens famn', every: 15000, first: 9000, warn: 2200, radius: 7, dmg: 20, text: 'Hel sträcker ut sina kalla händer och drar alla nära sig. Akta er, för sedan kommer Helskriket!' },
+      { move: 'nova', name: 'Helskriket', every: 15000, first: 11500, warn: 2400, radius: 4, dmg: 40, interrupt: true, text: 'Hon skriker så det isar i hela salen. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring ut ur cirkeln!' },
+      { move: 'rain', name: 'Gravkyla', every: 11000, first: 6000, warn: 1500, radius: 1.5, count: 2, dmg: 28, phase: 1, text: 'Kall dimma stiger upp ur golvet där ni står. Flytta på er!' },
+    ],
+    yells: { pull: 'Levande barn? Här nere? Jag får ju aldrig besök!', phase: ['Mina gengångare, vakna!', 'Pappa Loke lovade mig hela Midgård!'], kill: 'Välkommen till Helheim.', death: 'Ljuset… är så… varmt…', wipe: 'Helheim har gott om plats. Kom tillbaka när ni vill!' },
+    lore: 'Hel är Lokes dotter och drottning över dödsriket. Ena halvan av henne är blek som snö och den andra mörk som natten, och Loke har lovat henne Midgård.',
+  },
+  jarnvakten: {
+    species: 'jarnvakten',
+    name: 'Järnväktaren',
+    title: 'Dvärgarnas vakt',
+    hp: 2100,
+    dmg: 15,
+    atkMs: 2000,
+    reach: 1.8,
+    speed: 1.8,
+    phases: [0.5],
+    phaseAdds: { species: 'guldbagge', count: 3 },
+    moves: [
+      { move: 'line', name: 'Ångstråle', every: 9000, first: 5000, warn: 1500, radius: 7, width: 1.6, dmg: 36, text: 'Het ånga sprutar ur hans mun i en lång rak stråle. Gå åt sidan!' },
+      { move: 'slam', name: 'Järnstamp', every: 8000, first: 3500, warn: 1300, radius: 2.6, dmg: 30, text: 'Han stampar med järnfoten så golvet skakar. Spring ut ur cirkeln!' },
+    ],
+    yells: { pull: 'KLONK. INKRÄKTARE. UPPTÄCKTA.', phase: ['KLONK KLONK. SKICKAR. BAGGAR.'], kill: 'INKRÄKTARE. BORTA. KLONK.', death: 'Pys… pys… äntligen… vila…', wipe: 'VAKTEN. KLAR. KLONK.' },
+    mini: true,
+    lore: 'En väktare av järn och ånga som dvärgarna smidde för länge sedan. Han har glömt att dvärgarna flyttade härifrån för hundra år sedan.',
+  },
+  fafner: {
+    species: 'fafner',
+    name: 'Fafner',
+    title: 'Guldets drake',
+    hp: 3800,
+    dmg: 17,
+    atkMs: 2200,
+    reach: 2.4,
+    speed: 2,
+    phases: [0.6, 0.3],
+    phaseAdds: { species: 'guldbagge', count: 3 },
+    moves: [
+      { move: 'cleave', name: 'Drakeld', every: 9000, first: 5000, warn: 1400, radius: 4.6, arc: 90, dmg: 40, text: 'Han sprutar eld rakt fram. Ställ dig bakom eller bredvid honom!' },
+      { move: 'pools', name: 'Smält guld', every: 12000, first: 8000, warn: 1200, radius: 1.5, dmg: 10, linger: 9000, text: 'Smält guld rinner ut på golvet och är hett länge. Stå inte i det!' },
+      { move: 'mend', name: 'Guldsömn', every: 20000, first: 15000, warn: 3000, radius: 1, dmg: 0, heal: 0.12, phase: 1, interrupt: true, text: 'Han kryper ihop på sitt guld och sover sig frisk. Väck honom med Sköldslag, Stormsteg eller Isspjut!' },
+    ],
+    yells: { pull: 'MITT guld! Allt är MITT! Inte ett enda litet mynt får ni!', phase: ['Baggar! Skydda skatten!', 'Loke lovade mig allt guld i hela världen!'], kill: 'Ännu en sak till högen.', death: 'Mitt… fina… guld…', wipe: 'Ha! Guldet stannar hos mig.' },
+    lore: 'Fafner var en dvärg som tyckte så mycket om guld att han blev en drake. Nu ligger han på sin skatt och vill aldrig någonsin dela med sig.',
+  },
+  blackis: {
+    species: 'blackis',
+    name: 'Bläckis',
+    title: 'Tempelbläckfisken',
+    hp: 2300,
+    dmg: 15,
+    atkMs: 1900,
+    reach: 2,
+    speed: 2.2,
+    phases: [0.5],
+    phaseAdds: { species: 'manet', count: 2 },
+    moves: [
+      { move: 'pools', name: 'Bläck', every: 10000, first: 5000, warn: 1100, radius: 1.6, dmg: 9, linger: 8000, text: 'Han sprutar svart bläck som ligger kvar på golvet. Stå inte i bläcket!' },
+      { move: 'line', name: 'Tentakelsvep', every: 9000, first: 7000, warn: 1500, radius: 6, width: 1.8, dmg: 34, text: 'En lång tentakel slår ner i en rak linje. Gå åt sidan!' },
+    ],
+    yells: { pull: 'Blubb! Vem har spårat in sand i MITT fina tempel?', phase: ['Blubb blubb! Maneter, hjälp till!'], kill: 'Blubb!', death: 'Blubb… blubb… bluuubb…', wipe: 'Hihi! Åtta armar är bättre än två!' },
+    mini: true,
+    lore: 'En jättelik bläckfisk som håller rent i Havsormens tempel. Han blir väldigt arg när någon smutsar ner.',
+  },
+  jormungand: {
+    species: 'jormungand',
+    name: 'Jörmungandr',
+    title: 'Midgårdsormen',
+    hp: 4200,
+    dmg: 18,
+    atkMs: 2300,
+    reach: 2.6,
+    speed: 1.9,
+    phases: [0.66, 0.33],
+    phaseAdds: { species: 'sjodraug', count: 2 },
+    moves: [
+      { move: 'line', name: 'Svansslag', every: 8000, first: 4500, warn: 1500, radius: 8, width: 2, dmg: 42, text: 'Den väldiga svansen slår ner i en lång rak linje. Gå åt sidan!' },
+      { move: 'pull', name: 'Malström', every: 16000, first: 10000, warn: 2200, radius: 7, dmg: 18, text: 'Vattnet virvlar och drar alla nära ormen till honom. Akta er, för sedan kommer Gifteld!' },
+      { move: 'nova', name: 'Gifteld', every: 16000, first: 12500, warn: 2600, radius: 4.5, dmg: 44, interrupt: true, text: 'Ormen sprutar grönt gift runt sig. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring ut ur cirkeln!' },
+      { move: 'rain', name: 'Störtvåg', every: 12000, first: 6000, warn: 1600, radius: 1.6, count: 3, dmg: 30, phase: 1, text: 'Vågor störtar ner från taket där ni står. Flytta på er!' },
+    ],
+    yells: { pull: 'Sssså. Små människor i mitt tempel. Vet ni att jag når runt hela Midgård?', phase: ['Sjödraugar, ssstig upp!', 'Sssnart släpper jag min svans, och då skakar hela världen!'], kill: 'Ssslurp.', death: 'Ssss… tillbaka… till havet…', wipe: 'Havet vinner alltid till sssist.' },
+    lore: 'Jörmungandr är Midgårdsormen, Lokes son. Han är så lång att han ligger i havet runt hela världen och biter sig själv i svansen.',
+  },
+  spindeldrottning: {
+    species: 'spindeldrottning',
+    name: 'Spindeldrottningen',
+    title: 'Lundens väverska',
+    hp: 2500,
+    dmg: 15,
+    atkMs: 1900,
+    reach: 1.9,
+    speed: 2.5,
+    phases: [0.5],
+    phaseAdds: { species: 'jattespindel', count: 2 },
+    moves: [
+      { move: 'freeze', name: 'Spindelnät', block: 'spindelnat', every: 15000, first: 9000, warn: 900, radius: 1, dmg: 12, text: 'Hon spinner in någon i ett klibbigt nät. Slå sönder nätet för att rädda din vän!' },
+      { move: 'rain', name: 'Giftdroppar', every: 10000, first: 5000, warn: 1400, radius: 1.4, count: 2, dmg: 28, text: 'Gröna droppar faller från taket där ni står. Flytta på er!' },
+    ],
+    yells: { pull: 'Ssså fina små flugor som har flugit in i min lund!', phase: ['Mina barn! Middagen är serverad!'], kill: 'Insnärjd!', death: 'Mitt… vackra… nät…', wipe: 'Sov gott i mitt nät, små flugor.' },
+    mini: true,
+    lore: 'En jättelik spindel som har spunnit nät över hela Alvernas lund. Näten är starka som rep och glittrar i månljuset.',
+  },
+  nattmara: {
+    species: 'nattmara',
+    name: 'Nattmaran',
+    title: 'Drömmarnas skugga',
+    hp: 4400,
+    dmg: 18,
+    atkMs: 2200,
+    reach: 2.2,
+    speed: 2.1,
+    phases: [0.6, 0.3],
+    phaseAdds: { species: 'skuggalv', count: 2 },
+    moves: [
+      { move: 'nova', name: 'Mardröm', every: 15000, first: 7000, warn: 2600, radius: 7, dmg: 46, interrupt: true, text: 'Hon fyller salen med en mardröm. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
+      { move: 'pools', name: 'Skuggpölar', every: 11000, first: 5000, warn: 1200, radius: 1.5, dmg: 10, linger: 10000, text: 'Mörka pölar av skugga sprider sig på golvet. Stå inte i dem!' },
+      { move: 'mend', name: 'Drömsömn', every: 22000, first: 16000, warn: 3000, radius: 1, dmg: 0, heal: 0.1, phase: 1, interrupt: true, text: 'Hon somnar och drömmer sig frisk. Väck henne med Sköldslag, Stormsteg eller Isspjut!' },
+      { move: 'summon', name: 'Skuggor!', every: 18000, first: 4000, warn: 1500, radius: 0, count: 2, add: 'skuggalv', dmg: 0, phase: 2, text: 'Hon kallar fram skuggalver ur mörkret. Ta hand om dem snabbt!' },
+    ],
+    yells: { pull: 'Shhh… sov nu, små barn. Jag har så otäcka drömmar åt er!', phase: ['Vakna inte! Drömmen har bara börjat!', 'Skuggor, kom fram!'], kill: 'Sov så gott…', death: 'Nej… morgonen… kommer…', wipe: 'Sov gott! Hihihi…' },
+    lore: 'Nattmaran smyger in i drömmar och gör dem otäcka. Loke har gett henne makten över Alvernas lund, och nu har ljusalverna slutat lysa.',
+  },
+  skoll: {
+    species: 'skoll',
+    name: 'Sköll',
+    title: 'Solens jägare',
+    hp: 2700,
+    dmg: 16,
+    atkMs: 1700,
+    reach: 1.9,
+    speed: 2.8,
+    phases: [0.5],
+    phaseAdds: { species: 'ulv', count: 2 },
+    moves: [
+      { move: 'charge', name: 'Språng', every: 8000, first: 4000, warn: 1300, radius: 1.8, dmg: 36, text: 'Sköll tar sats och hoppar på någon av er. Hoppa undan från cirkeln!' },
+      { move: 'nova', name: 'Ylande', every: 14000, first: 9000, warn: 2400, radius: 6, dmg: 40, interrupt: true, text: 'Han ylar så att isen spricker. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
+    ],
+    yells: { pull: 'Grrr! Jag jagar solen över himlen varje dag. Er hinner jag ikapp!', phase: ['Flocken! Till mig!'], kill: 'Fångad!', death: 'Solen… kom undan… igen…', wipe: 'Ingen springer ifrån Sköll!' },
+    mini: true,
+    lore: 'Sköll är vargen som jagar solen över himlen. Han är snabb som vinden, men han har aldrig hunnit ikapp henne.',
+  },
+  fenrisulven: {
+    species: 'fenrisulven',
+    name: 'Fenrisulven',
+    title: 'Den bundne',
+    hp: 4800,
+    dmg: 19,
+    atkMs: 2100,
+    reach: 2.4,
+    speed: 2.4,
+    phases: [0.7, 0.4],
+    phaseAdds: { species: 'ulv', count: 2 },
+    moves: [
+      { move: 'charge', name: 'Käftarna', every: 9000, first: 5000, warn: 1400, radius: 2, dmg: 44, text: 'Han hoppar fram med gapet på vid gavel. Hoppa undan från cirkeln!' },
+      { move: 'cleave', name: 'Klorna', every: 9000, first: 8000, warn: 1300, radius: 4.2, arc: 100, dmg: 42, text: 'Han slår med klorna i en stor båge framför sig. Ställ dig bakom honom!' },
+      { move: 'summon', name: 'Flocken!', every: 16000, first: 3000, warn: 1500, radius: 0, count: 2, add: 'ulv', dmg: 0, phase: 1, text: 'Han kallar på sin flock. Ta hand om ulvarna snabbt!' },
+      { move: 'nova', name: 'Vinterylet', every: 15000, first: 5000, warn: 2800, radius: 8, dmg: 50, interrupt: true, phase: 2, text: 'Han ylar så att hela klyftan fryser. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
+    ],
+    yells: { pull: 'Loke har slitit av mina band! Nu är jag FRI!', phase: ['Flocken! Jakten börjar!', 'Inga band i världen kan hålla mig nu!'], kill: 'AOOOOO!', death: 'Gleipner… igen? Nåja… den var ju… mjuk…', wipe: 'Ingen binder Fenrisulven!' },
+    lore: 'Fenrisulven är Lokes jättelika varg. Gudarna band honom med Gleipner, ett band mjukt som silke, men Loke har släppt honom fri.',
+  },
+  lokesskugga: {
+    species: 'lokesskugga',
+    name: 'Lokes skugga',
+    title: 'En lögn i mörkret',
+    hp: 3000,
+    dmg: 17,
+    atkMs: 2000,
+    reach: 2,
+    speed: 2.3,
+    phases: [0.5],
+    phaseAdds: { species: 'skelett', count: 2 },
+    moves: [
+      { move: 'rain', name: 'Falska stjärnor', every: 10000, first: 5000, warn: 1500, radius: 1.5, count: 3, dmg: 34, text: 'Stjärnor som inte ens är riktiga faller ner där ni står. Flytta på er!' },
+      { move: 'nova', name: 'Hånskratt', every: 15000, first: 9000, warn: 2400, radius: 6, dmg: 42, interrupt: true, text: 'Skuggan skrattar så det ekar. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
+    ],
+    yells: { pull: 'Buh! Trodde ni att jag var Loke? Fel! Jag är bara hans skugga. Hihi!', phase: ['Kom fram, gamla benrangel!'], kill: 'Hihi! Lurad!', death: 'Men… jag är ju bara… en skugga… puff!', wipe: 'Hahaha! Ni slogs mot en skugga och förlorade!' },
+    mini: true,
+    lore: 'En skugga som Loke har trollat fram av en lögn. Den härmar allt han gör, fast lite sämre.',
+  },
+  loke: {
+    species: 'loke',
+    name: 'Loke',
+    title: 'Lögnernas fader',
+    hp: 6000,
+    dmg: 20,
+    atkMs: 2200,
+    reach: 2.2,
+    speed: 2.3,
+    phases: [0.8, 0.6, 0.4, 0.2],
+    phaseAdds: { species: 'isvarg', count: 2 },
+    // one move for every boss the family has beaten before, each from a later phase
+    moves: [
+      { move: 'cleave', name: 'Kungasvärdet', every: 9000, first: 5000, warn: 1300, radius: 3.6, arc: 100, dmg: 40, text: 'Han härmar Draugkungen och svingar ett svärd i en stor båge. Ställ dig bakom honom!' },
+      { move: 'nova', name: 'Snöstorm', every: 16000, first: 6000, warn: 2600, radius: 8, dmg: 40, interrupt: true, phase: 1, text: 'Han härmar Rimtursen och kallar på en snöstorm. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring långt bort!' },
+      { move: 'pools', name: 'Lavapölar', every: 12000, first: 8000, warn: 1200, radius: 1.6, dmg: 11, linger: 9000, phase: 2, text: 'Han härmar Surt, och lava väller upp under er. Flytta på er!' },
+      { move: 'mend', name: 'Lokes list', every: 22000, first: 16000, warn: 3000, radius: 1, dmg: 0, heal: 0.08, interrupt: true, phase: 2, text: 'Han låtsas sova och läker sig i smyg. Avbryt med Sköldslag, Stormsteg eller Isspjut!' },
+      { move: 'pull', name: 'Dödens famn', every: 15000, first: 9000, warn: 2200, radius: 7, dmg: 20, phase: 3, text: 'Han härmar Hel och drar alla nära sig. Akta er, för sedan kommer Helskriket!' },
+      { move: 'nova', name: 'Helskriket', every: 15000, first: 11500, warn: 2400, radius: 4, dmg: 44, interrupt: true, phase: 3, text: 'Han skriker som Hel. Avbryt med Sköldslag, Stormsteg eller Isspjut, eller spring ut ur cirkeln!' },
+      { move: 'line', name: 'Svansslag', every: 8000, first: 4500, warn: 1500, radius: 8, width: 2, dmg: 44, phase: 4, text: 'Han trollar fram Midgårdsormens svans, som slår ner i en lång rak linje. Gå åt sidan!' },
+    ],
+    yells: {
+      pull: 'Ni trodde Surt var farlig? Han var bara min hantlangare! Välkomna till min lilla bro. Hihi!',
+      phase: ['Brrr! Titta, nu är jag Rimtursen! Snöstorm!', 'Och nu är jag Surt! Akta tårna, det bränns!', 'Buuu! Jag är Hel! Kom hit och få en kram!', 'Sssså! Midgårdsormen har en svans. Nu har jag också en!'],
+      kill: 'Hoppsan! Var det jag som gjorde så?',
+      death: 'Ni… ni fuskade! Ingen besegrar Loke!… Nåja. Den här gången.',
+      wipe: 'Hahaha! Ska vi ta det en gång till?',
+    },
+    lore: 'Loke är en gud som älskar spratt och lögner. Han släppte loss Draugkungen, Rimtursen och Surt, och nu vill han starta Ragnarök. Men han tycker lite för mycket om att visa upp sig.',
+  },
 };
 
 // ---------------------------------------------------------------------------
 // The dungeons
 // ---------------------------------------------------------------------------
 
-export type DungeonId = 'draug' | 'frost' | 'surt';
-export const DUNGEON_IDS: readonly DungeonId[] = ['draug', 'frost', 'surt'];
+export type DungeonId = 'draug' | 'frost' | 'surt' | 'hel' | 'dvarg' | 'orm' | 'alv' | 'fenrir' | 'loke';
+/** In the order the saga visits them (an arch's variant out in the world is the index here). */
+export const DUNGEON_IDS: readonly DungeonId[] = ['draug', 'frost', 'surt', 'hel', 'dvarg', 'orm', 'alv', 'fenrir', 'loke'];
 export const isDungeonId = (s: unknown): s is DungeonId => typeof s === 'string' && (DUNGEON_IDS as readonly string[]).includes(s);
 
-export type SagaRoomKind = 'start' | 'pack' | 'rest' | 'mini' | 'treasure' | 'boss';
+/** A puzzle room has three plates on its floor; the way on towards the boss opens when they all light up. */
+export type SagaRoomKind = 'start' | 'pack' | 'rest' | 'mini' | 'treasure' | 'boss' | 'puzzle';
 
 export interface SagaRoom {
   x: number;
@@ -349,6 +625,8 @@ export interface SagaDungeonDef {
   boss: string;
   /** Things to put around the rooms (object kinds). */
   decor: string[];
+  /** The monsters here are Loke's illusions: their animals get variant 1 (drawn ghostly and see-through). */
+  illusions?: boolean;
 }
 
 export const DUNGEONS: Record<DungeonId, SagaDungeonDef> = {
@@ -460,6 +738,239 @@ export const DUNGEONS: Record<DungeonId, SagaDungeonDef> = {
     boss: 'surt',
     decor: ['saga_anvil', 'saga_brazier', 'saga_lavacrack', 'saga_brazier'],
   },
+  // Act II, Lokes list
+  hel: {
+    id: 'hel',
+    name: 'Helheim',
+    chapter: 5,
+    intro: 'Allt är grått och stilla. Lyktor svävar i dimman, och någonstans långt ner skäller en hund. Hel väntar längst in.',
+    portal: { area: 'a:-1,0', x: 30, y: 34 },
+    floor: 'mud',
+    bossFloor: 'crypt',
+    wall: 3,
+    ambient: [0.4, 0.55, 0.5],
+    // a long way down: from the gate at the top, back and forth to Hel's hall at the very bottom
+    rooms: [
+      { x: 26, y: 3, w: 11, h: 9, kind: 'start' },
+      { x: 4, y: 3, w: 14, h: 12, kind: 'pack', packs: [['gengangare', 'gengangare'], ['helhund', 'helhund']] },
+      { x: 4, y: 22, w: 14, h: 11, kind: 'pack', packs: [['benspindel', 'gengangare', 'gengangare'], ['helhund', 'helhund', 'benspindel']] },
+      { x: 24, y: 23, w: 8, h: 8, kind: 'rest' },
+      { x: 40, y: 17, w: 15, h: 14, kind: 'mini' },
+      { x: 44, y: 3, w: 11, h: 9, kind: 'treasure', packs: [['helhund', 'gengangare', 'benspindel']] },
+      { x: 42, y: 37, w: 17, h: 10, kind: 'pack', packs: [['gengangare', 'gengangare', 'benspindel'], ['helhund', 'helhund', 'helhund']], gated: true },
+      { x: 44, y: 51, w: 14, h: 10, kind: 'pack', packs: [['gengangare', 'benspindel', 'benspindel'], ['helhund', 'gengangare', 'gengangare']] },
+      { x: 30, y: 52, w: 8, h: 8, kind: 'rest' },
+      { x: 3, y: 38, w: 22, h: 22, kind: 'boss' },
+    ],
+    links: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [4, 6],
+      [6, 7],
+      [7, 8],
+      [8, 9],
+    ],
+    mini: 'garm',
+    boss: 'hel',
+    decor: ['saga_gravestone', 'saga_skullpile', 'saga_ghostlight', 'saga_deadtree'],
+  },
+  dvarg: {
+    id: 'dvarg',
+    name: 'Svartalfheims gruvor',
+    chapter: 6,
+    intro: 'Det knackar och klirrar i berget. Gruvlyktor lyser gult längs väggarna, och överallt glittrar det av guld.',
+    portal: { area: 'a:2,0', x: 30, y: 30 },
+    floor: 'gravel',
+    bossFloor: 'floor_stone',
+    wall: 4,
+    ambient: [0.6, 0.5, 0.35],
+    // two wings: down the left side of the mountain to the Iron Guard, then up the right one to the dragon's hoard
+    rooms: [
+      { x: 27, y: 3, w: 10, h: 9, kind: 'start' },
+      { x: 4, y: 4, w: 15, h: 11, kind: 'pack', packs: [['gruvtroll', 'guldbagge', 'guldbagge'], ['gruvtroll', 'gruvtroll']] },
+      { x: 4, y: 22, w: 14, h: 12, kind: 'pack', packs: [['stengolem', 'guldbagge'], ['guldbagge', 'guldbagge', 'guldbagge', 'gruvtroll']] },
+      { x: 6, y: 42, w: 9, h: 8, kind: 'rest' },
+      { x: 22, y: 45, w: 16, h: 15, kind: 'mini' },
+      { x: 23, y: 25, w: 11, h: 9, kind: 'treasure', packs: [['gruvtroll', 'gruvtroll', 'guldbagge']] },
+      { x: 45, y: 48, w: 15, h: 11, kind: 'pack', packs: [['stengolem', 'gruvtroll'], ['guldbagge', 'guldbagge', 'gruvtroll', 'gruvtroll']], gated: true },
+      { x: 51, y: 36, w: 8, h: 7, kind: 'rest' },
+      // three golden plates to press before the door to the hoard opens
+      { x: 37, y: 26, w: 12, h: 11, kind: 'puzzle', packs: [['stengolem', 'guldbagge', 'guldbagge']] },
+      { x: 41, y: 3, w: 20, h: 18, kind: 'boss' },
+    ],
+    links: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [4, 6],
+      [6, 7],
+      [7, 8],
+      [8, 9],
+    ],
+    mini: 'jarnvakten',
+    boss: 'fafner',
+    decor: ['saga_minecart', 'saga_goldpile', 'saga_dwarfstatue', 'saga_minelamp'],
+  },
+  orm: {
+    id: 'orm',
+    name: 'Havsormens tempel',
+    chapter: 7,
+    intro: 'Vatten droppar från taket och tången vajar fast det inte blåser. Långt in ringlar något stort, stort, stort.',
+    portal: { area: 'a:-2,0', x: 30, y: 30 },
+    floor: 'sand',
+    bossFloor: 'floor_stone',
+    wall: 5,
+    ambient: [0.35, 0.55, 0.7],
+    // a ring around a hub: round the temple's left side, into the octopus's hall in the middle, then out on the right
+    rooms: [
+      { x: 25, y: 51, w: 12, h: 9, kind: 'start' },
+      { x: 4, y: 47, w: 14, h: 12, kind: 'pack', packs: [['sjodraug', 'sjodraug'], ['jattekrabba', 'manet']] },
+      { x: 4, y: 26, w: 14, h: 12, kind: 'pack', packs: [['manet', 'manet', 'sjodraug'], ['jattekrabba', 'jattekrabba']] },
+      { x: 5, y: 5, w: 9, h: 8, kind: 'rest' },
+      { x: 20, y: 4, w: 16, h: 10, kind: 'pack', packs: [['sjodraug', 'sjodraug', 'manet'], ['jattekrabba', 'sjodraug', 'sjodraug']] },
+      { x: 24, y: 22, w: 16, h: 16, kind: 'mini' },
+      { x: 43, y: 4, w: 11, h: 9, kind: 'treasure', packs: [['jattekrabba', 'manet', 'manet']] },
+      { x: 46, y: 20, w: 15, h: 12, kind: 'pack', packs: [['sjodraug', 'sjodraug', 'jattekrabba'], ['manet', 'manet', 'sjodraug', 'sjodraug']], gated: true },
+      { x: 52, y: 35, w: 8, h: 6, kind: 'rest' },
+      { x: 40, y: 43, w: 21, h: 17, kind: 'boss' },
+    ],
+    links: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [5, 6],
+      [5, 7],
+      [7, 8],
+      [8, 9],
+    ],
+    mini: 'blackis',
+    boss: 'jormungand',
+    decor: ['saga_coral', 'saga_anchor', 'saga_seaweed', 'saga_pearl'],
+  },
+  alv: {
+    id: 'alv',
+    name: 'Alvernas lund',
+    chapter: 8,
+    intro: 'Svampar lyser lila i skymningen och spindelnät glittrar mellan träden. Det är vackert, men alldeles för tyst.',
+    portal: { area: 'a:1,-1', x: 30, y: 30 },
+    floor: 'moss',
+    bossFloor: 'grass',
+    wall: 6,
+    ambient: [0.45, 0.4, 0.65],
+    // a winding path: along the top of the grove, back through the middle, and along the bottom to the Night Mare
+    rooms: [
+      { x: 3, y: 4, w: 10, h: 9, kind: 'start' },
+      { x: 18, y: 3, w: 14, h: 11, kind: 'pack', packs: [['skuggalv', 'jattespindel'], ['svampvakt', 'skuggalv']] },
+      { x: 37, y: 3, w: 13, h: 11, kind: 'pack', packs: [['jattespindel', 'jattespindel', 'skuggalv'], ['svampvakt', 'svampvakt']] },
+      { x: 53, y: 4, w: 8, h: 8, kind: 'rest' },
+      { x: 45, y: 20, w: 15, h: 14, kind: 'mini' },
+      { x: 50, y: 41, w: 10, h: 9, kind: 'treasure', packs: [['skuggalv', 'skuggalv', 'jattespindel']] },
+      { x: 24, y: 21, w: 15, h: 11, kind: 'pack', packs: [['svampvakt', 'jattespindel', 'jattespindel'], ['skuggalv', 'skuggalv', 'svampvakt']], gated: true },
+      // three rune plates among the mushrooms
+      { x: 3, y: 20, w: 14, h: 13, kind: 'puzzle', packs: [['svampvakt', 'skuggalv', 'skuggalv']] },
+      { x: 4, y: 40, w: 9, h: 8, kind: 'rest' },
+      { x: 18, y: 39, w: 24, h: 21, kind: 'boss' },
+    ],
+    links: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [4, 6],
+      [6, 7],
+      [7, 8],
+      [8, 9],
+    ],
+    mini: 'spindeldrottning',
+    boss: 'nattmara',
+    decor: ['saga_glowshroom', 'saga_fairylight', 'saga_cobweb', 'saga_elfstatue'],
+  },
+  fenrir: {
+    id: 'fenrir',
+    name: 'Fenrisklyftan',
+    chapter: 9,
+    intro: 'Kall vind ylar genom klyftan. Tunga kedjor ligger slängda på isen, och de är alla sönderslitna.',
+    portal: { area: 'a:0,-2', x: 12, y: 44 },
+    floor: 'snow',
+    bossFloor: 'stone',
+    wall: 7,
+    ambient: [0.55, 0.6, 0.75],
+    // down into the chasm, back and forth, to the place where the wolf was once bound
+    rooms: [
+      { x: 4, y: 3, w: 11, h: 9, kind: 'start' },
+      { x: 21, y: 3, w: 15, h: 11, kind: 'pack', packs: [['ulv', 'ulv'], ['rimtroll', 'ulv']] },
+      { x: 44, y: 3, w: 16, h: 12, kind: 'pack', packs: [['ulv', 'ulv', 'ulv'], ['bergsjatte', 'rimtroll']] },
+      { x: 50, y: 21, w: 9, h: 8, kind: 'rest' },
+      { x: 26, y: 19, w: 16, h: 15, kind: 'mini' },
+      { x: 4, y: 20, w: 11, h: 9, kind: 'treasure', packs: [['rimtroll', 'ulv', 'ulv']] },
+      { x: 3, y: 36, w: 15, h: 11, kind: 'pack', packs: [['bergsjatte', 'ulv', 'ulv'], ['rimtroll', 'rimtroll']], gated: true },
+      { x: 5, y: 52, w: 8, h: 8, kind: 'rest' },
+      { x: 18, y: 48, w: 15, h: 12, kind: 'pack', packs: [['ulv', 'ulv', 'rimtroll'], ['bergsjatte', 'ulv']] },
+      { x: 37, y: 38, w: 24, h: 22, kind: 'boss' },
+    ],
+    links: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [4, 6],
+      [6, 7],
+      [7, 8],
+      [8, 9],
+    ],
+    mini: 'skoll',
+    boss: 'fenrisulven',
+    decor: ['saga_chain', 'saga_icefang', 'saga_wolfstatue', 'saga_bonepile'],
+  },
+  loke: {
+    id: 'loke',
+    name: 'Bifrost',
+    chapter: 10,
+    intro: 'Regnbågsbron glittrar över stjärnhimlen. Allt ser lite för fint ut, och någon fnissar bakom er…',
+    portal: { area: 'a:1,3', x: 30, y: 24 },
+    floor: 'bifrost',
+    bossFloor: 'bifrost',
+    wall: 8,
+    ambient: [0.7, 0.6, 0.85],
+    // an arc like a rainbow: up the left side, over the top past Loke's shadow, through the hall of mirrors and down to Loke
+    rooms: [
+      { x: 3, y: 50, w: 11, h: 10, kind: 'start' },
+      { x: 4, y: 33, w: 13, h: 11, kind: 'pack', packs: [['skelett', 'skelett', 'gengangare'], ['isvarg', 'isvarg']] },
+      { x: 5, y: 15, w: 14, h: 11, kind: 'pack', packs: [['eldhund', 'eldhund'], ['gengangare', 'gengangare', 'skelett']] },
+      { x: 6, y: 3, w: 8, h: 7, kind: 'rest' },
+      { x: 22, y: 3, w: 15, h: 13, kind: 'mini' },
+      { x: 24, y: 24, w: 11, h: 9, kind: 'treasure', packs: [['eldhund', 'eldhund', 'skelett']] },
+      { x: 42, y: 3, w: 14, h: 11, kind: 'pack', packs: [['gengangare', 'gengangare', 'eldhund'], ['isvarg', 'isvarg', 'skelett']], gated: true },
+      // the hall of mirrors: three plates, and only the real ones light up
+      { x: 44, y: 19, w: 15, h: 12, kind: 'puzzle', packs: [['eldhund', 'gengangare', 'skelett']] },
+      { x: 50, y: 35, w: 8, h: 6, kind: 'rest' },
+      { x: 26, y: 43, w: 24, h: 17, kind: 'boss' },
+    ],
+    links: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [4, 6],
+      [6, 7],
+      [7, 8],
+      [8, 9],
+    ],
+    mini: 'lokesskugga',
+    boss: 'loke',
+    decor: ['saga_rainbowshard', 'saga_mirror', 'saga_starlamp', 'saga_runepillar'],
+    illusions: true,
+  },
 };
 
 export const sagaKey = (id: DungeonId): string => `saga:${id}`;
@@ -517,6 +1028,58 @@ export const SAGA_LOOT: Record<string, SagaLoot> = {
       { item: 'mount_sleipner', chance: 0.1 },
     ],
   },
+  // Act II, Lokes list
+  garm: { coins: [40, 70], stars: 0, gear: [{ item: 'shirt_helrustning', weight: 2 }, { item: 'garmklo', weight: 2 }, { item: 'offhand_helskold', weight: 2 }, { item: 'healing_potion', weight: 4 }] },
+  hel: {
+    coins: [120, 180],
+    stars: 1,
+    gear: [{ item: 'helsvard', weight: 3 }, { item: 'garmklo', weight: 2 }, { item: 'hat_helhjalm', weight: 3 }, { item: 'shirt_helrustning', weight: 2 }, { item: 'amulet_helring', weight: 3 }, { item: 'offhand_helskold', weight: 2 }],
+    rare: [{ item: 'pet_garmvalp', chance: 0.2 }],
+  },
+  jarnvakten: { coins: [45, 75], stars: 0, gear: [{ item: 'shirt_dvargbrynja', weight: 2 }, { item: 'gruvhacka', weight: 2 }, { item: 'offhand_dvargskold', weight: 2 }, { item: 'healing_potion', weight: 3 }, { item: 'styrkedryck', weight: 2 }] },
+  fafner: {
+    coins: [130, 200],
+    stars: 1,
+    gear: [{ item: 'fafnerstand', weight: 3 }, { item: 'gruvhacka', weight: 2 }, { item: 'hat_dvarghjalm', weight: 3 }, { item: 'shirt_dvargbrynja', weight: 2 }, { item: 'amulet_andvaranaut', weight: 3 }, { item: 'offhand_dvargskold', weight: 2 }, { item: 'offhand_runbok', weight: 2 }],
+    rare: [{ item: 'pet_guldbagge', chance: 0.2 }],
+  },
+  blackis: { coins: [50, 80], stars: 0, gear: [{ item: 'shirt_fjallrustning', weight: 2 }, { item: 'korallspjut', weight: 1 }, { item: 'offhand_koger', weight: 2 }, { item: 'healing_potion', weight: 3 }, { item: 'styrkedryck', weight: 2 }] },
+  jormungand: {
+    coins: [140, 220],
+    stars: 1,
+    gear: [{ item: 'korallspjut', weight: 3 }, { item: 'stormbage', weight: 3 }, { item: 'hat_sjokrona', weight: 3 }, { item: 'shirt_fjallrustning', weight: 2 }, { item: 'offhand_perlemorskold', weight: 2 }, { item: 'amulet_perla', weight: 3 }],
+    rare: [
+      { item: 'pet_lysmanet', chance: 0.2 },
+      { item: 'mount_havshast', chance: 0.12 },
+    ],
+  },
+  spindeldrottning: { coins: [55, 85], stars: 0, gear: [{ item: 'shirt_alvmantel', weight: 2 }, { item: 'alvklinga', weight: 1 }, { item: 'offhand_alvlykta', weight: 1 }, { item: 'healing_potion', weight: 3 }, { item: 'styrkedryck', weight: 2 }] },
+  nattmara: {
+    coins: [150, 230],
+    stars: 1,
+    gear: [{ item: 'alvklinga', weight: 3 }, { item: 'manstav', weight: 3 }, { item: 'hat_alvkrona', weight: 3 }, { item: 'shirt_alvmantel', weight: 2 }, { item: 'offhand_alvlykta', weight: 2 }, { item: 'amulet_alvsten', weight: 3 }],
+    rare: [
+      { item: 'pet_alvljus', chance: 0.2 },
+      { item: 'mount_jattehjort', chance: 0.12 },
+    ],
+  },
+  skoll: { coins: [60, 90], stars: 0, gear: [{ item: 'shirt_ulvpals', weight: 2 }, { item: 'tyrsyxa', weight: 1 }, { item: 'offhand_tyrshandske', weight: 1 }, { item: 'healing_potion', weight: 3 }, { item: 'styrkedryck', weight: 2 }] },
+  fenrisulven: {
+    coins: [160, 250],
+    stars: 1,
+    gear: [{ item: 'fenristand', weight: 3 }, { item: 'tyrsyxa', weight: 3 }, { item: 'hat_ulvhuva', weight: 3 }, { item: 'shirt_ulvpals', weight: 2 }, { item: 'offhand_tyrshandske', weight: 2 }, { item: 'amulet_gleipnir', weight: 3 }],
+    rare: [
+      { item: 'pet_ulvvalp', chance: 0.22 },
+      { item: 'mount_fenrisulv', chance: 0.12 },
+    ],
+  },
+  lokesskugga: { coins: [70, 100], stars: 0, gear: [{ item: 'shirt_lokesmantel', weight: 1 }, { item: 'offhand_lokesmask', weight: 1 }, { item: 'bifrostbage', weight: 1 }, { item: 'healing_potion', weight: 3 }, { item: 'styrkedryck', weight: 3 }] },
+  loke: {
+    coins: [250, 400],
+    stars: 3,
+    gear: [{ item: 'lokesstav', weight: 3 }, { item: 'bifrostbage', weight: 3 }, { item: 'heimdallshorn', weight: 2 }, { item: 'hat_lokeshorn', weight: 3 }, { item: 'shirt_lokesmantel', weight: 2 }, { item: 'offhand_lokesmask', weight: 2 }, { item: 'amulet_brisingamen', weight: 3 }],
+    rare: [{ item: 'mount_lokeshast', chance: 0.25 }],
+  },
 };
 
 /** The treasure chest in each dungeon's side room. */
@@ -524,6 +1087,12 @@ export const SAGA_TREASURE: Record<DungeonId, SagaLoot> = {
   draug: { coins: [25, 45], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'old_coin', weight: 3 }, { item: 'gold', weight: 2 }] },
   frost: { coins: [35, 60], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'crystal', weight: 3 }, { item: 'gem', weight: 1 }] },
   surt: { coins: [45, 80], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'fire_crystal', weight: 3 }, { item: 'obsidian', weight: 2 }] },
+  hel: { coins: [50, 80], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'old_coin', weight: 3 }, { item: 'crystal', weight: 2 }, { item: 'styrkedryck', weight: 1 }] },
+  dvarg: { coins: [55, 90], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'gold', weight: 3 }, { item: 'gem', weight: 2 }, { item: 'styrkedryck', weight: 2 }] },
+  orm: { coins: [60, 95], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'pearl', weight: 3 }, { item: 'shell', weight: 2 }, { item: 'styrkedryck', weight: 2 }] },
+  alv: { coins: [65, 100], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'fairy_dust', weight: 3 }, { item: 'glowshroom', weight: 2 }, { item: 'styrkedryck', weight: 2 }] },
+  fenrir: { coins: [70, 110], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'crystal', weight: 3 }, { item: 'fur', weight: 2 }, { item: 'styrkedryck', weight: 2 }] },
+  loke: { coins: [80, 130], stars: 0, gear: [{ item: 'healing_potion', weight: 3 }, { item: 'star_crystal', weight: 3 }, { item: 'gem', weight: 2 }, { item: 'styrkedryck', weight: 2 }] },
 };
 
 /** Loot only found in the dungeons (registered as items in data.ts). */
@@ -531,10 +1100,17 @@ export interface SagaItemDef {
   id: string;
   name: string;
   rarity: Rarity;
-  kind: 'weapon' | 'hat' | 'shirt' | 'pet' | 'mount' | 'potion' | 'decor' | 'quest';
-  /** Weapons: the farm tool it works as, and its glow. */
+  kind: 'weapon' | 'offhand' | 'amulet' | 'hat' | 'shirt' | 'pet' | 'mount' | 'potion' | 'decor' | 'quest';
+  /** Weapons: the farm tool it works as, and its glow (a colour, or 'rainbow' for one that shifts through them all). */
   tool?: 'sword' | 'axe' | 'hammer' | 'bow';
   glow?: string;
+  /**
+   * Gear: what it adds while equipped. power: a fraction more damage and healing; hp: health on top of the class's;
+   * armor: a fraction of every hit taken away (all pieces together at most ARMOR_CAP).
+   */
+  stats?: { power?: number; hp?: number; armor?: number };
+  /** Gear: the classes it suits best ("Passar: …"); it gives a little more power to them, but anyone may use it. */
+  classes?: ClassId[];
   /** Clothes: drawing style and colour. */
   style?: string;
   color?: string;
@@ -584,6 +1160,75 @@ export const SAGA_ITEMS: SagaItemDef[] = [
   // the saga's rewards for home
   { id: 'solruna', name: 'Solrunan', rarity: 'epic', kind: 'decor', glow: '#ffd23f', text: 'Runstenen som håller vintern borta. Den lyser som solen.' },
   { id: 'yggdrasil', name: 'Yggdrasils skott', rarity: 'legendary', kind: 'decor', glow: '#9cff8a', text: 'Ett litet skott av Världsträdet, som glittrar i mörkret.' },
+  // Act II: weapons from Lokes list (each suits some classes best, but anyone can use anything)
+  { id: 'helsvard', name: 'Helsvärd', rarity: 'rare', kind: 'weapon', tool: 'sword', glow: '#9cffc8', classes: ['vaktare', 'krigare'], text: 'Ett blekt svärd som lyser som en lykta i dimman.' },
+  { id: 'garmklo', name: 'Garms klo', rarity: 'rare', kind: 'weapon', tool: 'axe', glow: '#c8ff6a', classes: ['krigare'], text: 'En yxa formad som en stor hundklo. Voff!' },
+  { id: 'gruvhacka', name: 'Dvärgarnas hacka', rarity: 'rare', kind: 'weapon', tool: 'hammer', glow: '#ffcf6a', classes: ['krigare', 'vaktare'], text: 'Den hittar guld alldeles av sig själv.' },
+  { id: 'fafnerstand', name: 'Fafners tand', rarity: 'epic', kind: 'weapon', tool: 'sword', glow: '#ffd23f', classes: ['vaktare', 'krigare'], text: 'En draktand, vass som ett svärd och varm som en brasa.' },
+  { id: 'korallspjut', name: 'Korallspjutet', rarity: 'epic', kind: 'weapon', tool: 'sword', glow: '#ff8a9a', classes: ['vaktare', 'krigare'], text: 'En treudd av rosa korall. Den luktar lite hav.' },
+  { id: 'stormbage', name: 'Stormbågen', rarity: 'epic', kind: 'weapon', tool: 'bow', glow: '#7fd0ff', classes: ['magiker'], text: 'Pilarna susar som havsvinden.' },
+  { id: 'alvklinga', name: 'Alvklingan', rarity: 'epic', kind: 'weapon', tool: 'sword', glow: '#d6a8ff', classes: ['krigare', 'vaktare'], text: 'Lätt som en fjäder och blank som månen.' },
+  { id: 'manstav', name: 'Månstaven', rarity: 'epic', kind: 'weapon', tool: 'hammer', glow: '#e8d8ff', classes: ['helare', 'magiker'], text: 'En stav med en liten måne i toppen. Den lyser mest på natten.' },
+  { id: 'fenristand', name: 'Fenristanden', rarity: 'legendary', kind: 'weapon', tool: 'sword', glow: '#cfe8ff', classes: ['vaktare', 'krigare'], text: 'Fenrisulvens tappade mjölktand. Den är större än du!' },
+  { id: 'tyrsyxa', name: 'Tyrs yxa', rarity: 'legendary', kind: 'weapon', tool: 'axe', glow: '#ffe8a0', classes: ['krigare'], text: 'Guden Tyr var modigast av alla. Hans yxa är det också.' },
+  { id: 'lokesstav', name: 'Lokes stav', rarity: 'legendary', kind: 'weapon', tool: 'hammer', glow: '#7affb0', classes: ['magiker', 'helare'], text: 'Den byter färg när ingen tittar.' },
+  { id: 'bifrostbage', name: 'Bifrostbågen', rarity: 'legendary', kind: 'weapon', tool: 'bow', glow: '#ffb0f0', classes: ['magiker'], text: 'Varje pil lämnar en liten regnbåge efter sig.' },
+  { id: 'heimdallshorn', name: 'Heimdalls horn', rarity: 'legendary', kind: 'weapon', tool: 'hammer', glow: 'rainbow', classes: ['helare'], text: 'När det blåses hörs det i alla nio världar.' },
+  // offhands: a shield, a book or a quiver in the other hand
+  { id: 'offhand_helskold', name: 'Helsköld', rarity: 'uncommon', kind: 'offhand', stats: { armor: 0.06 }, text: 'En rund sköld, kall som en vinternatt.' },
+  { id: 'offhand_runbok', name: 'Runboken', rarity: 'rare', kind: 'offhand', stats: { power: 0.06 }, classes: ['helare', 'magiker'], text: 'Full av runor. Några av dem kittlar.' },
+  { id: 'offhand_dvargskold', name: 'Dvärgsköld', rarity: 'rare', kind: 'offhand', stats: { armor: 0.1 }, classes: ['vaktare'], text: 'Smidd av dvärgar, så den håller för vad som helst.' },
+  { id: 'offhand_koger', name: 'Snäckkogret', rarity: 'rare', kind: 'offhand', stats: { power: 0.06 }, classes: ['magiker', 'helare'], text: 'Ett koger av snäckskal som aldrig blir tomt.' },
+  { id: 'offhand_perlemorskold', name: 'Pärlemorskölden', rarity: 'epic', kind: 'offhand', stats: { armor: 0.12, hp: 15 }, text: 'Den skimrar i alla regnbågens färger.' },
+  { id: 'offhand_alvlykta', name: 'Alvlyktan', rarity: 'epic', kind: 'offhand', stats: { power: 0.08, hp: 10 }, text: 'En liten lykta med en alv inuti. Ibland vinkar hon.' },
+  { id: 'offhand_tyrshandske', name: 'Tyrs handske', rarity: 'legendary', kind: 'offhand', stats: { armor: 0.14, power: 0.04 }, text: 'Guden Tyrs järnhandske. Den är lite för stor, men det gör inget.' },
+  { id: 'offhand_lokesmask', name: 'Lokes mask', rarity: 'legendary', kind: 'offhand', stats: { power: 0.1, hp: 10 }, text: 'En mask som ler. Ibland blinkar den åt dig.' },
+  // amulets
+  { id: 'amulet_vegvisir', name: 'Vegvisir', rarity: 'uncommon', kind: 'amulet', stats: { hp: 10 }, text: 'En runa som visar vägen hem, var du än är.' },
+  { id: 'amulet_helring', name: 'Hels ring', rarity: 'rare', kind: 'amulet', stats: { hp: 20 }, text: 'En ring av svart sten. Den är alltid lite kall.' },
+  { id: 'amulet_andvaranaut', name: 'Andvaranaut', rarity: 'epic', kind: 'amulet', stats: { power: 0.08 }, text: 'Fafners ring. Den vill gärna ha mer guld.' },
+  { id: 'amulet_perla', name: 'Havets pärla', rarity: 'epic', kind: 'amulet', stats: { hp: 25, armor: 0.04 }, text: 'Håll den mot örat, så hör du havet.' },
+  { id: 'amulet_alvsten', name: 'Alvstenen', rarity: 'epic', kind: 'amulet', stats: { power: 0.06, hp: 15 }, text: 'En sten som lyser som en liten stjärna.' },
+  { id: 'amulet_gleipnir', name: 'Gleipner', rarity: 'legendary', kind: 'amulet', stats: { armor: 0.1, hp: 20 }, text: 'Bandet som höll Fenrisulven, gjort av kattens steg och fiskens andetag.' },
+  { id: 'amulet_brisingamen', name: 'Brisingamen', rarity: 'legendary', kind: 'amulet', stats: { power: 0.1, hp: 20 }, text: 'Gudinnan Frejas halsband. Det glittrar som tusen solar.' },
+  // Act II clothes
+  { id: 'hat_helhjalm', name: 'Helhjälm', rarity: 'rare', kind: 'hat', style: 'nasal', color: '#7f8f88', text: 'En gråblek hjälm från Helheim.' },
+  { id: 'shirt_helrustning', name: 'Helrustning', rarity: 'rare', kind: 'shirt', style: 'chainmail', color: '#5f7068', text: 'Rustning som lyser svagt grönt i mörkret.' },
+  { id: 'hat_dvarghjalm', name: 'Dvärghjälm', rarity: 'rare', kind: 'hat', style: 'nasal', color: '#c8a050', text: 'En stadig hjälm av mässing, smidd av dvärgar.' },
+  { id: 'shirt_dvargbrynja', name: 'Dvärgbrynja', rarity: 'rare', kind: 'shirt', style: 'chainmail', color: '#d0a040', text: 'En brynja av små guldringar. Tung, men så fin!' },
+  { id: 'hat_sjokrona', name: 'Sjökrona', rarity: 'epic', kind: 'hat', style: 'crown_sea', color: '#5fd0c8', text: 'En krona av korall och snäckor.' },
+  { id: 'shirt_fjallrustning', name: 'Fjällrustning', rarity: 'epic', kind: 'shirt', style: 'tabard', color: '#3a9ab0', text: 'Rustning av glänsande fiskfjäll.' },
+  { id: 'hat_alvkrona', name: 'Alvkrona', rarity: 'epic', kind: 'hat', style: 'elfcrown', color: '#d8c8ff', text: 'En smal krona av silver och månsken.' },
+  { id: 'shirt_alvmantel', name: 'Alvmantel', rarity: 'epic', kind: 'shirt', style: 'cloak', color: '#7a5ac8', text: 'En mantel som glittrar som stjärnhimlen.' },
+  { id: 'hat_ulvhuva', name: 'Ulvhuva', rarity: 'epic', kind: 'hat', style: 'wolfhood', color: '#9aa4b0', text: 'En varm luva med ulvöron.' },
+  { id: 'shirt_ulvpals', name: 'Ulvpäls', rarity: 'epic', kind: 'shirt', style: 'bearpelt', color: '#a8b0bc', text: 'En grå päls som håller vintern borta.' },
+  { id: 'hat_lokeshorn', name: 'Lokes horn', rarity: 'legendary', kind: 'hat', style: 'horns', color: '#3ac878', text: 'Två små gröna horn. Nu ser du lite busig ut.' },
+  { id: 'shirt_lokesmantel', name: 'Lokes mantel', rarity: 'legendary', kind: 'shirt', style: 'cloak', color: '#2a8a58', text: 'En grön mantel som byter mönster när du snurrar.' },
+  // Act II pets and mounts
+  { id: 'pet_garmvalp', name: 'Garmvalp', rarity: 'epic', kind: 'pet', species: 'garmvalp', text: 'En liten helhundsvalp med två huvuden som båda vill bli klappade.' },
+  { id: 'pet_guldbagge', name: 'Guldbagge', rarity: 'epic', kind: 'pet', species: 'guldbagge_tam', text: 'En liten guldbagge som surrar och glittrar.' },
+  { id: 'pet_lysmanet', name: 'Lysmanet', rarity: 'epic', kind: 'pet', species: 'manet_tam', text: 'En liten manet som svävar efter dig och lyser som en nattlampa.' },
+  { id: 'pet_alvljus', name: 'Alvljus', rarity: 'epic', kind: 'pet', species: 'alvljus_fe', text: 'En pytteliten ljusalv som fladdrar runt dig.' },
+  { id: 'pet_ulvvalp', name: 'Ulvvalp', rarity: 'epic', kind: 'pet', species: 'ulvvalp', text: 'En grå ulvvalp som ylar när den är glad.' },
+  { id: 'mount_havshast', name: 'Havshäst', rarity: 'legendary', kind: 'mount', species: 'havshast', text: 'En häst med fenor och en man av sjöskum.' },
+  { id: 'mount_jattehjort', name: 'Jättehjort', rarity: 'legendary', kind: 'mount', species: 'jattehjort', text: 'En vit hjort med lysande horn, stor som en häst.' },
+  { id: 'mount_fenrisulv', name: 'Vinterulven', rarity: 'legendary', kind: 'mount', species: 'fenrisulv_ridbar', text: 'En jättelik ulv som låter dig rida på ryggen. Snäll mot dig, i alla fall.' },
+  { id: 'mount_lokeshast', name: 'Lokes föl', rarity: 'legendary', kind: 'mount', species: 'lokeshast', text: 'Ett åttabent föl, Sleipners lilla kusin. Det springer åt alla håll på en gång.' },
+  // Act II: what the villagers ask for
+  { id: 'glimmersten', name: 'Glimmersten', rarity: 'common', kind: 'quest', text: 'En sten som glittrar som guld. Smed-Stina vill ha den.' },
+  { id: 'alvdagg', name: 'Alvdagg', rarity: 'common', kind: 'quest', text: 'Dagg från Alvernas lund som lyser i mörkret. Fru Lind vill ha den.' },
+  { id: 'krabbklo', name: 'Krabbklo', rarity: 'common', kind: 'quest', text: 'En stor krabbklo. Pizza-Pino vill ha den.' },
+  { id: 'ulvtand', name: 'Ulvtand', rarity: 'common', kind: 'quest', text: 'En tand från en ulv. Fiskar-Sven gör fiskekrokar av dem.' },
+  { id: 'bifrostskarva', name: 'Bifrostskärva', rarity: 'common', kind: 'quest', text: 'En glittrande skärva av regnbågsbron. Lilla Elsa samlar på dem.' },
+  // a drink that makes you stronger in a fight
+  { id: 'styrkedryck', name: 'Styrkedryck', rarity: 'common', kind: 'potion', text: 'Dricks i en strid: du slår hårdare en liten stund.' },
+  // Act II: the saga's rewards for home
+  { id: 'hels_lykta', name: 'Hels lykta', rarity: 'epic', kind: 'decor', glow: '#9cffc8', text: 'En lykta från Helheim som lyser grönt och snällt.' },
+  { id: 'dvargstaty', name: 'Dvärgstaty', rarity: 'epic', kind: 'decor', glow: '#ffcf6a', text: 'En liten dvärg av guld som vinkar.' },
+  { id: 'ormtand', name: 'Ormtand', rarity: 'epic', kind: 'decor', glow: '#7fd0ff', text: 'En tand från Midgårdsormen, stor som en dörr.' },
+  { id: 'alvlykta', name: 'Ljusalvernas lykta', rarity: 'epic', kind: 'decor', glow: '#d6a8ff', text: 'Ljusalvernas tack. Den lyser lila hela natten.' },
+  { id: 'fenrislanka', name: 'Fenrislänken', rarity: 'legendary', kind: 'decor', glow: '#cfe8ff', text: 'En länk från kedjan som höll Fenrisulven.' },
+  { id: 'bifrostbit', name: 'Bit av Bifrost', rarity: 'legendary', kind: 'decor', glow: 'rainbow', text: 'En bit av regnbågsbron som skimrar i alla färger.' },
 ];
 export const sagaItem = (id: string): SagaItemDef | undefined => SAGA_ITEMS.find((i) => i.id === id);
 
@@ -601,6 +1246,11 @@ export interface SagaChapter {
   done: string[];
   /** One line for the quest tracker. */
   goal: string;
+  /**
+   * A task out in the world (Act II), fought in hero mode: beat `count` roaming `target` monsters (they live in
+   * biome `where`). Counted in SagaProgress.quests['field:<chapter index>']. A chapter is done when all its parts are.
+   */
+  field?: { target: string; count: number; where: string; text: string };
   reward: { coins: number; stars: number; item?: string; title?: string };
 }
 
@@ -653,6 +1303,103 @@ export const SAGA_CHAPTERS: SagaChapter[] = [
     goal: 'Besegra Surt i Surts smedja (vulkanen sydost om gården)',
     reward: { coins: 300, stars: 5, item: 'yggdrasil', title: 'Världsträdets väktare' },
   },
+  // Act II, Lokes list
+  {
+    dungeon: null,
+    title: 'Viskningar i mörkret',
+    tell: [
+      'Du är tillbaka! Jag har inte sovit gott. Om nätterna viskar Yggdrasils skott hemma hos er.',
+      'I drömmen hörde jag ett skratt. Det var Loke, den listige! Det var han som släppte loss Draugkungen, Rimtursen och Surt.',
+      'Nu vandrar hans tjänare runt i Midgård. Tryck på hjälteknappen (🧑‍🌾 → din klass) så bär du dina vapen och besvärjelser ute i världen.',
+      'Jaga bort åtta vandrardraugar i skogen, så ska jag se vad mer drömmen vill säga.',
+    ],
+    done: ['Bra gjort! Skogen är lugn igen. Ta den här runan, Vegvisir. Den hjälper dig att hitta hem.', 'Men drömmen fortsätter… Loke har öppnat porten till Helheim.'],
+    goal: 'Jaga bort 8 vandrardraugar i skogen (tryck på hjälteknappen först)',
+    field: { target: 'vandrardraug', count: 8, where: 'skog', text: 'Jaga bort 8 vandrardraugar i skogen' },
+    reward: { coins: 60, stars: 2, item: 'amulet_vegvisir' },
+  },
+  {
+    dungeon: 'hel',
+    title: 'Hels port',
+    tell: [
+      'Loke har en dotter som heter Hel. Hon är drottning i dödsriket Helheim, och porten dit ligger i träsket väster om gården.',
+      'Mosspökar har krupit upp ur träsket. Jaga bort sex av dem, och gå sedan ner till Hel.',
+      'Var inte rädda, Hel är inte så farlig som hon tror. Men akta er när hon drar er till sig!',
+    ],
+    done: ['Hel har gått tillbaka till sin tron och lovar att stanna där. Här är en lykta från Helheim.', 'Men Loke är inte klar. Jag hör hammarslag och dvärgsånger i mina drömmar…'],
+    goal: 'Jaga bort 6 mosspökar i träsket och besegra Hel i Helheim (träsket väster om gården)',
+    field: { target: 'mosspoke', count: 6, where: 'trask', text: 'Jaga bort 6 mosspökar i träsket väster om gården' },
+    reward: { coins: 150, stars: 3, item: 'hels_lykta', title: 'Helfarare' },
+  },
+  {
+    dungeon: 'dvarg',
+    title: 'Dvärgarnas guld',
+    tell: [
+      'I bergen öster om byn ligger Svartalfheims gamla gruvor. Dvärgarna som bodde där flyttade för länge sedan.',
+      'Nu har draken Fafner flyttat in, och Loke har lovat honom allt guld i världen. Till och med guldet i era fickor!',
+      'Jaga först bort sex gruvtroll i bergen. I gruvan finns tre guldplattor: tryck på alla tre, så öppnas dörren till drakens skattkammare.',
+    ],
+    done: ['Fafner sover gott på en mycket mindre guldhög nu. Ta den här dvärgstatyn som tack!', 'Men vågorna har blivit så stora… Något väldigt långt rör sig i havet.'],
+    goal: 'Jaga bort 6 gruvtroll i bergen och besegra Fafner i Svartalfheims gruvor (bergen öster om byn)',
+    field: { target: 'gruvtroll', count: 6, where: 'berg', text: 'Jaga bort 6 gruvtroll i bergen öster om byn' },
+    reward: { coins: 180, stars: 3, item: 'dvargstaty', title: 'Dvärgavän' },
+  },
+  {
+    dungeon: 'orm',
+    title: 'Havsormen',
+    tell: [
+      'Vid stranden långt i väster har ett gammalt tempel stigit upp ur havet.',
+      'Där bor Jörmungandr, Midgårdsormen, Lokes son. Han är så lång att han ligger runt hela världen!',
+      'Om han släpper sin svans skakar hela Midgård. Jaga bort sex sjödraugar på stranden, och gå sedan in i templet.',
+    ],
+    done: ['Ormen har bitit sig i svansen igen, och havet är lugnt. Här är en tand han tappade.', 'Men nu drömmer alla så otäckt… Det kommer från Alvernas lund.'],
+    goal: 'Jaga bort 6 sjödraugar på stranden och besegra Jörmungandr i Havsormens tempel (stranden två kartor väster om gården)',
+    field: { target: 'sjodraug', count: 6, where: 'strand', text: 'Jaga bort 6 sjödraugar på stranden två kartor väster om gården' },
+    reward: { coins: 200, stars: 4, item: 'ormtand', title: 'Ormtämjare' },
+  },
+  {
+    dungeon: 'alv',
+    title: 'Skuggan över Alfheim',
+    tell: [
+      'Har du sovit dåligt på sistone? Det har alla. Det är Nattmaran!',
+      'Hon har tagit över Alvernas lund i svampskogen nordost om gården, och ljusalverna har slutat lysa.',
+      'Jaga bort sex skuggalver i svampskogen. Inne i lunden finns tre runplattor bland svamparna: tänd alla tre, så öppnas vägen.',
+    ],
+    done: ['Ljusalverna lyser igen, och i natt får alla sova gott. De skickar den här lyktan som tack.', 'Men nu ylar det i norr… Loke har släppt Fenrisulven fri!'],
+    goal: 'Jaga bort 6 skuggalver i svampskogen och besegra Nattmaran i Alvernas lund (svampskogen nordost om gården)',
+    field: { target: 'skuggalv', count: 6, where: 'svamp', text: 'Jaga bort 6 skuggalver i svampskogen nordost om gården' },
+    reward: { coins: 220, stars: 4, item: 'alvlykta', title: 'Ljusbärare' },
+  },
+  {
+    dungeon: 'fenrir',
+    title: 'Fenrisulven',
+    tell: [
+      'Fenrisulven är Lokes största barn. Gudarna band honom med Gleipner, ett band som är mjukt som silke men starkare än järn.',
+      'Nu har Loke slitit sönder bandet! Ulven bor i Fenrisklyftan, på isen två kartor norr om gården, en bit från Frostjättens borg.',
+      'Jaga bort sex isvargar på isen först. Sedan får ni binda Fenrisulven igen. Ta med alla ni kan!',
+    ],
+    done: ['Fenrisulven är bunden igen, och han ser faktiskt ganska nöjd ut. Här är en länk från hans kedja.', 'Nu vet jag var Loke är. Han väntar på Bifrost, regnbågsbron vid rymdbasen.'],
+    goal: 'Jaga bort 6 isvargar på isen och besegra Fenrisulven i Fenrisklyftan (isen två kartor norr om gården)',
+    field: { target: 'isvarg', count: 6, where: 'is', text: 'Jaga bort 6 isvargar på isen två kartor norr om gården' },
+    reward: { coins: 260, stars: 5, item: 'fenrislanka', title: 'Ulvbindare' },
+  },
+  {
+    dungeon: 'loke',
+    title: 'Ragnarök',
+    tell: [
+      'Nu gäller det. Loke vill starta Ragnarök, slutet på alla världar, och han börjar på Bifrost.',
+      'Hans eldimpar springer runt vid vulkanen sydost om gården. Jaga bort sex av dem, och res sedan till rymdbasen söder om gården. Där går regnbågsbron upp mot himlen.',
+      'Loke kan se ut som alla ni har besegrat. Men kom ihåg: det är bara lögner, och ni är riktiga hjältar!',
+    ],
+    done: [
+      'Ni gjorde det! Världsträdet Yggdrasil är räddat igen, och Ragnarök får vänta!',
+      'Ta den här biten av Bifrost. Den lyser i alla regnbågens färger, precis som ni.',
+      'Och Loke? Han sitter bunden med ett starkt rep och fnissar för sig själv. Han är fast… tills nästa gång.',
+    ],
+    goal: 'Jaga bort 6 eldimpar vid vulkanen och besegra Loke på Bifrost (rymdbasen söder om gården)',
+    field: { target: 'eldimp', count: 6, where: 'vulkan', text: 'Jaga bort 6 eldimpar vid vulkanen sydost om gården' },
+    reward: { coins: 500, stars: 8, item: 'bifrostbit', title: 'Ragnaröks hjälte' },
+  },
 ];
 
 /** Völvan Sigrun, who tells the saga, stands by the Kämpastenen on the city square. */
@@ -665,8 +1412,91 @@ export const SAGA_PORTAL = { w: 3, h: 2 };
 /** The tile in front of a dungeon's arch (where you come out again). */
 export const portalFront = (p: { x: number; y: number }): { x: number; y: number } => ({ x: p.x + 1, y: p.y + 2 });
 
-/** Better weapons hit harder: the best one in the bag counts. */
+/** Better weapons hit harder: the equipped one counts (in saves from before gear, the best one in the bag). */
 export const RARITY_POWER: Record<Rarity, number> = { common: 1, uncommon: 1.05, rare: 1.1, epic: 1.2, legendary: 1.3 };
+
+// ---------------------------------------------------------------------------
+// Gear and hero levels (Act II): a weapon, an offhand and an amulet, and Hjältenivå 1–10
+// ---------------------------------------------------------------------------
+
+export type GearSlot = 'weapon' | 'offhand' | 'amulet';
+export const GEAR_SLOTS: readonly GearSlot[] = ['weapon', 'offhand', 'amulet'];
+export const isGearSlot = (s: unknown): s is GearSlot => typeof s === 'string' && (GEAR_SLOTS as readonly string[]).includes(s);
+/** The slot a dungeon item is worn in (null: it is not gear). */
+export const gearSlotOf = (itemId: string): GearSlot | null => {
+  const k = sagaItem(itemId)?.kind;
+  return k === 'weapon' || k === 'offhand' || k === 'amulet' ? k : null;
+};
+
+/** Every hero level above the first gives this much more power and health. */
+export const LEVEL_BONUS = 0.03;
+/** All the gear's armor together takes away at most this much of a hit. */
+export const ARMOR_CAP = 0.4;
+/** A piece that suits your class gives this much more power. */
+export const CLASS_FIT = 1.05;
+/** The experience needed for each level (index = level - 1). */
+export const XP_LEVELS: readonly number[] = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700];
+export const MAX_LEVEL = XP_LEVELS.length;
+/** Experience for each thing a hero does. */
+export const SAGA_XP = { mob: 5, add: 2, mini: 40, boss: 100, quest: 30, chapter: 100, field: 3 } as const;
+
+/** The level a hero with this much experience has (1–10). */
+export const xpLevel = (xp: number): number => {
+  let level = 1;
+  while (level < MAX_LEVEL && xp >= XP_LEVELS[level]!) level++;
+  return level;
+};
+/** A player's hero level (1 for anyone without experience yet). */
+export const heroLevel = (prog: SagaProgress | undefined): number => xpLevel(prog?.xp ?? 0);
+/** Experience at the start of this level and the next one (next is null at the top level). */
+export const levelSpan = (xp: number): { level: number; from: number; next: number | null } => {
+  const level = xpLevel(xp);
+  return { level, from: XP_LEVELS[level - 1]!, next: XP_LEVELS[level] ?? null };
+};
+
+export interface GearStats {
+  /** Damage and healing multiplier. */
+  power: number;
+  /** Health added to the class's. */
+  hp: number;
+  /** Fraction of every hit taken away (0..ARMOR_CAP). */
+  armor: number;
+}
+
+/** The gear a player has on (in saves from before gear: the best weapon in the bag, as it used to work). */
+export function gearOf(p: PlayerState): Partial<Record<GearSlot, string>> {
+  if (p.saga?.gear) return p.saga.gear;
+  let best: SagaItemDef | undefined;
+  for (const s of p.inventory) {
+    const d = s ? sagaItem(s.item) : undefined;
+    if (d?.kind === 'weapon' && (!best || RARITY_POWER[d.rarity] > RARITY_POWER[best.rarity])) best = d;
+  }
+  return best ? { weapon: best.id } : {};
+}
+
+/** What a player's gear and level give them in a fight. */
+export function gearStats(p: PlayerState): GearStats {
+  const gear = gearOf(p);
+  const cls = p.saga?.cls;
+  const weapon = gear.weapon ? sagaItem(gear.weapon) : undefined;
+  let power = 0;
+  let hp = 0;
+  let armor = 0;
+  let fits = false;
+  for (const slot of GEAR_SLOTS) {
+    const d = gear[slot] ? sagaItem(gear[slot]!) : undefined;
+    if (!d) continue;
+    power += d.stats?.power ?? 0;
+    hp += d.stats?.hp ?? 0;
+    armor += d.stats?.armor ?? 0;
+    if (cls && d.classes?.includes(cls)) fits = true;
+  }
+  const lvl = 1 + LEVEL_BONUS * (heroLevel(p.saga) - 1);
+  return { power: (weapon ? RARITY_POWER[weapon.rarity] : 1) * (1 + power) * (fits ? CLASS_FIT : 1) * lvl, hp, armor: Math.min(ARMOR_CAP, armor) };
+}
+
+/** A fighter's full health: the class's, the gear's on top, and a little more for every level. */
+export const fighterMax = (p: PlayerState, cls: ClassId): number => Math.round((CLASSES[cls].hp + gearStats(p).hp) * (1 + LEVEL_BONUS * (heroLevel(p.saga) - 1)));
 
 // ---------------------------------------------------------------------------
 // The villagers' quests: two for each dungeon, once Völvan has told its chapter
@@ -775,6 +1605,173 @@ export const SAGA_QUESTS: SagaQuest[] = [
     count: 5,
     reward: { coins: 90, stars: 2, item: 'healing_potion', count: 3 },
   },
+  // Act II, Lokes list
+  {
+    id: 'saga_gengangare',
+    npc: 'elsa',
+    dungeon: 'hel',
+    title: 'Spöken under sängen',
+    tell: ['Jag har sett ett spöke! Ett vitt lakan med en lykta, som svävade förbi mitt fönster!', 'Det kom från Helheim. Kan du jaga bort åtta gengångare, så jag vågar släcka lampan?'],
+    done: ['Nu är det bara min nalle under sängen. Tack, du är modigast i hela världen!'],
+    goal: 'Besegra 8 gengångare i Helheim',
+    kind: 'kill',
+    target: 'gengangare',
+    count: 8,
+    reward: { coins: 100, stars: 2 },
+  },
+  {
+    id: 'saga_helhund',
+    npc: 'greta',
+    dungeon: 'hel',
+    title: 'Hundarna i dimman',
+    tell: ['Hönsen vill inte värpa längre. Om nätterna ylar helhundarna nere i träsket.', 'Jaga bort sex av dem, lilla vän, så får hönsen sova i lugn och ro.'],
+    done: ['Tack! I morse låg det tolv ägg i redet. Här, ta några läkedrycker också.'],
+    goal: 'Besegra 6 helhundar i Helheim',
+    kind: 'kill',
+    target: 'helhund',
+    count: 6,
+    reward: { coins: 100, stars: 2, item: 'healing_potion', count: 3 },
+  },
+  {
+    id: 'saga_glimmer',
+    npc: 'stina',
+    dungeon: 'dvarg',
+    title: 'Glimmer till smedjan',
+    tell: ['Gruvtrollen bär på glimmersten, den finaste sten en smed kan önska sig!', 'Ta med sex stycken, från trollen i gruvan eller ute i bergen, så smider jag något fint.'],
+    done: ['Så de glittrar! Här har du styrkedrycker, de gör dig stark som en dvärg.'],
+    goal: 'Samla 6 glimmerstenar från gruvtrollen',
+    kind: 'collect',
+    target: 'glimmersten',
+    count: 6,
+    from: ['gruvtroll'],
+    chance: 0.6,
+    reward: { coins: 110, stars: 2, item: 'styrkedryck', count: 2 },
+  },
+  {
+    id: 'saga_guldbagge',
+    npc: 'bo',
+    dungeon: 'dvarg',
+    title: 'Baggar i mjölet',
+    tell: ['Någon har varit i mitt mjöl! Det är fullt av små gula fotspår.', 'Det är guldbaggarna från gruvan. De älskar vetemjöl! Jaga bort åtta av dem, är du snäll.'],
+    done: ['Mjölet är rent igen. I morgon bakar jag guldgula bullar, och du får den första!'],
+    goal: 'Besegra 8 guldbaggar i Svartalfheims gruvor',
+    kind: 'kill',
+    target: 'guldbagge',
+    count: 8,
+    reward: { coins: 110, stars: 2 },
+  },
+  {
+    id: 'saga_krabbklo',
+    npc: 'pino',
+    dungeon: 'orm',
+    title: 'Pizza frutti di mare',
+    tell: ['Mamma mia! Jag vill göra en havspizza, men alla krabbor är för små.', 'Jättekrabborna i Havsormens tempel har stora klor. Ta med fem, så bjuder jag på pizza!'],
+    done: ['Perfetto! Det här blir världens godaste pizza. Här har du läkedrycker också.'],
+    goal: 'Samla 5 krabbklor från jättekrabborna i Havsormens tempel',
+    kind: 'collect',
+    target: 'krabbklo',
+    count: 5,
+    from: ['jattekrabba'],
+    chance: 0.6,
+    reward: { coins: 120, stars: 2, item: 'healing_potion', count: 3 },
+  },
+  {
+    id: 'saga_sjodraug',
+    npc: 'sven',
+    dungeon: 'orm',
+    title: 'Tång på kroken',
+    tell: ['Varje gång jag kastar ut kroken fastnar den i en sjödraug!', 'Jaga bort åtta av dem, så jag kan fiska fisk i stället för skelett.'],
+    done: ['Nu nappar det igen, och inte ett enda ben! Här, för besväret.'],
+    goal: 'Besegra 8 sjödraugar i Havsormens tempel',
+    kind: 'kill',
+    target: 'sjodraug',
+    count: 8,
+    reward: { coins: 120, stars: 2 },
+  },
+  {
+    id: 'saga_alvdagg',
+    npc: 'lind',
+    dungeon: 'alv',
+    title: 'Dagg som lyser',
+    tell: ['I Alvernas lund finns dagg som lyser i mörkret. Skuggalverna har tagit allt!', 'Om du hämtar fem droppar alvdagg, kan mina rosor lysa på natten.'],
+    done: ['Titta, de lyser redan! Min trädgård blir den finaste i hela byn.'],
+    goal: 'Samla 5 alvdagg från skuggalverna',
+    kind: 'collect',
+    target: 'alvdagg',
+    count: 5,
+    from: ['skuggalv'],
+    chance: 0.6,
+    reward: { coins: 130, stars: 3 },
+  },
+  {
+    id: 'saga_spindlar',
+    npc: 'greta',
+    dungeon: 'alv',
+    title: 'Trassligt garn',
+    tell: ['Jag stickar en tröja åt dig, men någon har trasslat in allt mitt garn i spindelnät!', 'Det är jättespindlarna från Alvernas lund. Jaga bort sex av dem, så kan jag sticka färdigt.'],
+    done: ['Nu går stickorna fort igen. Här, ta styrkedryckerna. Och tröjan blir klar till jul!'],
+    goal: 'Besegra 6 jättespindlar i Alvernas lund',
+    kind: 'kill',
+    target: 'jattespindel',
+    count: 6,
+    reward: { coins: 130, stars: 3, item: 'styrkedryck', count: 2 },
+  },
+  {
+    id: 'saga_ulvtand',
+    npc: 'sven',
+    dungeon: 'fenrir',
+    title: 'Krokar av tänder',
+    tell: ['Vet du vad som gör de bästa fiskekrokarna? Ulvtänder!', 'Ulvarna i Fenrisklyftan tappar dem när de slåss. Ta med fem, så får du en del av fångsten.'],
+    done: ['Tack! Med de här krokarna får jag kanske upp en guldfisk.'],
+    goal: 'Samla 5 ulvtänder från ulvarna i Fenrisklyftan',
+    kind: 'collect',
+    target: 'ulvtand',
+    count: 5,
+    from: ['ulv'],
+    chance: 0.6,
+    reward: { coins: 140, stars: 3, item: 'healing_potion', count: 3 },
+  },
+  {
+    id: 'saga_rimtroll',
+    npc: 'stina',
+    dungeon: 'fenrir',
+    title: 'Frusen ässja',
+    tell: ['Min ässja har frusit till is! Det är rimtrollen som andas på den om nätterna.', 'Jaga bort fem rimtroll i Fenrisklyftan, så får elden brinna igen.'],
+    done: ['Elden sprakar igen! Här har du styrkedrycker, varma från ugnen.'],
+    goal: 'Besegra 5 rimtroll i Fenrisklyftan',
+    kind: 'kill',
+    target: 'rimtroll',
+    count: 5,
+    reward: { coins: 140, stars: 3, item: 'styrkedryck', count: 3 },
+  },
+  {
+    id: 'saga_bifrost',
+    npc: 'elsa',
+    dungeon: 'loke',
+    title: 'Regnbågsbitar',
+    tell: ['Jag samlar på fina saker! Nu vill jag ha bitar av en riktig regnbåge.', 'Lokes trollerier tappar bifrostskärvor när de går sönder. Ta med fem, snälla snälla!'],
+    done: ['Åh! Nu har jag en hel regnbåge i min låda. Du är bäst!'],
+    goal: 'Samla 5 bifrostskärvor från Lokes trollerier',
+    kind: 'collect',
+    target: 'bifrostskarva',
+    count: 5,
+    from: ['skelett', 'isvarg', 'eldhund', 'gengangare'],
+    chance: 0.4,
+    reward: { coins: 150, stars: 3 },
+  },
+  {
+    id: 'saga_salt',
+    npc: 'bo',
+    dungeon: 'loke',
+    title: 'Salt i bullarna',
+    tell: ['Någon har bytt allt mitt socker mot salt! Bullarna smakar havsvatten.', 'Det luktar Loke lång väg. Hans skugga smyger runt på Bifrost. Besegra den, så slutar busfröt.'],
+    done: ['Sockret är tillbaka! Lokes skugga hade gömt det i en strumpa. Här, ta en bulle. Den är söt nu.'],
+    goal: 'Besegra Lokes skugga på Bifrost',
+    kind: 'kill',
+    target: 'lokesskugga',
+    count: 1,
+    reward: { coins: 150, stars: 3, item: 'healing_potion', count: 3 },
+  },
 ];
 export const sagaQuest = (id: string): SagaQuest | undefined => SAGA_QUESTS.find((q) => q.id === id);
 
@@ -795,6 +1792,16 @@ export interface SagaProgress {
   done: string[];
   /** Dungeon loot this player has had: pets, mounts, clothes and weapons come once each while there are new ones. */
   found: string[];
+  /** What the hero wears in a fight (item ids, taken out of the bag while equipped). Missing in saves from before Act II. */
+  gear?: Partial<Record<GearSlot, string>>;
+  /** Walking the world as the class: spells on the keys, the weapon drawn, the hero outfit on. */
+  hero?: boolean;
+  /** The clothes swapped in and out by the hero switch (the hero outfit starts as the class's own). */
+  farmOutfit?: Outfit;
+  heroOutfit?: Outfit;
+  /** Hero experience, and the level it gives (Hjältenivå 1–10, see XP_LEVELS). */
+  xp?: number;
+  level?: number;
 }
 
 export const newSagaProgress = (): SagaProgress => ({ chapter: 0, heard: false, cleared: [], titles: [], quests: {}, done: [], found: [] });
@@ -862,13 +1869,17 @@ export interface SagaFighter {
 /** A boss's attack on its way down (shown on the ground), or burning ground that stays a while. */
 export interface SagaZone {
   id: string;
-  shape: 'circle' | 'cone';
-  /** Centre (cones: the tip) in px, radius in tiles, cone direction (radians) and width (degrees). */
+  shape: 'circle' | 'cone' | 'line';
+  /**
+   * Centre (cones and lines: where they start, at the boss) in px; radius in tiles (a line: its length); the
+   * direction (radians) of a cone or a line; a cone's width (degrees) and a line's width (tiles).
+   */
   x: number;
   y: number;
   r: number;
   dir?: number;
   arc?: number;
+  w?: number;
   /** When it lands (server ms); burning ground lasts until `until` and hurts `dmg` a second. */
   at: number;
   until?: number;
@@ -899,6 +1910,10 @@ export interface SagaInstance {
   bossDown: boolean;
   /** Chests: object id -> the players who have opened it. */
   looted: Record<number, string[]>;
+  /** A puzzle room's plates (tiles; lit when someone has stood on them), the gate they open, and whether it is open. */
+  plates: { x: number; y: number; lit: boolean }[];
+  puzzleGate: { x: number; y: number }[];
+  puzzleOpen: boolean;
   /** Everyone has fallen: the party gets up at the last rest stone at this time. */
   wipeAt?: number;
   /** When the last player left (the dungeon starts over after SAGA_RESET_MS). */

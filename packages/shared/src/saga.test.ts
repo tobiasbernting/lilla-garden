@@ -121,7 +121,7 @@ describe('dungeon maps', () => {
       expect(near(before, { x: Math.floor(mini.x / TILE), y: Math.floor(mini.y / TILE) })).toBe(true);
       expect(near(before, inst.rests[0]!)).toBe(true);
       expect(near(before, { x: Math.floor(boss.x / TILE), y: Math.floor(boss.y / TILE) })).toBe(false);
-      for (const g of inst.gate) {
+      for (const g of [...inst.gate, ...inst.puzzleGate]) {
         const o = objectAt(w, g.x, g.y)!;
         delete w.occupancy[`${g.x},${g.y}`];
         delete w.objects[o.id];
@@ -143,8 +143,8 @@ describe('dungeon maps', () => {
     const { world } = family();
     DUNGEON_IDS.forEach((id, variant) => {
       const a = getArea(world, DUNGEONS[id].portal.area)!;
-      const arch = Object.values(a.objects).find((o) => o.kind === 'saga_portal')!;
-      expect(arch.variant ?? 0).toBe(variant);
+      const arch = Object.values(a.objects).find((o) => o.kind === 'saga_portal' && (o.variant ?? 0) === variant)!;
+      expect(arch).toBeDefined();
       const front = portalFront(arch);
       expect(isSolidForPlayer(a, front.x, front.y)).toBe(false);
       expect(reach(a, front).size).toBeGreaterThan(400);

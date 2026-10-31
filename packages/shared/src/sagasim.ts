@@ -335,11 +335,17 @@ const nearNpc = (farm: WorldState, p: PlayerState, npcId: string): boolean => {
   return Math.hypot(st.x - p.x, st.y - p.y) <= 4 * TILE;
 };
 
-/** Is the goal of the chapter Völvan has told done? */
+/** Where a chapter's task out in the world is counted (SagaProgress.quests). */
+export const fieldKey = (chapter: number): string => `field:${chapter}`;
+/** How far a player has got with the task out in the world of the chapter Völvan is on. */
+export const fieldCount = (prog: SagaProgress): number => prog.quests[fieldKey(prog.chapter)] ?? 0;
+
+/** Is the goal of the chapter Völvan has told done? Every part of it: the task out in the world and the dungeon. */
 export const chapterDone = (prog: SagaProgress): boolean => {
   const ch = SAGA_CHAPTERS[prog.chapter];
   if (!ch) return false;
-  return ch.dungeon ? prog.cleared.includes(ch.dungeon) : !!prog.cls;
+  if (!ch.dungeon && !ch.field) return !!prog.cls;
+  return (!ch.dungeon || prog.cleared.includes(ch.dungeon)) && (!ch.field || fieldCount(prog) >= ch.field.count);
 };
 
 /** Talking to Völvan: hear the next chapter, or hand in the one you have done. */
@@ -937,7 +943,7 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
       const prog = progressOf(p);
       if (!prog.cleared.includes(h.inst.id)) {
         prog.cleared.push(h.inst.id);
-        bump(p, h.inst.id === 'draug' ? 'sagaDraug' : h.inst.id === 'frost' ? 'sagaFrost' : 'sagaSurt', 1, out);
+        bump(p, CLEARED_STAT[h.inst.id], 1, out);
       }
       names.push(p.name);
       out.push({ t: 'banner', to: p.id, area: h.key, text: fmt(T.sagaBossDown, { boss: boss.name }), sub: fmt(T.sagaCleared, { dungeon: d.name }), kind: 'cleared' });
@@ -946,6 +952,9 @@ function mobDown(h: Here, m: SagaMob, ctx: SimCtx, out: Change[]): void {
   }
   for (const p of party) out.push(playerChange(p));
 }
+
+/** The achievement stat for clearing each dungeon. */
+const CLEARED_STAT: Record<DungeonId, string> = { draug: 'sagaDraug', frost: 'sagaFrost', surt: 'sagaSurt', hel: 'sagaHel', dvarg: 'sagaDvarg', orm: 'sagaOrm', alv: 'sagaAlv', fenrir: 'sagaFenrir', loke: 'sagaLoke' };
 
 /** Kill quests count the monster; collect quests may find what the villager wants on it. */
 function questCredit(h: Here, p: PlayerState, species: string, ctx: SimCtx, out: Change[]): void {
