@@ -898,6 +898,8 @@ export const RALLY_COURSE_NAMES: Record<string, string> = {
   ice: 'Isbanan',
   beach: 'Stranden',
   city: 'Staden',
+  meadow: 'Ängen',
+  mountain: 'Fjället',
 };
 
 /** Daily quest text templates. {n} and {item} are filled in. */

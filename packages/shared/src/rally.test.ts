@@ -207,7 +207,7 @@ describe('races', () => {
   it('pays a solo race, keeps the best time, gives a medal and damage only with damage on', () => {
     const { world, p } = setup(0);
     const rules = { ...defaultRules(), course: 'forest' as const, laps: 1, damage: false };
-    const t1 = 82_000;
+    const t1 = 62_000;
     const ch = raceSolo(world, p.id, rules, 1, t1, 55, ctx);
     const prize = racePrize(cleanRules(rules), 1, 4);
     expect(p.coins).toBe(prize);
@@ -221,17 +221,17 @@ describe('races', () => {
     expect(p.achievements).toContain('rally_1');
 
     // slower: the best stays; with damage on, the dents stay too
-    raceSolo(world, p.id, { ...rules, damage: true }, 3, 90_000, 55, ctx);
+    raceSolo(world, p.id, { ...rules, damage: true }, 3, 72_000, 55, ctx);
     expect(garageOf(p).best['forest:1']).toBe(t1);
     expect(car.damage).toBe(55);
     expect(car.wins).toBe(1);
     // a report of fewer dents does not mend the car: that is the garage's job
-    raceSolo(world, p.id, { ...rules, damage: true }, 3, 90_000, 20, ctx);
+    raceSolo(world, p.id, { ...rules, damage: true }, 3, 72_000, 20, ctx);
     expect(car.damage).toBe(55);
     // faster: a new record
-    const ch3 = raceSolo(world, p.id, rules, 2, 70_000, 0, ctx);
-    expect(garageOf(p).best['forest:1']).toBe(70_000);
-    expect(toasts(ch3).some((t) => t.includes(fmtRaceTime(70_000)))).toBe(true);
+    const ch3 = raceSolo(world, p.id, rules, 2, 58_000, 0, ctx);
+    expect(garageOf(p).best['forest:1']).toBe(58_000);
+    expect(toasts(ch3).some((t) => t.includes(fmtRaceTime(58_000)))).toBe(true);
     expect(fmtRaceTime(62_345)).toBe('1:02.3');
   });
 
