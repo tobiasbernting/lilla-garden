@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   // servers from the environment
   const ice = iceProvider(process.env);
   console.log(`voice: ${ice.describe()}`);
-  const game = new Game(store, { seasonOverride: seasonEnv, voice: { policy: () => (access ? access.voicePolicy() : 'open'), ice: ice.servers } });
+  const game = new Game(store, { seasonOverride: seasonEnv, voice: { policy: () => (access ? access.voicePolicy() : 'open'), ice: ice.servers }, maxPlayers: access ? () => access!.maxPlayers() : undefined });
   await game.start();
   const clientDist = findClientDist();
   // ADMIN_PORT: the parent page gets its own listener (publish it only where the internet can't reach, e.g. a

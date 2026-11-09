@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Access, withinHours } from './access.ts';
-import { MemoryAccessStore } from './db/accessStore.ts';
+import { Access, withinHours, type AccessSettings } from './access.ts';
+import { MemoryAccessStore, type AccessStore } from './db/accessStore.ts';
 import { newTotpSecret, totpCode, verifyTotp } from './totp.ts';
 
 const PW = 'correct horse battery';
@@ -11,6 +11,32 @@ const make = (now = { t: Date.UTC(2026, 9, 29, 12, 0) }) => {
 };
 
 describe('Access', () => {
+  it('holds 20 characters until the parent says otherwise, and keeps the new limit', async () => {
+    // a store that keeps the settings, like Postgres does
+    let saved: AccessSettings | null = null;
+    const store: AccessStore = {
+      load: async () => ({ devices: [], invites: [], settings: saved, log: [] }),
+      saveSettings: async (st) => {
+        saved = structuredClone(st);
+      },
+      saveDevice: async () => {},
+      deleteDevice: async () => {},
+      saveInvite: async () => {},
+      deleteInvite: async () => {},
+      log: async () => {},
+    };
+    const access = new Access(store, { parentPassword: PW });
+    expect(access.maxPlayers()).toBe(20);
+    expect(await access.setMaxPlayers(30, 'ip')).toBe(true);
+    expect(access.maxPlayers()).toBe(30);
+    for (const bad of [0, -1, 2.5, Number.NaN, 101]) expect(await access.setMaxPlayers(bad, 'ip')).toBe(false);
+    expect(access.maxPlayers()).toBe(30);
+    expect(access.log.at(-1)).toMatchObject({ event: 'max-players', detail: 'högst 30 karaktärer' });
+    const again = new Access(store, { parentPassword: PW });
+    await again.load();
+    expect(again.maxPlayers()).toBe(30);
+  });
+
   it('refuses short parent passwords', () => {
     expect(() => new Access(new MemoryAccessStore(), { parentPassword: 'short' })).toThrow();
   });

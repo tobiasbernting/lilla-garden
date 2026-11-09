@@ -21,7 +21,7 @@ import {
   sagaSnapshot,
   cleanChat,
   setWeather,
-  MAX_PLAYERS,
+  DEFAULT_MAX_PLAYERS,
   NPCS,
   TICK_HZ,
   applyMove,
@@ -102,6 +102,8 @@ export interface GameOptions {
   autoStart?: boolean;
   /** Röstprat: who may use voice (default everyone, as on a home network) and the STUN/TURN servers (default none). */
   voice?: { policy?: () => VoicePolicy; ice?: () => Promise<IceServer[]> };
+  /** How many characters the server holds (the parent page's setting; default DEFAULT_MAX_PLAYERS). */
+  maxPlayers?: () => number;
 }
 
 /** How long an offline player may stay in the cave before being carried out. */
@@ -274,8 +276,18 @@ export class Game {
     return Object.values(this.world.players).map((p) => ({ id: p.id, name: p.name, appearance: p.appearance, outfit: p.outfit }));
   }
 
+  /** How many characters the server holds. */
+  maxPlayers(): number {
+    return this.opts.maxPlayers?.() ?? DEFAULT_MAX_PLAYERS;
+  }
+
+  /** No room for another character. */
+  full(): boolean {
+    return Object.keys(this.world.players).length >= this.maxPlayers();
+  }
+
   createPlayer(name: string, appearance: Appearance, shirt?: string): PlayerSummary | null {
-    if (Object.keys(this.world.players).length >= MAX_PLAYERS) return null;
+    if (this.full()) return null;
     const p = createPlayer(this.world, name, appearance, shirt);
     this.pending.push({ t: 'player', id: p.id, player: p });
     this.dispatchPending();

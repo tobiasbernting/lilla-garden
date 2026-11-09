@@ -20,7 +20,10 @@ export const DAY_LENGTH_MS = 10 * 60 * 1000; // one game day = 10 real minutes
 export const TICK_HZ = 20;
 export const PLAYER_SPEED = 64; // px per second
 export const RIDE_SPEED_MUL = 1.8; // on horseback
-export const MAX_PLAYERS = 8;
+/** How many characters a server holds when the parent page has not said otherwise (every character ever made counts). */
+export const DEFAULT_MAX_PLAYERS = 20;
+/** The most the parent page may set. */
+export const MAX_PLAYERS_LIMIT = 100;
 export const HOTBAR_SIZE = 8;
 export const BACKPACK_SIZE = 24;
 export const INVENTORY_SIZE = HOTBAR_SIZE + BACKPACK_SIZE;

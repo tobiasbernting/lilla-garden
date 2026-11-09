@@ -4,7 +4,7 @@
 // in with a password (and optionally a code from an authenticator app). Rules on top: world closed / family only /
 // open to guests, and play hours.
 import crypto from 'node:crypto';
-import type { VoicePolicy } from '../../shared/src/index.ts';
+import { DEFAULT_MAX_PLAYERS, MAX_PLAYERS_LIMIT, type VoicePolicy } from '../../shared/src/index.ts';
 import type { AccessStore } from './db/accessStore.ts';
 import { verifyTotp } from './totp.ts';
 
@@ -63,6 +63,8 @@ export interface AccessSettings {
   mode: AccessMode;
   /** Röstprat: nobody, family devices, or guests too (missing in settings saved before it existed = family). */
   voice?: VoicePolicy;
+  /** How many characters the server holds (missing = DEFAULT_MAX_PLAYERS). */
+  maxPlayers?: number;
   /** Play hours, 'HH:MM' in Swedish time; both null = any time */
   from: string | null;
   to: string | null;
@@ -301,6 +303,21 @@ export class Access {
     await this.store.saveSettings(this.settings);
     await this.record('voice', { off: 'röstprat av', family: 'röstprat för familjen', open: 'röstprat för familj och gäster' }[policy], ip);
     this.onChange();
+  }
+
+  /** How many characters the server holds. */
+  maxPlayers(): number {
+    return this.settings.maxPlayers ?? DEFAULT_MAX_PLAYERS;
+  }
+
+  /** Sets the character limit; false when it is not a whole number from 1 to MAX_PLAYERS_LIMIT. */
+  async setMaxPlayers(n: number, ip: string): Promise<boolean> {
+    if (!Number.isInteger(n) || n < 1 || n > MAX_PLAYERS_LIMIT) return false;
+    this.settings.maxPlayers = n;
+    await this.store.saveSettings(this.settings);
+    await this.record('max-players', `högst ${n} karaktärer`, ip);
+    this.onChange();
+    return true;
   }
 
   async setHours(from: string | null, to: string | null, ip: string): Promise<boolean> {

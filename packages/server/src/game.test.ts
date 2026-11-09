@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TICK_HZ, TILE, VILLAGE_KEY, addItem, areaKey, enterCave, getArea, landmarkOfKind, npcState, objectDef, placeIn, type Change, type ServerMsg } from '../../shared/src/index.ts';
+import { DEFAULT_MAX_PLAYERS, TICK_HZ, TILE, VILLAGE_KEY, addItem, areaKey, enterCave, getArea, landmarkOfKind, npcState, objectDef, placeIn, type Change, type ServerMsg } from '../../shared/src/index.ts';
 import { Game, type Link } from './game.ts';
 import { MemoryStore } from './db/store.ts';
 
@@ -87,11 +87,29 @@ describe('Game', () => {
     await game.stop();
   });
 
-  it('caps the number of characters', async () => {
+  it('caps the number of characters at 20 by default', async () => {
     const game = new Game(new MemoryStore(), { autoStart: false });
     await game.start();
-    for (let i = 0; i < 8; i++) expect(game.createPlayer(`P${i}`, { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })).not.toBeNull();
-    expect(game.createPlayer('P9', { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })).toBeNull();
+    expect(game.maxPlayers()).toBe(DEFAULT_MAX_PLAYERS);
+    for (let i = 0; i < DEFAULT_MAX_PLAYERS; i++) expect(game.createPlayer(`P${i}`, { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })).not.toBeNull();
+    expect(game.full()).toBe(true);
+    expect(game.createPlayer('One more', { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' })).toBeNull();
+  });
+
+  it("follows the parent page's limit, read each time a character is made", async () => {
+    let max = 2;
+    const game = new Game(new MemoryStore(), { autoStart: false, maxPlayers: () => max });
+    await game.start();
+    const look = { skin: '#f1c9a5', hair: '#5a3a1e', hairStyle: 'short' };
+    expect(game.createPlayer('A', look)).not.toBeNull();
+    expect(game.createPlayer('B', look)).not.toBeNull();
+    expect(game.createPlayer('C', look)).toBeNull();
+    max = 3;
+    expect(game.createPlayer('C', look)).not.toBeNull();
+    // lowering it below the number of characters removes nobody, it only stops new ones
+    max = 1;
+    expect(Object.keys(game.world.players)).toHaveLength(3);
+    expect(game.full()).toBe(true);
   });
 });
 

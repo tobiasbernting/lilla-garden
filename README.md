@@ -13,7 +13,7 @@ See [DESIGN.md](DESIGN.md) for the agreed design.
 - Prata med Tant Greta och Fiskar-Sven – nya önskningar varje dag ger kr och stjärnor.
 - Fiska i dammen med fiskespöet du får av Sven.
 - Byt kläder i garderoben. Halloween, jul, påsk och midsommar följer kalendern.
-- Allt tillsammans med upp till åtta spelare på samma gård. Inget dör, inget går sönder.
+- Allt tillsammans på samma gård: upp till 20 karaktärer (föräldrasidan kan ändra antalet, 1–100). Inget dör, inget går sönder.
 - Det du bygger är ditt: bara den som byggde något kan riva det (staket, väggar, kistor, möbler, djurhus…).
 - 2D: chatta med alla som spelar (Enter/T eller 💬, färdiga ord för den som inte vill skriva).
 - Röstprat (📞): prata med dem som sitter någon annanstans. De som är i samma rum (samma wifi) hör inte varandra

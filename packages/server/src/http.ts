@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { WEATHER_NAMES, isSeason, isWeatherKind, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
+import { MAX_PLAYERS_LIMIT, WEATHER_NAMES, isSeason, isWeatherKind, type ClientMsg, type ServerMsg } from '../../shared/src/index.ts';
 import type { Game, Link } from './game.ts';
 import { adminPage } from './admin.ts';
 import { DEVICE_COOKIE, PARENT_COOKIE, type Access, type AccessMode, type Device } from './access.ts';
@@ -229,7 +229,7 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
         if (p === '/access') return html(res, 200, accessPage(access.gate(device), device, access, nonce, surface === 'all'));
         if (p === '/api/me') {
           const gate = access.gate(device);
-          return json(res, gate === 'ok' ? 200 : 403, { gate, ...(device ? { name: device.name, kind: device.kind, canCreate: access.mayCreate(device) } : {}) });
+          return json(res, gate === 'ok' ? 200 : 403, { gate, ...(device ? { name: device.name, kind: device.kind, canCreate: access.mayCreate(device) && !game.full() } : {}) });
         }
         if (p === '/join' && req.method === 'GET') {
           if (device && device.status === 'approved') return redirect(res, '/');
@@ -298,6 +298,9 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
                 }
                 break;
               }
+              case 'max-players':
+                m = (await access.setMaxPlayers(Number(form.get('max') ?? ''), ip)) ? 'Sparat' : `Skriv ett heltal från 1 till ${MAX_PLAYERS_LIMIT}`;
+                break;
               case 'hours':
                 m = (await access.setHours(form.get('from') || null, form.get('to') || null, ip)) ? 'Speltiden sparad' : 'Fyll i både från och till (eller inget av dem)';
                 break;
@@ -385,7 +388,7 @@ export function createServers(game: Game, opts: ServerOptions): { server: http.S
         }
       }
 
-      if (p === '/api/me') return json(res, 200, { gate: 'ok', canCreate: true }); // no access control
+      if (p === '/api/me') return json(res, 200, { gate: 'ok', canCreate: !game.full() }); // no access control
       if (p === '/api/players' && req.method === 'GET') {
         const all = game.playerSummaries();
         return json(res, 200, device && access ? access.visible(device, all) : all);
