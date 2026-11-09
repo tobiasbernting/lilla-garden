@@ -1,5 +1,5 @@
 // "Vem är du?" – character picker and creator.
-import { ITEMS, MAX_PLAYERS, T, itemName, type Appearance, type PlayerSummary } from '@lilla-garden/shared';
+import { ITEMS, T, itemName, type Appearance, type PlayerSummary } from '@lilla-garden/shared';
 import { HAIR_COLORS, HAIR_STYLES, SKIN_TONES } from '../art/characters.js';
 import { portraitUrl } from '../art/textures.js';
 import { toGate } from '../net.js';
@@ -54,7 +54,7 @@ export class Picker {
       onTap(card, () => this.onPick(p.id));
       cards.append(card);
     }
-    if (players.length < MAX_PLAYERS && this.canCreate) {
+    if (this.canCreate) {
       const add = h('div', { class: 'card new' }, '＋', h('div', { class: 'nm' }, T.newCharacter));
       onTap(add, () => this.renderCreator());
       cards.append(add);

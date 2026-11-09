@@ -18,7 +18,7 @@ let game: Game;
 let access: Access;
 
 beforeAll(async () => {
-  game = new Game(new MemoryStore(), { autoStart: false });
+  game = new Game(new MemoryStore(), { autoStart: false, maxPlayers: () => access.maxPlayers() });
   await game.start();
   access = new Access(new MemoryAccessStore(), { parentPassword: PW });
   await access.load();
@@ -142,6 +142,27 @@ describe('the gate', () => {
     expect((await get('/api/players', device)).status).toBe(200);
     await post('/admin/logout', {}, parent);
     expect((await get('/admin', parent)).headers.get('location')).toBe('/admin/login');
+  });
+  it('sets how many characters the server holds on the parent page', async () => {
+    const parent = cookieFrom(await post('/admin/login', { password: PW }));
+    const device = cookieFrom(await post('/admin/access/this-device', { name: 'Köksdatorn' }, parent));
+    expect(await (await get('/admin', parent)).text()).toContain('name="max" min="1" max="100" step="1" value="20"');
+    expect(await (await get('/api/me', device)).json()).toMatchObject({ canCreate: true });
+
+    // full: the game says so and refuses another character
+    const count = Object.keys(game.world.players).length;
+    expect((await post('/admin/access/max-players', { max: String(count) }, parent)).status).toBe(303);
+    expect(access.maxPlayers()).toBe(count);
+    expect(await (await get('/api/me', device)).json()).toMatchObject({ canCreate: false });
+    const refused = await fetch(`${base}/api/players`, { method: 'POST', headers: { cookie: device, origin: base, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Extra' }) });
+    expect(refused.status).toBe(409);
+
+    // nonsense is refused and the old limit stays; then back to 20
+    const bad = await post('/admin/access/max-players', { max: 'många' }, parent);
+    expect(decodeURIComponent(bad.headers.get('location') ?? '')).toContain('heltal');
+    expect(access.maxPlayers()).toBe(count);
+    await post('/admin/access/max-players', { max: '20' }, parent);
+    expect(await (await get('/api/me', device)).json()).toMatchObject({ canCreate: true });
   });
 });
 

@@ -1,6 +1,6 @@
 // Server-rendered pages around the game: the gate (/access), invite links (/join), the parent login and the
 // access sections of the parent page. Swedish, plain HTML, no external resources.
-import { T } from '../../shared/src/index.ts';
+import { MAX_PLAYERS_LIMIT, T } from '../../shared/src/index.ts';
 import type { Access, Device, Gate, ParentSession } from './access.ts';
 import { otpauthUri } from './totp.ts';
 
@@ -152,6 +152,7 @@ const EVENTS: Record<string, string> = {
   mode: 'vem får komma in',
   hours: 'speltid',
   voice: 'röstprat',
+  'max-players': 'antal karaktärer',
   'totp-on': 'tvåsteg på',
   'totp-off': 'tvåsteg av',
   refused: 'stoppad',
@@ -263,6 +264,11 @@ ${chars}
     <label>Från <input type="time" name="from" value="${st.from ?? ''}"></label>
     <label>Till <input type="time" name="to" value="${st.to ?? ''}"></label>
     <button>Spara</button> <span class="muted">Tomt = när som helst. Svensk tid, gäller alla enheter.</span>
+  </form>
+  <h3>👥 Antal karaktärer</h3>
+  <form method="post" action="/admin/access/max-players" class="block">
+    <label>Högst <input type="number" name="max" min="1" max="${MAX_PLAYERS_LIMIT}" step="1" value="${access.maxPlayers()}" required> karaktärer</label>
+    <button>Spara</button> <span class="muted">Nu finns ${v.players.length}. Alla karaktärer som någon gjort räknas, även de som inte spelar just nu. Ingen tas bort om du sänker gränsen.</span>
   </form>
   <h3>📞 Röstprat</h3>
   <form method="post" action="/admin/access/voice" class="block">
